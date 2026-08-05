@@ -1,9 +1,9 @@
 // WebGL2 renderer: sim state uploads as R8UI textures, palette + per-grain shade
 // resolved in the fragment shader. BG modes are shader variants (uMode).
 
-import { PALETTE, N_IDS, E } from "../engine/elements";
+import { PALETTE, PH, N_IDS, E } from "../engine/elements";
 
-export const BG_MODES = ["none", "air", "gray", "dark", "silhouet", "TG", "toon", "rx"] as const;
+export const BG_MODES = ["none", "air", "gray", "dark", "silhouet", "TG", "toon", "rx", "pH"] as const;
 
 const VS = `#version 300 es
 layout(location = 0) in vec2 aPos;
@@ -21,6 +21,7 @@ uniform usampler2D uShade;
 uniform sampler2D uWind;
 uniform sampler2D uTemp;
 uniform sampler2D uGlow;
+uniform float uPh[${N_IDS}];
 uniform vec3 uPalette[${N_IDS}];
 uniform vec2 uCanvas;
 uniform vec2 uGrid;
@@ -33,6 +34,16 @@ out vec4 frag;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// universal indicator ramp: pH 0 red -> 7 green -> 14 violet
+vec3 phColor(float p) {
+  vec3 c = mix(vec3(0.85, 0.12, 0.10), vec3(0.95, 0.55, 0.10), smoothstep(0.0, 3.5, p));
+  c = mix(c, vec3(0.92, 0.88, 0.20), smoothstep(3.5, 5.5, p));
+  c = mix(c, vec3(0.25, 0.75, 0.30), smoothstep(5.5, 7.5, p));
+  c = mix(c, vec3(0.15, 0.55, 0.80), smoothstep(7.5, 10.0, p));
+  c = mix(c, vec3(0.45, 0.25, 0.85), smoothstep(10.0, 14.0, p));
+  return c;
 }
 
 // byte-encoded temp (T+60)*0.18 -> heat gradient
@@ -63,6 +74,20 @@ void main() {
     frag = vec4(c, 1.0);
     return;
   }
+  if (uMode == 8) {
+    // pH view: aqueous chemistry on the universal indicator ramp
+    if (id == 0u) { frag = vec4(0.03, 0.034, 0.042, 1.0); return; }
+    float p8 = uPh[int(id)];
+    uint sh8 = texelFetch(uShade, cell, 0).r;
+    if (id == ${E.LITMUS}u && sh8 <= 14u) p8 = float(sh8);
+    if (p8 > 14.5) {
+      vec3 g8 = uPalette[id] * 0.18 + vec3(0.05);
+      frag = vec4(vec3(dot(g8, vec3(0.299, 0.587, 0.114))), 1.0);
+    } else {
+      frag = vec4(phColor(p8), 1.0);
+    }
+    return;
+  }
   if (uMode == 7) {
     // reaction glow: the world dimmed, chemistry burning green-white
     float gv = texture(uGlow, cellF / uGrid).r;
@@ -87,6 +112,9 @@ void main() {
   }
   uint shade = texelFetch(uShade, cell, 0).r;
   vec3 col = uPalette[id] * (0.82 + float(shade) * 0.0014);
+  if (id == ${E.LITMUS}u && shade <= 14u) {
+    col = phColor(float(shade)); // stained indicator paper
+  }
   if (id == ${E.FIRE}u) {
     float f = hash(vec2(cell) + floor(uTime * 20.0));
     col = mix(vec3(1.0, 0.25, 0.05), vec3(1.0, 0.85, 0.3), f) * (0.8 + 0.4 * f);
@@ -168,10 +196,11 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode"]) {
+    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uPh", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode"]) {
       this.uni[name] = gl.getUniformLocation(prog, name);
     }
     gl.uniform3fv(this.uni.uPalette, PALETTE);
+    gl.uniform1fv(this.uni.uPh, Float32Array.from(PH));
     gl.uniform2f(this.uni.uGrid, gridW, gridH);
     gl.uniform1i(this.uni.uSpecies, 0);
     gl.uniform1i(this.uni.uShade, 1);
@@ -203,6 +232,7 @@ export class Renderer {
   /** re-upload the palette after registering custom elements */
   refreshPalette(): void {
     this.gl.uniform3fv(this.uni.uPalette, PALETTE);
+    this.gl.uniform1fv(this.uni.uPh, Float32Array.from(PH));
   }
 
   fit(): void {

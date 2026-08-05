@@ -2,8 +2,9 @@
 // color (--accent-l / --accent-r) — the chassis stays neutral, substances carry chroma.
 
 import {
-  E, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, REACT_DT, N_IDS, HOT_AT, HOT_TO,
-  COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R, pairKey, type CustomSpec,
+  E, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, REACT_DT, PH, N_IDS, HOT_AT,
+  HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R, pairKey,
+  type CustomSpec,
 } from "../engine/elements";
 
 export interface UiState {
@@ -86,6 +87,7 @@ export class Ui {
             <option value="5">bg: TG</option>
             <option value="6">bg: toon</option>
             <option value="7">bg: rx glow</option>
+            <option value="8">bg: pH</option>
           </select>
           <button id="clear">clear</button>
           <button id="fit" title="Reset view">fit</button>
@@ -385,6 +387,7 @@ export class Ui {
     if (IGNITES_AT[id] < 32767) flags.push(`ignites ≥ ${IGNITES_AT[id]}°`);
     else if (FLAMMABLE[id] > 0) flags.push("flammable");
     if (EXPLODE_R[id] > 0) flags.push(`blast r${EXPLODE_R[id]}`);
+    if (PH[id] !== 255) flags.push(`pH ${PH[id]}`);
     if (flags.length) rows.push(`<div class="rx flags">${flags.join(" · ")}</div>`);
     if (rows.length === 0) { card.hidden = true; return; }
     card.innerHTML = `<div class="rhead">${sw(id)}${ELEMENTS[id].name}</div>` + rows.join("");

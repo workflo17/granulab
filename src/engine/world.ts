@@ -3,7 +3,7 @@
 
 import {
   E, B, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
-  EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT, REACT_DT,
+  EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT, REACT_DT, PH,
   TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
 } from "./elements";
 import { Rng } from "./rng";
@@ -562,7 +562,29 @@ export class World {
       case B.DETECTOR: this.doDetector(i, x, y); break;
       case B.VALVE: this.doValve(i, x, y); break;
       case B.FILTER: this.doFilter(i, x, y); break;
+      case B.LITMUS: this.doLitmus(i, x, y); break;
     }
+  }
+
+  /** litmus indicator: sample the first pH-bearing neighbor into the shade
+   *  byte (the shader renders litmus by shade as an indicator ramp), then
+   *  fall like any powder */
+  private doLitmus(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    for (let k = 0; k < 4; k++) {
+      const nx = x + World.DX4[k];
+      const ny = y + World.DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const p = PH[species[ny * W + nx]];
+      if (p !== 255) {
+        if (this.shade[i] !== p) {
+          this.shade[i] = p;
+          this.wake(x, y);
+        }
+        break;
+      }
+    }
+    this.doPowder(i, x, y, E.LITMUS);
   }
 
   /** integrate a flying grain: gravity + drag, walk its velocity vector,
@@ -1184,6 +1206,7 @@ export class World {
     // and gases bubble through acid unharmed (CO2/chlorine are liquid-encoded)
     if (o === E.WATER || o === E.SEAWATER || o === E.SALT) return false;
     if (BEHAVIOR[o] === B.GAS || o === E.CO2 || o === E.CHLORINE) return false;
+    if (o === E.LITMUS) return false; // the instrument survives to show pH 1
     if (o !== E.EMPTY && o !== E.WALL && o !== E.ACID && o !== E.FIRE && this.rng.byte() < 60) {
       this.set(j, nx, ny, E.EMPTY, 0);
       this.life[i]--;

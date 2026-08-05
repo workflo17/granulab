@@ -175,8 +175,19 @@
 > ignition and self-detonate (verified: 2,673-cell batch blew at t45), the
 > real nitroglycerin-plant hazard, fully emergent. Endotherms: dissolution
 > −2 (−8 froze the pool solid — self-pinning ice feedback), de-icing −6,
-> fizz −15, fire suppression −20. Still open from M5d: dissolved-state
-> concentration channel, pH field + litmus.
+> fizz −15, fire suppression −20.
+>
+> M5d pH SHIPPED: per-element pH in the registry (acid 1, nitro 2, chlorine
+> water 3, mud/glycerin 6, water 7, seawater 8, soda 9, soapy 10, lime 12,
+> lye 13; 255 = n/a), shown as a "pH N" flag on the datasheet card. BG mode
+> 8 "pH" renders aqueous chemistry on the universal-indicator ramp (red→
+> green→violet; non-aqueous matter as dim gray). LITMUS element (id 69):
+> indicator powder that samples the first pH-bearing neighbor into its
+> SHADE byte and wears that indicator color in EVERY view mode — sprinkle
+> it into a beaker and read the pH. Corrosion-exempt (acid dissolved the
+> instrument before it could show red). Verified: acid 1 / water 7 /
+> seawater 8 / lye-contact 13, all 231 grains surviving the acid bath.
+> Still open from M5d: dissolved-state concentration channel.
 > - M5e BALANCE & SCALE: mass-conservation audit per row, rate tuning pass,
 >   WASM hot loop when reaction load meets the 211k-cell ceiling.
 >
