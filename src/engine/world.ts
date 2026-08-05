@@ -642,12 +642,13 @@ export class World {
       }
       const j = ny * W + nx;
       const o = species[j];
-      if (o === E.EMPTY) {
+      const ob = BEHAVIOR[o];
+      if (o === E.EMPTY || ob === B.FIRE) {
+        // fire is hot air, not an obstacle — debris flies THROUGH the fireball
         this.swap(ci, j, cx, cy, nx, ny);
         ci = j; cx = nx; cy = ny;
         continue;
       }
-      const ob = BEHAVIOR[o];
       if ((ob === B.LIQUID || ob === B.GAS) && DENSITY[id] > DENSITY[o]) {
         // punch through fluid, losing half the speed per cell (splash drag)
         this.swap(ci, j, cx, cy, nx, ny);
@@ -656,10 +657,16 @@ export class World {
         vy = (vy / 2) | 0;
         continue;
       }
-      // hard impact: pass most of the momentum into a movable target — and
-      // keep half for the next tick, so packed columns drive through like a
-      // spring chain instead of jamming (this is what makes slug cannons work)
+      // hard impact into a movable target
       if ((ob === B.POWDER || ob === B.SUPERBALL) && (adx > 24 || ady > 24)) {
+        const tv = Math.abs(this.vx8[j]) + Math.abs(this.vy8[j]);
+        if (tv > 24) {
+          // the target is already flying the same blast — hold formation and
+          // retry next tick; whole columns launch coherently instead of
+          // grinding their momentum away against each other
+          break;
+        }
+        // resting target: spring-chain — hand over most, keep pushing
         this.vx8[j] = (vx * 7 / 8) | 0;
         this.vy8[j] = (vy * 7 / 8) | 0;
         this.wake(nx, ny);
@@ -1594,8 +1601,42 @@ export class World {
     return true;
   }
 
+  private static blastStack = new Int32Array(8192);
+
+  /** consume the whole CONNECTED explosive charge at the blast site and
+   *  return its yield — one keg, one unified boom. Mass makes the bang. */
+  private coalesceCharge(cx: number, cy: number): number {
+    const { W, H, species } = this;
+    const start = cy * W + cx;
+    if (EXPLODE_R[species[start]] === 0) return 0;
+    const stack = World.blastStack;
+    let sp = 0;
+    let yieldSum = 0;
+    stack[sp++] = start;
+    let pops = 0;
+    while (sp > 0 && pops < 4000) {
+      const i = stack[--sp];
+      const id = species[i];
+      if (EXPLODE_R[id] === 0) continue;
+      pops++;
+      yieldSum += EXPLODE_R[id];
+      const x = i % W;
+      const y = (i / W) | 0;
+      this.set(i, x, y, E.EMPTY, 0); // consumed as propellant (marks visited)
+      if (x + 1 < W && sp < 8188) stack[sp++] = i + 1;
+      if (x > 0 && sp < 8188) stack[sp++] = i - 1;
+      if (y + 1 < H && sp < 8188) stack[sp++] = i + W;
+      if (y > 0 && sp < 8188) stack[sp++] = i - W;
+    }
+    return yieldSum;
+  }
+
   private explode(cx: number, cy: number, r: number): void {
     const { W, H } = this;
+    // the bigger the charge, the bigger the boom: connected explosive mass
+    // scales the blast radius (sqrt law), up to a screen-shaking cap
+    const charge = this.coalesceCharge(cx, cy);
+    if (charge > 0) r = Math.min(46, r + Math.floor(Math.sqrt(charge) * 0.9));
     if (this.blastQueue.length < 96) this.blastQueue.push(cx, cy, r);
     const r2 = r * r;
     for (let dy = -r; dy <= r; dy++) {
@@ -1634,9 +1675,9 @@ export class World {
         if (b !== B.POWDER && b !== B.LIQUID && b !== B.SUPERBALL) continue;
         if (!this.losClear(cx, cy, x, y)) continue; // walls shield the debris too
         const d = Math.sqrt(d2);
-        const mag = 150 * (1 - d / R2) + 20; // up to ~10.6 cells/tick at the core
-        this.vx8[i] = Math.max(-120, Math.min(120, ((dx / d) * mag) | 0));
-        this.vy8[i] = Math.max(-120, Math.min(120, (((dy / d) * mag) | 0) - 20)); // loft
+        const mag = 170 * (1 - d / R2) + 22; // up to ~12 cells/tick at the core
+        this.vx8[i] = Math.max(-126, Math.min(126, ((dx / d) * mag) | 0));
+        this.vy8[i] = Math.max(-126, Math.min(126, (((dy / d) * mag) | 0) - 22)); // loft
         this.wake(x, y);
       }
     }

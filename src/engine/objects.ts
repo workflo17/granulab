@@ -185,7 +185,7 @@ export class ObjectSystem {
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
         if (d > R) continue;
         if (!w.losClear(bx, by, Math.round(o.x), Math.round(o.y))) continue;
-        const imp = 16 * (1 - d / R);
+        const imp = 20 * (1 - d / R);
         o.vx += (dx / d) * imp;
         o.vy += (dy / d) * imp - 2; // loft
       }
@@ -236,8 +236,8 @@ export class ObjectSystem {
         o.vy *= 0.9;
       }
       o.vx *= FRICTION[o.kind];
-      o.vx = Math.max(-9, Math.min(9, o.vx));
-      o.vy = Math.max(-9, Math.min(9, o.vy));
+      o.vx = Math.max(-12, Math.min(12, o.vx));
+      o.vy = Math.max(-12, Math.min(12, o.vy));
       const n = Math.max(1, Math.ceil(Math.max(Math.abs(o.vx), Math.abs(o.vy))));
       const sx = o.vx / n;
       const sy = o.vy / n;

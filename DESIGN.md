@@ -239,6 +239,20 @@
 > so terrain flatter than that per-step reads as flat (a ball mid-step on a
 > wide staircase correctly sits still).
 >
+> CHARGE COALESCING + BLAST FIXES (owner ask 8/05 "the more explosive the
+> bigger the boom"): detonation flood-consumes the whole CONNECTED charge
+> (cap 4000 cells) and scales ONE unified blast radius by sqrt(yield), cap
+> R=46 — a magazine goes up as a screen-shaker, not a crackling chain.
+> Ladder verified: 1 cell=508 grains launched, keg=3k, barrel=5k (cap).
+> Cannon: 11.8 c/t muzzle, 333-cell launch. TWO layered bugs found under
+> "weak explosions": (1) upward columns self-jammed against the bottom-up
+> scan — flyers now HOLD FORMATION when their target is also flying (columns
+> unzip from the top; grapeshot 6→87 escaping the bore); (2) THE BIG ONE:
+> the fire core blankets the blast radius and ballistic grains treated FIRE
+> AS A WALL — every launched grain froze ~8 cells into its own fireball.
+> Fire is hot air now (debris flies through). Mortar plume 7→132 cells,
+> scatter 236. Object impulse 20, obj cap 12 c/t, debris to ±126 (7.9 c/t).
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays), upload gallery, WASM.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
