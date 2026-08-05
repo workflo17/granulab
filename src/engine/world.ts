@@ -3,7 +3,7 @@
 
 import {
   E, B, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
-  EXPLODE_R, HOT, REACT, HAS_REACT,
+  EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT,
   TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
 } from "./elements";
 import { Rng } from "./rng";
@@ -48,6 +48,11 @@ export class World {
   readonly vy: Float32Array;
   private fans: number[] = []; // cell indices of painted fans (lazy-validated)
 
+  // reaction glow field (quarter res, shares the wind grid dims): reactions
+  // light it up, it fades — the "rx" background mode renders it
+  readonly glow: Float32Array;
+  private glowTicks = 0;
+
   // temperature field (half resolution), chunk-gated like the cell sim
   readonly TW: number;
   readonly TH: number;
@@ -80,6 +85,7 @@ export class World {
     this.WY = h >> WSHIFT;
     this.vx = new Float32Array(this.WX * this.WY);
     this.vy = new Float32Array(this.WX * this.WY);
+    this.glow = new Float32Array(this.WX * this.WY);
     this.TW = w >> TSHIFT;
     this.TH = h >> TSHIFT;
     this.temp = new Float32Array(this.TW * this.TH).fill(AMBIENT);
@@ -362,6 +368,14 @@ export class World {
     }
   }
 
+  /** encode the reaction glow for the "rx" background shader */
+  fillGlowTex(buf: Uint8Array): void {
+    const g = this.glow;
+    for (let i = 0; i < g.length; i++) {
+      buf[i] = Math.min(255, g[i] * 96) | 0;
+    }
+  }
+
   windAt(x: number, y: number): [number, number] {
     const wi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
     return [this.vx[wi], this.vy[wi]];
@@ -427,6 +441,13 @@ export class World {
 
     this.stepWind();
     this.stepTemp();
+    if (this.glowTicks > 0) {
+      this.glowTicks--;
+      const g = this.glow;
+      for (let i = 0; i < g.length; i++) {
+        if (g[i] !== 0) g[i] = g[i] > 0.02 ? g[i] * 0.94 : 0;
+      }
+    }
 
     const { W, H, species, clock, chunksX } = this;
     const cur = this.activeCur;
@@ -494,6 +515,11 @@ export class World {
         const r = REACT[id * N_IDS + this.species[j]];
         if (r === 0) continue;
         if (this.rng.byte() < r >>> 16) {
+          const pb = this.species[j];
+          REACT_COUNT[id < pb ? id * N_IDS + pb : pb * N_IDS + id]++;
+          const gi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
+          if (this.glow[gi] < 4) this.glow[gi] += 1;
+          this.glowTicks = 240;
           const newA = (r >>> 8) & 255;
           const newB = r & 255;
           this.set(i, x, y, newA, LIFE0[newA]);
@@ -1586,6 +1612,7 @@ export class World {
     this.activeNext.fill(1);
     this.vx.fill(0);
     this.vy.fill(0);
+    this.glow.fill(0);
     this.temp.fill(AMBIENT);
     this.thermalCur.fill(0);
     this.thermalNext.fill(0);

@@ -402,6 +402,7 @@ function frame(now: number): void {
     world.species, world.shade,
     (buf) => world.fillWindTex(buf),
     (buf) => world.fillTempTex(buf),
+    (buf) => world.fillGlowTex(buf),
     now / 1000, overlays,
   );
   if (!selfChecked && world.frame > 30) {
@@ -426,8 +427,9 @@ function frame(now: number): void {
   }
   statTimer += dt;
   if (statTimer > 250) {
-    statTimer = 0;
     ui.setStats(fpsEma, tickEma, world.dots, world.activeChunkCount());
+    ui.refreshNotebook(statTimer);
+    statTimer = 0;
   }
   requestAnimationFrame(frame);
 }

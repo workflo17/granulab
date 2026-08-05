@@ -2,8 +2,8 @@
 // color (--accent-l / --accent-r) — the chassis stays neutral, substances carry chroma.
 
 import {
-  E, ELEMENTS, REACT, N_IDS, HOT_AT, HOT_TO, COLD_AT, COLD_TO,
-  IGNITES_AT, FLAMMABLE, EXPLODE_R, type CustomSpec,
+  E, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, N_IDS, HOT_AT, HOT_TO,
+  COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R, type CustomSpec,
 } from "../engine/elements";
 
 export interface UiState {
@@ -85,6 +85,7 @@ export class Ui {
             <option value="4">bg: silhouet</option>
             <option value="5">bg: TG</option>
             <option value="6">bg: toon</option>
+            <option value="7">bg: rx glow</option>
           </select>
           <button id="clear">clear</button>
           <button id="fit" title="Reset view">fit</button>
@@ -105,6 +106,7 @@ export class Ui {
           <button id="import" title="Open a .grn scene file">import</button>
           <button id="copycode" title="Copy the scene as a shareable code">code</button>
           <button id="pastecode" title="Paste a scene code">paste</button>
+          <button id="nblog" title="Lab notebook — every reaction you've made happen">log</button>
         </div>
         <div class="wells">
           <div class="well left"><span class="dot"></span>L <b id="wellL">Powder</b></div>
@@ -157,7 +159,12 @@ export class Ui {
           </menu>
         </form>
       </dialog>
-      <main><canvas id="dish"></canvas><div id="reagent" aria-live="polite" hidden></div></main>
+      <main><canvas id="dish"></canvas><div id="reagent" aria-live="polite" hidden></div>
+        <div id="notebook" hidden>
+          <div class="nb-head"><span>LAB NOTEBOOK</span><button id="nbclose" title="Close">×</button></div>
+          <div id="nbrows"><div class="nb-empty">No reactions witnessed yet — mix something.</div></div>
+        </div>
+      </main>
       <footer>
         <span>fps <b id="s-fps">–</b></span>
         <span>tick <b id="s-tick">–</b> ms</span>
@@ -299,6 +306,18 @@ export class Ui {
       hooks.onDemo((e.target as HTMLSelectElement).value);
     });
     this.reagentCard = root.querySelector<HTMLElement>("#reagent")!;
+    this.notebook = root.querySelector<HTMLElement>("#notebook")!;
+    this.nbRowsHost = root.querySelector<HTMLElement>("#nbrows")!;
+    this.nbBtn = root.querySelector<HTMLButtonElement>("#nblog")!;
+    this.nbBtn.addEventListener("click", () => {
+      this.notebook.hidden = !this.notebook.hidden;
+      if (!this.notebook.hidden) {
+        this.nbFresh = 0;
+        this.nbBtn.classList.remove("attn");
+        this.nbBtn.textContent = "log";
+      }
+    });
+    root.querySelector("#nbclose")!.addEventListener("click", () => { this.notebook.hidden = true; });
     this.penInput.addEventListener("input", () => this.setPen(parseInt(this.penInput.value)));
 
     this.bind("L", E.POWDER);
@@ -374,6 +393,66 @@ export class Ui {
   addElementButton(id: number): void {
     this.addButtonFn(this.customHost, id);
     this.customHost.appendChild(this.newElBtn); // keep "+ New…" last
+  }
+
+  /** Lab Notebook: diffs the REACT_COUNT table on the stats cadence; new
+   *  pairs become entries (flashing if never seen in this browser before) */
+  private nbPrev = new Uint32Array(N_IDS * N_IDS);
+  private nbRows = new Map<number, { row: HTMLElement; count: HTMLElement; rate: HTMLElement; last: number }>();
+  private nbSeen = new Set<string>(JSON.parse(localStorage.getItem("granulab-seen-rx") ?? "[]"));
+  private notebook!: HTMLElement;
+  private nbRowsHost!: HTMLElement;
+  private nbBtn!: HTMLButtonElement;
+  private nbFresh = 0;
+
+  refreshNotebook(dtMs: number): void {
+    for (let k = 0; k < REACT_COUNT.length; k++) {
+      const c = REACT_COUNT[k];
+      if (c === 0) continue;
+      const prev = this.nbPrev[k];
+      if (c === prev && this.nbRows.has(k)) continue;
+      this.nbPrev[k] = c;
+      const a = (k / N_IDS) | 0;
+      const b = k % N_IDS;
+      let entry = this.nbRows.get(k);
+      if (!entry) {
+        const nameA = ELEMENTS[a]?.name ?? `#${a}`;
+        const nameB = ELEMENTS[b]?.name ?? `#${b}`;
+        const title = REACT_NAME[k] ?? `${nameA} + ${nameB}`;
+        const seenKey = `${nameA}+${nameB}`;
+        const isNew = !this.nbSeen.has(seenKey);
+        if (isNew) {
+          this.nbSeen.add(seenKey);
+          localStorage.setItem("granulab-seen-rx", JSON.stringify([...this.nbSeen]));
+        }
+        const sw = (eid: number): string =>
+          `<i class="rsw" style="background:${ELEMENTS[eid]?.color ?? "#888"}"></i>`;
+        const row = document.createElement("div");
+        row.className = "nb-row" + (isNew ? " nb-new" : "");
+        row.innerHTML =
+          `<div class="nb-title">${title}${isNew ? '<span class="nb-badge">NEW</span>' : ""}</div>` +
+          `<div class="nb-formula">${sw(a)}${ELEMENTS[a]?.name}${sw(b)}${ELEMENTS[b]?.name}</div>` +
+          `<div class="nb-stats"><span class="nb-count"></span><span class="nb-rate"></span></div>`;
+        this.nbRowsHost.querySelector(".nb-empty")?.remove();
+        this.nbRowsHost.prepend(row);
+        entry = {
+          row,
+          count: row.querySelector<HTMLElement>(".nb-count")!,
+          rate: row.querySelector<HTMLElement>(".nb-rate")!,
+          last: 0,
+        };
+        this.nbRows.set(k, entry);
+        if (this.notebook.hidden) {
+          this.nbFresh++;
+          this.nbBtn.classList.add("attn");
+          this.nbBtn.textContent = `log ${this.nbFresh}`;
+        }
+      }
+      entry.count.textContent = c.toLocaleString();
+      const perSec = ((c - entry.last) / dtMs) * 1000;
+      entry.last = c;
+      entry.rate.textContent = perSec > 0.5 ? `${perSec.toFixed(0)}/s` : "";
+    }
   }
 
   setPen(n: number): void {

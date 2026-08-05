@@ -3,7 +3,7 @@
 
 import { PALETTE, N_IDS, E } from "../engine/elements";
 
-export const BG_MODES = ["none", "air", "gray", "dark", "silhouet", "TG", "toon"] as const;
+export const BG_MODES = ["none", "air", "gray", "dark", "silhouet", "TG", "toon", "rx"] as const;
 
 const VS = `#version 300 es
 layout(location = 0) in vec2 aPos;
@@ -20,6 +20,7 @@ uniform usampler2D uSpecies;
 uniform usampler2D uShade;
 uniform sampler2D uWind;
 uniform sampler2D uTemp;
+uniform sampler2D uGlow;
 uniform vec3 uPalette[${N_IDS}];
 uniform vec2 uCanvas;
 uniform vec2 uGrid;
@@ -62,6 +63,17 @@ void main() {
     frag = vec4(c, 1.0);
     return;
   }
+  if (uMode == 7) {
+    // reaction glow: the world dimmed, chemistry burning green-white
+    float gv = texture(uGlow, cellF / uGrid).r;
+    uint sh7 = texelFetch(uShade, cell, 0).r;
+    vec3 base = id == 0u
+      ? vec3(0.03, 0.036, 0.046)
+      : uPalette[id] * (0.82 + float(sh7) * 0.0014) * 0.22;
+    vec3 g = vec3(0.25, 1.0, 0.72) * gv * 2.0 + vec3(0.95) * gv * gv * 1.4;
+    frag = vec4(base + g, 1.0);
+    return;
+  }
   if (id == 0u) {
     vec3 bg = vec3(0.043, 0.051, 0.063);
     if (uMode == 1) {
@@ -100,6 +112,8 @@ export class Renderer {
   private texShade: WebGLTexture;
   private texWind: WebGLTexture;
   private texTemp: WebGLTexture;
+  private texGlow: WebGLTexture;
+  private glowBuf: Uint8Array;
   private tempW: number;
   private tempH: number;
   private tempBuf: Uint8Array;
@@ -123,6 +137,7 @@ export class Renderer {
     this.tempW = gridW >> 1;
     this.tempH = gridH >> 1;
     this.tempBuf = new Uint8Array(this.tempW * this.tempH);
+    this.glowBuf = new Uint8Array(this.windW * this.windH);
     // preserveDrawingBuffer keeps the last frame grabbable for screenshots/capture
     const gl = canvas.getContext("webgl2", { antialias: false, preserveDrawingBuffer: true })!;
     if (!gl) throw new Error("WebGL2 not available");
@@ -153,7 +168,7 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uPalette", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode"]) {
+    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode"]) {
       this.uni[name] = gl.getUniformLocation(prog, name);
     }
     gl.uniform3fv(this.uni.uPalette, PALETTE);
@@ -162,12 +177,14 @@ export class Renderer {
     gl.uniform1i(this.uni.uShade, 1);
     gl.uniform1i(this.uni.uWind, 2);
     gl.uniform1i(this.uni.uTemp, 3);
+    gl.uniform1i(this.uni.uGlow, 4);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 
     this.texSpecies = this.makeTex(0, gl.R8UI, this.gridW, this.gridH, gl.NEAREST);
     this.texShade = this.makeTex(1, gl.R8UI, this.gridW, this.gridH, gl.NEAREST);
     this.texWind = this.makeTex(2, gl.RG8, this.windW, this.windH, gl.LINEAR);
     this.texTemp = this.makeTex(3, gl.R8, this.tempW, this.tempH, gl.LINEAR);
+    this.texGlow = this.makeTex(4, gl.R8, this.windW, this.windH, gl.LINEAR);
   }
 
   private makeTex(unit: number, format: number, w: number, h: number, filter: number): WebGLTexture {
@@ -215,6 +232,7 @@ export class Renderer {
     shade: Uint8Array,
     fillWind: (buf: Uint8Array) => void,
     fillTemp: (buf: Uint8Array) => void,
+    fillGlow: (buf: Uint8Array) => void,
     timeSec: number,
     overlays?: Array<{ x0: number; y0: number; w: number; h: number; species: Uint8Array; shade: Uint8Array }>,
   ): void {
@@ -248,6 +266,12 @@ export class Renderer {
       gl.activeTexture(gl.TEXTURE3);
       gl.bindTexture(gl.TEXTURE_2D, this.texTemp);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.tempW, this.tempH, gl.RED, gl.UNSIGNED_BYTE, this.tempBuf);
+    }
+    if (this.mode === 7) {
+      fillGlow(this.glowBuf);
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, this.texGlow);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.windW, this.windH, gl.RED, gl.UNSIGNED_BYTE, this.glowBuf);
     }
     gl.uniform2f(this.uni.uCanvas, canvas.width, canvas.height);
     gl.uniform2f(this.uni.uPan, this.pan.x, this.pan.y);

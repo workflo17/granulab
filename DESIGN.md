@@ -156,10 +156,17 @@
 > fireworks battery as a 1-wide TOP-LIT column (any nose-blocked rocket
 > detonates: blocks and tubes both self-destruct; light from above, feed
 > from below). All five verified live at 60fps.
-> - M5c WATCH THE REACTIONS: per-pair reaction counters (REACT_COUNT), a Lab
->   Notebook panel with Sandboxels-style discovery log ("saponification!"),
->   reaction-glow BG mode (recent-reaction heatmap), live rate readout for a
->   pinned pair.
+> M5c SHIPPED — WATCH THE REACTIONS: REACT_COUNT per-pair counters + 39 rows
+> now carry proper names (Saponification, Chlor-alkali process, Nitration…).
+> LAB NOTEBOOK ("log" button): live discovery feed — first fire of a pair
+> prepends an entry (name, swatch formula, running count, rate/s); pairs
+> never seen in this browser flash NEW (persisted granulab-seen-rx); closed
+> panel badges "log N". BG mode 7 "rx glow": quarter-res reaction field
+> (reactions pump it, 0.94 decay, gated like wind) rendered as green-white
+> glow over the dimmed world. QA NOTE: bare import("/src/engine/elements.ts")
+> probes in the page get a DUPLICATE module instance under Vite dev (static
+> tables match, runtime counters read zero) — verify counters through the
+> app's own UI, not import probes.
 > - M5d SOLUTIONS & THERMOCHEMISTRY: optional ΔT per REACT row (neutralization
 >   heats, quenching cools — feeds the existing temp field), dissolved-state
 >   concentration channel (salt in water without cells), pH field + litmus

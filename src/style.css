@@ -237,6 +237,64 @@ dialog .rxdel {
   vertical-align: baseline;
 }
 
+/* ---- lab notebook ---- */
+#notebook {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 250px;
+  max-height: calc(100% - 130px);
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--chassis) 92%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  font-size: 11px;
+}
+#notebook .nb-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px 6px;
+  background: var(--chassis);
+  letter-spacing: 0.12em;
+  border-bottom: 1px solid var(--hairline);
+}
+#notebook .nb-head button {
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+#notebook .nb-empty { padding: 12px 10px; color: var(--dim); font-style: italic; }
+.nb-row { padding: 7px 10px; border-bottom: 1px solid var(--hairline); }
+.nb-row .nb-title { color: var(--text); letter-spacing: 0.04em; }
+.nb-row .nb-formula { color: var(--dim); margin-top: 2px; }
+.nb-row .nb-formula .rsw { margin: 0 4px 0 8px; }
+.nb-row .nb-formula .rsw:first-child { margin-left: 0; }
+.nb-row .nb-stats { display: flex; gap: 10px; color: var(--dim); margin-top: 2px; }
+.nb-badge {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--accent-l, #8ad0c0);
+  color: #10141a;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+.nb-new { animation: nbflash 1.2s ease-out; }
+@keyframes nbflash {
+  from { background: color-mix(in srgb, var(--accent-l, #8ad0c0) 25%, transparent); }
+  to { background: transparent; }
+}
+#nblog.attn { border-color: var(--accent-l, #8ad0c0); color: var(--accent-l, #8ad0c0); }
+@media (prefers-reduced-motion: reduce) {
+  .nb-new { animation: none; }
+}
+
 /* ---- status readout ---- */
 footer {
   grid-area: status;
