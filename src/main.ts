@@ -226,7 +226,7 @@ resize();
 let strokeAngle = 0; // byte angle of the current pen stroke — fans blow this way
 
 function stamp(cx: number, cy: number, r: number, id: number): void {
-  const aux = id === E.FAN ? strokeAngle : undefined;
+  const aux = id === E.FAN || id === E.CANNON ? strokeAngle : undefined;
   const r2 = r * r;
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
@@ -326,7 +326,7 @@ canvas.addEventListener("pointerup", () => {
       stampLine(a.x, a.y, b.x, b.y, ui.state.pen, painting);
     } else {
       const id = painting;
-      const aux = id === E.FAN ? strokeAngle : undefined;
+      const aux = id === E.FAN || id === E.CANNON ? strokeAngle : undefined;
       for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y++) {
         for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++) {
           world.paint(x, y, id, aux);

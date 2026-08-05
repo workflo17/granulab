@@ -31,6 +31,10 @@ export class World {
   readonly shade: Uint8Array; // per-grain color variation, travels with the grain
   readonly life: Uint8Array; // fuse timers, burn life, fan angle, clone memory
   readonly clock: Uint8Array; // frame stamp — prevents double-updating moved cells
+  // ballistic grain velocity, fixed-point x16 (Noita-style arcs); transient —
+  // not serialized, zeroed on load. Nonzero = the cell flies instead of falling.
+  readonly vx8: Int8Array;
+  readonly vy8: Int8Array;
 
   readonly chunksX: number;
   readonly chunksY: number;
@@ -66,6 +70,8 @@ export class World {
     this.shade = new Uint8Array(n);
     this.life = new Uint8Array(n);
     this.clock = new Uint8Array(n);
+    this.vx8 = new Int8Array(n);
+    this.vy8 = new Int8Array(n);
     this.chunksX = Math.ceil(w / CHUNK);
     this.chunksY = Math.ceil(h / CHUNK);
     this.activeCur = new Uint8Array(this.chunksX * this.chunksY);
@@ -134,6 +140,8 @@ export class World {
       this.shade[i] = old === E.METAL ? this.shade[i] | 1 : this.shade[i] & 0xfe;
     }
     this.life[i] = aux !== undefined ? aux : LIFE0[id];
+    this.vx8[i] = 0;
+    this.vy8[i] = 0;
     if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
     if (HEAT_PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], 0.6); // seed the heat field
     this.wake(x, y);
@@ -157,6 +165,8 @@ export class World {
     this.species[i] = id;
     this.shade[i] = shade;
     this.life[i] = 0;
+    this.vx8[i] = 0;
+    this.vy8[i] = 0;
     this.wake(x, y);
   }
 
@@ -166,6 +176,8 @@ export class World {
     if (id !== E.EMPTY && id !== E.WALL) this.dots++;
     this.species[i] = id;
     this.life[i] = lifeVal;
+    this.vx8[i] = 0;
+    this.vy8[i] = 0;
     this.clock[i] = this.stamp;
     this.wake(x, y);
   }
@@ -174,9 +186,13 @@ export class World {
     const s = this.species;
     const sh = this.shade;
     const lf = this.life;
+    const vx = this.vx8;
+    const vy = this.vy8;
     let t = s[i]; s[i] = s[j]; s[j] = t;
     t = sh[i]; sh[i] = sh[j]; sh[j] = t;
     t = lf[i]; lf[i] = lf[j]; lf[j] = t;
+    t = vx[i]; vx[i] = vx[j]; vx[j] = t;
+    t = vy[i]; vy[i] = vy[j]; vy[j] = t;
     this.clock[i] = this.stamp;
     this.clock[j] = this.stamp;
     this.wake(xi, yi);
@@ -451,6 +467,11 @@ export class World {
   }
 
   private updateCell(i: number, x: number, y: number, id: number): void {
+    // ballistic grains fly instead of falling (explosion debris, cannon shots)
+    if ((this.vx8[i] | this.vy8[i]) !== 0) {
+      this.doBallistic(i, x, y, id);
+      return;
+    }
     // mobile heat/cold sources drive the temperature field from their behavior
     if (HEAT_PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], HEAT_PUMP[id]);
     // contact reaction (data-driven table): scan the 4-neighborhood for the
@@ -502,6 +523,229 @@ export class World {
       case B.THUNDER: this.doThunder(i, x, y); break;
       case B.ROCKET: this.doRocket(i, x, y); break;
       case B.PUMP: this.doPump(i, x, y); break;
+      case B.CANNON: this.doCannon(i, x, y); break;
+      case B.DETECTOR: this.doDetector(i, x, y); break;
+      case B.VALVE: this.doValve(i, x, y); break;
+      case B.FILTER: this.doFilter(i, x, y); break;
+    }
+  }
+
+  /** integrate a flying grain: gravity + drag, walk its velocity vector,
+   *  punch through fluids with damping, transfer momentum on hard impact.
+   *  Velocity is fixed-point x16; below one cell/tick it hands back to the
+   *  normal behavior pass. */
+  private doBallistic(i: number, x: number, y: number, id: number): void {
+    const b = BEHAVIOR[id];
+    if (b !== B.POWDER && b !== B.LIQUID && b !== B.SUPERBALL && b !== B.VIRUS && b !== B.ANT) {
+      this.vx8[i] = 0;
+      this.vy8[i] = 0;
+      return; // static/gas/energy cells don't carry ballistic velocity
+    }
+    let vx = this.vx8[i];
+    let vy = Math.max(-120, Math.min(120, this.vy8[i] + 3)); // gravity
+    vx = (vx * 31) >> 5; // light drag (~3%/tick)
+    const adx = vx < 0 ? -vx : vx;
+    const ady = vy < 0 ? -vy : vy;
+    const n = (adx > ady ? adx : ady) >> 4;
+    if (n === 0) {
+      this.vx8[i] = 0;
+      this.vy8[i] = 0;
+      this.wake(x, y); // back to normal falling next tick
+      return;
+    }
+    const sx = vx > 0 ? 1 : -1;
+    const sy = vy > 0 ? 1 : -1;
+    const { W, H, species } = this;
+    let cx = x;
+    let cy = y;
+    let ci = i;
+    let err = 0;
+    for (let s = 0; s < n; s++) {
+      let nx = cx;
+      let ny = cy;
+      if (adx >= ady) {
+        nx += sx;
+        err += ady;
+        if (err >= adx) { ny += sy; err -= adx; }
+      } else {
+        ny += sy;
+        err += adx;
+        if (err >= ady) { nx += sx; err -= ady; }
+      }
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) {
+        vx = 0; vy = 0;
+        break;
+      }
+      const j = ny * W + nx;
+      const o = species[j];
+      if (o === E.EMPTY) {
+        this.swap(ci, j, cx, cy, nx, ny);
+        ci = j; cx = nx; cy = ny;
+        continue;
+      }
+      const ob = BEHAVIOR[o];
+      if ((ob === B.LIQUID || ob === B.GAS) && DENSITY[id] > DENSITY[o]) {
+        // punch through fluid, losing half the speed per cell (splash drag)
+        this.swap(ci, j, cx, cy, nx, ny);
+        ci = j; cx = nx; cy = ny;
+        vx = (vx / 2) | 0;
+        vy = (vy / 2) | 0;
+        continue;
+      }
+      // hard impact: pass most of the momentum into a movable target
+      if ((ob === B.POWDER || ob === B.SUPERBALL) && (adx > 24 || ady > 24)) {
+        this.vx8[j] = (vx * 7 / 8) | 0;
+        this.vy8[j] = (vy * 7 / 8) | 0;
+        this.wake(nx, ny);
+      }
+      vx = 0; vy = 0;
+      break;
+    }
+    this.vx8[ci] = vx;
+    this.vy8[ci] = vy;
+    this.wake(cx, cy);
+  }
+
+  /** sparked cannon: consume one movable cell at the breech (opposite the
+   *  aim), launch it from the muzzle at ~5.6 cells/tick */
+  private doCannon(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    let sparked = false;
+    for (let k = 0; k < 4; k++) {
+      const nx = x + World.DX4[k];
+      const ny = y + World.DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (species[ny * W + nx] === E.SPARK) { sparked = true; break; }
+    }
+    if (!sparked) return;
+    this.wake(x, y);
+    const d = ((this.life[i] + 16) >> 5) & 7; // pen-stroke angle byte -> 8-dir
+    const dx = World.OCT_DX[d];
+    const dy = World.OCT_DY[d];
+    let mx = x + dx;
+    let my = y + dy;
+    while (mx >= 0 && my >= 0 && mx < W && my < H && species[my * W + mx] === E.CANNON) {
+      mx += dx; my += dy;
+    }
+    if (mx < 0 || my < 0 || mx >= W || my >= H || species[my * W + mx] !== E.EMPTY) return;
+    let bx = x - dx;
+    let by = y - dy;
+    while (bx >= 0 && by >= 0 && bx < W && by < H && species[by * W + bx] === E.CANNON) {
+      bx -= dx; by -= dy;
+    }
+    // breech suction: reach across a small gap so hoppers keep feeding
+    let gap = 0;
+    while (gap < 4 && bx >= 0 && by >= 0 && bx < W && by < H && species[by * W + bx] === E.EMPTY) {
+      bx -= dx; by -= dy; gap++;
+    }
+    if (bx < 0 || by < 0 || bx >= W || by >= H) return;
+    const bi = by * W + bx;
+    const load = species[bi];
+    const lb = BEHAVIOR[load];
+    if (lb !== B.POWDER && lb !== B.LIQUID && lb !== B.SUPERBALL) return;
+    const mi = my * W + mx;
+    const keepLife = this.life[bi];
+    const keepShade = this.shade[bi];
+    this.set(mi, mx, my, load, keepLife);
+    this.shade[mi] = keepShade;
+    this.vx8[mi] = dx * 90;
+    this.vy8[mi] = dy * 90 - 4;
+    this.set(bi, bx, by, E.EMPTY, 0);
+  }
+
+  /** detector: memorizes the first substance that touches it (wires and
+   *  devices excluded); afterwards emits free sparks whenever that substance
+   *  is in contact — the chemical→electrical sensor */
+  private doDetector(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    if (this.life[i] === 0) {
+      for (let k = 0; k < 4; k++) {
+        const nx = x + World.DX4[k];
+        const ny = y + World.DY4[k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const o = species[ny * W + nx];
+        if (o !== E.EMPTY && o !== E.WALL && o !== E.CLONE && o !== E.FAN &&
+            o !== E.DETECTOR && o !== E.METAL && o !== E.SPARK && o !== E.STICK) {
+          this.life[i] = o;
+          break;
+        }
+      }
+      this.wake(x, y); // stay alert until primed
+      return;
+    }
+    let touching = false;
+    for (let k = 0; k < 4; k++) {
+      const nx = x + World.DX4[k];
+      const ny = y + World.DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (species[ny * W + nx] === this.life[i]) { touching = true; break; }
+    }
+    if (!touching) return;
+    this.wake(x, y);
+    if (this.rng.byte() >= 40) return; // pulse rate limit
+    for (let k = 0; k < 4; k++) {
+      const nx = x + World.DX4[k];
+      const ny = y + World.DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      if (species[j] === E.EMPTY) {
+        this.set(j, nx, ny, E.SPARK, LIFE0[E.SPARK]);
+        this.shade[j] = this.rng.byte() & 0xfe; // free spark, not wire-born
+        return;
+      }
+    }
+  }
+
+  /** valve: solid drop-gate; a spark opens it for 24 ticks, during which
+   *  material directly above falls through to the cell below */
+  private doValve(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    for (let k = 0; k < 4; k++) {
+      const nx = x + World.DX4[k];
+      const ny = y + World.DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (species[ny * W + nx] === E.SPARK) { this.life[i] = 24; break; }
+    }
+    if (this.life[i] === 0) return;
+    this.life[i]--;
+    this.wake(x, y);
+    if (y === 0 || y + 1 >= H) return;
+    const above = i - W;
+    const below = i + W;
+    const o = species[above];
+    const ob = BEHAVIOR[o];
+    if ((ob === B.POWDER || ob === B.LIQUID || ob === B.SUPERBALL) && species[below] === E.EMPTY) {
+      const keepLife = this.life[above];
+      const keepShade = this.shade[above];
+      this.set(below, x, y + 1, o, keepLife);
+      this.shade[below] = keepShade;
+      this.set(above, x, y - 1, E.EMPTY, 0);
+    }
+  }
+
+  /** filter mesh: light gases pass upward, heavy gases (CO2/chlorine) pass
+   *  downward; liquids and powders are blocked */
+  private doFilter(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    if (y === 0 || y + 1 >= H) return;
+    const above = i - W;
+    const below = i + W;
+    if (BEHAVIOR[species[below]] === B.GAS && species[above] === E.EMPTY) {
+      const o = species[below];
+      const keepLife = this.life[below];
+      const keepShade = this.shade[below];
+      this.set(above, x, y - 1, o, keepLife);
+      this.shade[above] = keepShade;
+      this.set(below, x, y + 1, E.EMPTY, 0);
+      return;
+    }
+    const oa = species[above];
+    if ((oa === E.CO2 || oa === E.CHLORINE) && species[below] === E.EMPTY) {
+      const keepLife = this.life[above];
+      const keepShade = this.shade[above];
+      this.set(below, x, y + 1, oa, keepLife);
+      this.shade[below] = keepShade;
+      this.set(above, x, y - 1, E.EMPTY, 0);
     }
   }
 
@@ -1230,6 +1474,8 @@ export class World {
     unrle(12, 12 + sLen, this.species);
     unrle(12 + sLen, buf.length, this.life);
     this.clock.fill(0);
+    this.vx8.fill(0);
+    this.vy8.fill(0);
     this.activeCur.fill(1);
     this.activeNext.fill(1);
     this.fans.length = 0;
@@ -1262,10 +1508,34 @@ export class World {
         const i = y * W + x;
         const o = this.species[i];
         if (o === E.WALL) continue;
-        if (this.rng.byte() < 200) {
+        // heavy rubble mostly survives the fireball and becomes ejecta instead
+        const dense = BEHAVIOR[o] === B.POWDER && DENSITY[o] >= 70;
+        if (this.rng.byte() < (dense ? 50 : 200)) {
           this.set(i, x, y, E.FIRE, 10 + this.rng.int(30));
           this.shade[i] = this.rng.byte();
         }
+      }
+    }
+    // debris shockwave: movable material near the blast is thrown outward in
+    // ballistic arcs (the fire core above already consumed most of the inside)
+    const R2 = r * 2 + 4;
+    const r2out = R2 * R2;
+    for (let dy = -R2; dy <= R2; dy++) {
+      const y = cy + dy;
+      if (y < 0 || y >= H) continue;
+      for (let dx = -R2; dx <= R2; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > r2out || d2 === 0) continue;
+        const x = cx + dx;
+        if (x < 0 || x >= W) continue;
+        const i = y * W + x;
+        const b = BEHAVIOR[this.species[i]];
+        if (b !== B.POWDER && b !== B.LIQUID && b !== B.SUPERBALL) continue;
+        const d = Math.sqrt(d2);
+        const mag = 110 * (1 - d / R2) + 16; // up to ~7.9 cells/tick at the core
+        this.vx8[i] = Math.max(-120, Math.min(120, ((dx / d) * mag) | 0));
+        this.vy8[i] = Math.max(-120, Math.min(120, (((dy / d) * mag) | 0) - 22)); // loft
+        this.wake(x, y);
       }
     }
     // heat flash
@@ -1310,6 +1580,8 @@ export class World {
     this.shade.fill(0);
     this.life.fill(0);
     this.clock.fill(0);
+    this.vx8.fill(0);
+    this.vy8.fill(0);
     this.activeCur.fill(1);
     this.activeNext.fill(1);
     this.vx.fill(0);

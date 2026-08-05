@@ -68,6 +68,13 @@ export const E = {
   THERMITE: 60, // inert until 550° — then it IS magma
   GLYCERIN: 61, // + acid = nitro (nitration)
   ALCOHOL: 62, // light flammable liquid, clean fast burn
+  // ---- M5b devices ----
+  CANNON: 63, // aimed by pen stroke; sparked = launches its breech load
+  DETECTOR: 64, // memorizes first touch, then sparks whenever it's touched again
+  VALVE: 65, // drop-gate: solid until sparked, then passes material down 24 ticks
+  HEATER: 66, // pure heat plate (no flame)
+  COOLER: 67, // pure cold plate
+  FILTER: 68, // mesh: gases pass through, liquids and powders don't
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -91,6 +98,10 @@ export const B = {
   THUNDER: 16, // bolt: drops fast, blasts on impact, sparks metal
   ROCKET: 17, // lit fireworks: climbs with a fire trail, bursts
   PUMP: 18, // absorbs adjacent fluids; tokens travel the line, eject at ends
+  CANNON: 19, // sparked: launches breech material ballistically from the muzzle
+  DETECTOR: 20, // clone-style memory; emits free sparks when its species touches
+  VALVE: 21, // sparked: open drop-gate for a short while, else solid
+  FILTER: 22, // passes gases (light up, heavy down), blocks everything else
 } as const;
 
 export interface ElementDef {
@@ -204,6 +215,13 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.THERMITE, name: "Thermite", color: "#7a4a3a", behavior: B.POWDER, density: 62, hotAt: 550, hotTo: E.MAGMA }),
   def({ id: E.GLYCERIN, name: "Glycerin", color: "#d8c8a0", behavior: B.LIQUID, density: 33, disperse: 2 }),
   def({ id: E.ALCOHOL, name: "Alcohol", color: "#c8e0d8", behavior: B.LIQUID, density: 18, disperse: 5, flammable: 230, burnLife: 25, ignitesAt: 300 }),
+  // ---- M5b devices ----
+  def({ id: E.CANNON, name: "Cannon", color: "#5a6472", behavior: B.CANNON, density: 255, device: true }),
+  def({ id: E.DETECTOR, name: "Detector", color: "#c8a03e", behavior: B.DETECTOR, density: 255, device: true }),
+  def({ id: E.VALVE, name: "Valve", color: "#8a6a9e", behavior: B.VALVE, density: 255, device: true }),
+  def({ id: E.HEATER, name: "Heater", color: "#d86a3a", density: 255, device: true, temp0: 400, pump: 0.25 }),
+  def({ id: E.COOLER, name: "Cooler", color: "#5a9ad8", density: 255, device: true, temp0: -60, pump: 0.25 }),
+  def({ id: E.FILTER, name: "Filter", color: "#7a8a78", behavior: B.FILTER, density: 255, device: true }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).

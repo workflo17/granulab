@@ -127,11 +127,25 @@
 > (4) metal rusting moved from the REACT table into doMetalCool as a waterline
 > rule (needs seawater AND air) — a table row ate submerged electrodes in
 > seconds; tanks and deep wiring are now safe, splash zones crumble.
-> - M5b CHEMICAL DEVICES: DETECTOR (clone-style memory; emits a spark pulse
->   when its species touches it → chemical→electrical sensors), VALVE (wall
->   that opens while sparked), HEATER/COOLER plates (pure registry entries),
->   FILTER (passes gases, blocks liquids/powders). With pump+clone this closes
->   the loop for full chemical logic machines (titration rigs, gas plants).
+> M5b SHIPPED — BALLISTICS + DEVICES: per-grain velocity layer (vx8/vy8
+> Int8 x16 fixed-point — the DESIGN's original `vel` arrays, finally built):
+> flying grains integrate gravity + 3% drag, Bresenham-walk their vector,
+> punch through fluids at half speed, and hand 7/8 momentum into packed
+> powder on impact (shockwaves travel through piles). Explosions now THROW:
+> the fire core spares dense rubble (density≥70 mostly survives) and a
+> radial shockwave (R = 2r+4, up to ~7.9 c/t + loft) launches everything
+> movable — bomb under a stone cap = 111-cell mortar plume. Velocity is
+> transient (not serialized). CANNON (aim = pen stroke, like fan): sparked,
+> it consumes one movable cell at the breech (suction reaches 4 cells for
+> hoppers) and launches it at 5.6 c/t; verified contraption: walled hopper +
+> clone trigger = 89 shots/600 ticks at 92-cell range. DEVICES all verified:
+> DETECTOR (clone-style memory, emits free sparks while its species touches
+> — 0 false positives), VALVE (spark opens a drop-gate 24 ticks), HEATER/
+> COOLER (registry-only heat plates; cooler froze a full pool), FILTER
+> (gases pass — light up, CO2/chlorine down; zero powder leakage).
+> FIXTURE LESSON (cost 3 debug rounds): paint() fills EMPTY only — charge
+> before cap, wire before liquid, and NOTHING falls unless something holds
+> it; a "dead device" is usually a buried trigger or a collapsed feed.
 > - M5c WATCH THE REACTIONS: per-pair reaction counters (REACT_COUNT), a Lab
 >   Notebook panel with Sandboxels-style discovery log ("saponification!"),
 >   reaction-glow BG mode (recent-reaction heatmap), live rate readout for a
