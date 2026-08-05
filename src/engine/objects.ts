@@ -141,6 +141,12 @@ export class ObjectSystem {
 
   update(): void {
     const w = this.world;
+    // soapy whipped off by wind becomes real bubbles
+    const q = w.bubbleQueue;
+    for (let k = 0; k < q.length; k++) {
+      this.spawn("bubble", q[k] % w.W, (q[k] / w.W) | 0);
+    }
+    q.length = 0;
     // object-object impulses (all treated as circles)
     for (let a = 0; a < this.list.length; a++) {
       for (let b = a + 1; b < this.list.length; b++) {
@@ -251,7 +257,7 @@ export class ObjectSystem {
       const px = Math.round(o.x + Math.cos(a) * o.r);
       const py = Math.round(o.y + Math.sin(a) * o.r);
       const s = w.species[py * w.W + px];
-      if (s === E.EMPTY || s === E.BUBBLE || s === E.FAN) continue;
+      if (s === E.EMPTY || s === E.BUBBLE || s === E.FAN || s === E.SOAPY) continue;
       if (s === E.WALL || s === E.BALL || s === E.BOX || s === E.WHEEL || s === E.STICK) {
         return false; // popped on a solid
       }

@@ -15,6 +15,7 @@ const CHUNK_SHIFT = 5;
 // (acid/magma excluded: their life byte is a corrosion budget / they must stay hot)
 const HYST = new Uint8Array(64);
 HYST[E.WATER] = HYST[E.SEAWATER] = HYST[E.OIL] = HYST[E.MERCURY] = HYST[E.MUD] = HYST[E.NITRO] = 1;
+HYST[E.SOAPY] = HYST[E.CO2] = HYST[E.CHLORINE] = 1; // heavy gases pool + sleep too
 const SETTLE = 6; // ticks of stillness before a liquid cell stops dispersing
 const MARGIN = 2; // changes this close to a chunk border wake the neighbor
 const WSHIFT = 2; // wind cell = 4x4 sim cells
@@ -53,6 +54,9 @@ export class World {
   readonly rng: Rng;
   frame = 0;
   dots = 0; // non-empty, non-wall cell count
+  /** soapy cells whipped off by wind this tick — ObjectSystem drains these
+   *  into bubble objects (the world can't spawn entities itself) */
+  readonly bubbleQueue: number[] = [];
 
   constructor(w: number, h: number, seed = 0xc0ffee) {
     this.W = w;
@@ -445,27 +449,32 @@ export class World {
   private updateCell(i: number, x: number, y: number, id: number): void {
     // mobile heat/cold sources drive the temperature field from their behavior
     if (HEAT_PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], HEAT_PUMP[id]);
-    // contact reaction with one random neighbor (data-driven table);
-    // inert elements skip the roll entirely — this is the hot loop's fast path
+    // contact reaction (data-driven table): scan the 4-neighborhood for the
+    // first reactive partner, starting at a random side so symmetric contacts
+    // stay unbiased. A blind single-neighbor roll let static interfaces go to
+    // sleep between misses and stall slow reactions forever (found via the
+    // M4.5 chemistry set). Inert elements skip everything — the fast path.
     if (HAS_REACT[id]) {
       const rk = this.rng.int(4);
-      const rdx = rk === 0 ? 1 : rk === 1 ? -1 : 0;
-      const rdy = rk === 2 ? 1 : rk === 3 ? -1 : 0;
-      const rx = x + rdx;
-      const ry = y + rdy;
-      if (rx >= 0 && ry >= 0 && rx < this.W && ry < this.H) {
+      for (let s = 0; s < 4; s++) {
+        const k = (rk + s) & 3;
+        const rdx = k === 0 ? 1 : k === 1 ? -1 : 0;
+        const rdy = k === 2 ? 1 : k === 3 ? -1 : 0;
+        const rx = x + rdx;
+        const ry = y + rdy;
+        if (rx < 0 || ry < 0 || rx >= this.W || ry >= this.H) continue;
         const j = ry * this.W + rx;
         const r = REACT[id * N_IDS + this.species[j]];
-        if (r !== 0) {
-          if (this.rng.byte() < r >>> 16) {
-            const newA = (r >>> 8) & 255;
-            const newB = r & 255;
-            this.set(i, x, y, newA, LIFE0[newA]);
-            this.set(j, rx, ry, newB, LIFE0[newB]);
-            return;
-          }
-          this.wake(x, y); // reactive pair stays awake until it resolves
+        if (r === 0) continue;
+        if (this.rng.byte() < r >>> 16) {
+          const newA = (r >>> 8) & 255;
+          const newB = r & 255;
+          this.set(i, x, y, newA, LIFE0[newA]);
+          this.set(j, rx, ry, newB, LIFE0[newB]);
+          return;
         }
+        this.wake(x, y); // reactive contact stays awake until it resolves
+        break; // one roll per tick
       }
     }
     switch (BEHAVIOR[id]) {
@@ -528,6 +537,7 @@ export class World {
   private doLiquid(i: number, x: number, y: number, id: number): void {
     const { W, H } = this;
     const hyst = HYST[id];
+    if (id === E.SOAPY && this.trySoapBubble(i, x, y)) return;
     if (this.tryWindPush(i, x, y, 0.08)) return;
     if (id === E.ACID && this.doCorrode(i, x, y)) return;
     if (id === E.MAGMA) this.hotContact4(x, y);
@@ -882,6 +892,10 @@ export class World {
     if (nx < 0 || ny < 0 || nx >= this.W || ny >= this.H) return false;
     const j = ny * this.W + nx;
     const o = this.species[j];
+    // the water family is corrosion-proof so neutralization products survive,
+    // and gases bubble through acid unharmed (CO2/chlorine are liquid-encoded)
+    if (o === E.WATER || o === E.SEAWATER || o === E.SALT) return false;
+    if (BEHAVIOR[o] === B.GAS || o === E.CO2 || o === E.CHLORINE) return false;
     if (o !== E.EMPTY && o !== E.WALL && o !== E.ACID && o !== E.FIRE && this.rng.byte() < 60) {
       this.set(j, nx, ny, E.EMPTY, 0);
       this.life[i]--;
@@ -889,6 +903,17 @@ export class World {
       return true;
     }
     return false;
+  }
+
+  /** PG rule: soapy hit by a strong wind turns into a bubble (object) */
+  private trySoapBubble(i: number, x: number, y: number): boolean {
+    const wi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
+    const m = Math.abs(this.vx[wi]) + Math.abs(this.vy[wi]);
+    if (m < 2.5 || this.bubbleQueue.length >= 32) return false;
+    if (this.rng.byte() >= 10) return false;
+    this.set(i, x, y, E.EMPTY, 0);
+    this.bubbleQueue.push(i);
+    return true;
   }
 
   /** metal cooling after a spark passed — refractory period, then conductive again */

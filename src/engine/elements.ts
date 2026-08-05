@@ -48,6 +48,16 @@ export const E = {
   WHEEL: 42,
   PUMP: 43, // fluid conductor: absorbs liquids/gas, tokens walk the pump line
   BUBBLE: 44, // ring footprint of the bubble object (ObjectSystem)
+  // ---- M4.5 chemistry set ----
+  SOAPY: 45, // floats on water; strong wind whips it into bubble objects
+  LYE: 46, // caustic powder: + oil = soap, + acid = salt (neutralization)
+  HYDROGEN: 47, // electrolysis / acid-on-metal product; flashes, burns to steam
+  CHLORINE: 48, // heavy toxic gas: pools low, kills plants and critters
+  SODA: 49, // bicarbonate: + acid = CO2 fizz, decomposes to CO2 when heated
+  CO2: 50, // heavy gas: pours, pools, smothers fire; vines photosynthesize it
+  OXYGEN: 51, // accelerant: fire spreads into it
+  RUST: 52, // crumbled metal — seawater corrodes metal into this
+  CEMENT: 53, // powder that sets to stone on water contact
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -164,6 +174,16 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.WHEEL, name: "Wheel", color: "#6e7682", density: 255, device: true }),
   def({ id: E.PUMP, name: "Pump", color: "#3f8f83", behavior: B.PUMP, density: 255, device: true }),
   def({ id: E.BUBBLE, name: "Bubble", color: "#d8c2ec", density: 255, device: true }),
+  // ---- M4.5 chemistry set ----
+  def({ id: E.SOAPY, name: "Soapy", color: "#e0a8c8", behavior: B.LIQUID, density: 22, disperse: 4 }),
+  def({ id: E.LYE, name: "Lye", color: "#e6e2c8", behavior: B.POWDER, density: 55 }),
+  def({ id: E.HYDROGEN, name: "Hydrogen", color: "#c8d8f8", behavior: B.GAS, density: 1, disperse: 4, flammable: 255, burnLife: 8, ignitesAt: 480 }),
+  def({ id: E.CHLORINE, name: "Chlorine", color: "#b0b832", behavior: B.LIQUID, density: 5, disperse: 5 }),
+  def({ id: E.SODA, name: "Soda", color: "#efe9d6", behavior: B.POWDER, density: 55, hotAt: 250, hotTo: E.CO2 }),
+  def({ id: E.CO2, name: "CO2", color: "#6a7078", behavior: B.LIQUID, density: 3, disperse: 6 }),
+  def({ id: E.OXYGEN, name: "Oxygen", color: "#c8f0e8", behavior: B.GAS, density: 2, disperse: 3 }),
+  def({ id: E.RUST, name: "Rust", color: "#a05628", behavior: B.POWDER, density: 58 }),
+  def({ id: E.CEMENT, name: "Cement", color: "#a8a49c", behavior: B.POWDER, density: 60 }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -292,9 +312,9 @@ export const HAS_REACT = new Uint8Array(N_IDS);
 react(E.SALT, E.WATER, E.EMPTY, E.SEAWATER, 60); // salt dissolves
 react(E.MAGMA, E.WATER, E.STONE, E.STEAM, 220); // magma quenches
 react(E.MAGMA, E.SEAWATER, E.STONE, E.STEAM, 220);
-react(E.MAGMA, E.STONE, E.MAGMA, E.MAGMA, 6); // magma slowly melts stone
-react(E.MAGMA, E.METAL, E.MAGMA, E.MAGMA, 3); // ...and metal
-react(E.WATER, E.ICE, E.ICE, E.ICE, 2); // ice creeps through still water
+react(E.MAGMA, E.STONE, E.MAGMA, E.MAGMA, 3); // magma slowly melts stone
+react(E.MAGMA, E.METAL, E.MAGMA, E.MAGMA, 2); // ...and metal
+react(E.WATER, E.ICE, E.ICE, E.ICE, 1); // ice creeps through still water
 react(E.ANT, E.WATER, E.EMPTY, E.WATER, 200); // ants drown
 react(E.ANT, E.SEAWATER, E.EMPTY, E.SEAWATER, 200);
 react(E.SAND, E.WATER, E.MUD, E.EMPTY, 12); // wet sand muddies
@@ -302,4 +322,30 @@ react(E.MUD, E.FIRE, E.SAND, E.FIRE, 30); // fire dries mud back to sand
 react(E.MUD, E.MAGMA, E.SAND, E.MAGMA, 60);
 react(E.STEAM, E.CLOUD, E.CLOUD, E.CLOUD, 120); // clouds grow from steam
 react(E.BIRD, E.WATER, E.EMPTY, E.WATER, 200); // birds drown too
+
+// ---- M4.5 chemistry set --------------------------------------------------
+react(E.LYE, E.OIL, E.SOAPY, E.SOAPY, 40); // saponification: fat + lye = soap
+react(E.LYE, E.ACID, E.SALT, E.WATER, 180); // neutralization
+react(E.ACID, E.METAL, E.HYDROGEN, E.METAL, 30); // hydrogen evolution
+react(E.WATER, E.SPARK, E.HYDROGEN, E.SPARK, 200); // electrolysis
+react(E.SEAWATER, E.SPARK, E.CHLORINE, E.SPARK, 200); // chlor-alkali process
+react(E.SODA, E.ACID, E.CO2, E.WATER, 220); // bicarbonate fizz
+react(E.FIRE, E.CO2, E.EMPTY, E.CO2, 220); // CO2 smothers fire
+react(E.VINE, E.CO2, E.VINE, E.OXYGEN, 25); // photosynthesis
+react(E.OXYGEN, E.FIRE, E.FIRE, E.FIRE, 180); // pure O2 feeds the flame
+react(E.FIRE, E.HYDROGEN, E.FIRE, E.STEAM, 60); // combustion product is water
+react(E.CHLORINE, E.VINE, E.CHLORINE, E.EMPTY, 120); // defoliant
+react(E.CHLORINE, E.ANT, E.CHLORINE, E.EMPTY, 160); // toxic to critters
+react(E.CHLORINE, E.BIRD, E.CHLORINE, E.EMPTY, 160);
+react(E.CHLORINE, E.WATER, E.ACID, E.WATER, 2); // chlorine water turns acidic
+react(E.METAL, E.SEAWATER, E.RUST, E.SEAWATER, 1); // salt water rusts metal
+react(E.CEMENT, E.WATER, E.STONE, E.EMPTY, 60); // cement sets, absorbing water
+react(E.HYDROGEN, E.CHLORINE, E.ACID, E.ACID, 40); // H2+Cl2 = acid factory
+react(E.LYE, E.CO2, E.SODA, E.EMPTY, 60); // lye scrubs CO2 into carbonate
+react(E.RUST, E.HYDROGEN, E.METAL, E.STEAM, 40); // hydrogen smelts rust back
+react(E.SALT, E.SNOW, E.EMPTY, E.WATER, 30); // road salt melts snow...
+react(E.SALT, E.ICE, E.EMPTY, E.WATER, 15); // ...and ice
+react(E.CHLORINE, E.VIRUS, E.CHLORINE, E.EMPTY, 200); // bleach disinfects
+react(E.CHLORINE, E.SEED, E.CHLORINE, E.EMPTY, 120); // herbicide
+react(E.METAL, E.MERCURY, E.MERCURY, E.MERCURY, 1); // slow amalgamation
 

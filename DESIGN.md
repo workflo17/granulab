@@ -83,8 +83,51 @@
 > now start at 45 (19 slots) — pre-M4.4 saves with customs at 43/44 will load
 > those cells as pump/bubble.
 >
-> M4 QUEUE: remaining BG modes (blur/shade/aura/light/mesh/track), upload
-> gallery, wheel spin visual, WASM hot loop (perf ceiling).
+> M4.5 SHIPPED — CHEMISTRY SET: 9 reagents (ids 45-53: Soapy, Lye, Hydrogen,
+> Chlorine, Soda, CO2, Oxygen, Rust, Cement; customs now start at 54, 10 slots)
+> + 26 new REACT rows forming closed loops: saponification (lye+oil), acid+lye
+> neutralization→salt+water→brine, electrolysis (spark+water→H2, +seawater→Cl2),
+> acid factory (H2+Cl2→2 acid), soda fizz + lye CO2-scrubber (a full CO2 cycle),
+> H2 smelts rust→metal+steam (self-passivating metal crust!), photosynthesis
+> (vine+CO2→O2), CO2 fire blanket, O2 flash-burn, road salt melts snow/ice,
+> chlorine defoliant/insecticide/disinfectant, mercury amalgam, cement→stone.
+> Soapy + strong wind → real bubble objects (world.bubbleQueue → ObjectSystem).
+> ENGINE FIXES: (1) react roll now scans the 4-neighborhood for the first
+> reactive partner (rotating start) — the old blind single-pick let static
+> interfaces fall asleep mid-reaction and stall forever; slow rows halved to
+> compensate the ~4x rate gain. (2) doCorrode exempts the water family AND all
+> gases — acid was eating its own reaction products (CO2 fizz, H2 evolution).
+> Verified stoichiometry: soda fizz exactly 1:1:1; pump conserves mass.
+> PHYSICS NOTES: gases never descend, so stacked gas fixtures need contact or
+> stirring (that's real buoyancy — a 1-cell gap = permanent separation); acid
+> fully consumes itself into H2 over bare metal (use glass/wall containers).
+>
+> M5 ROADMAP — CHEMISTRY LAB (owner ask 8/05: a tool to WATCH reactions and
+> BUILD devices from them; staged, each stage ships alone):
+> - M5a REAGENT SHELF II: raise N_IDS 64→128 (pump life-packing needs a cargo
+>   side-array — species no longer fits 6 bits). Then: saltpeter/charcoal/
+>   sulfur → mix into gunpowder, limestone (heat→lime+CO2; lime+water exothermic
+>   slaking), aluminum + thermite (rust+Al), glycerin (+acid→nitro synthesis),
+>   alcohol (ferments, distills), wax. Recipes > raw adds: every new id must
+>   join ≥2 loops.
+> - M5b CHEMICAL DEVICES: DETECTOR (clone-style memory; emits a spark pulse
+>   when its species touches it → chemical→electrical sensors), VALVE (wall
+>   that opens while sparked), HEATER/COOLER plates (pure registry entries),
+>   FILTER (passes gases, blocks liquids/powders). With pump+clone this closes
+>   the loop for full chemical logic machines (titration rigs, gas plants).
+> - M5c WATCH THE REACTIONS: per-pair reaction counters (REACT_COUNT), a Lab
+>   Notebook panel with Sandboxels-style discovery log ("saponification!"),
+>   reaction-glow BG mode (recent-reaction heatmap), live rate readout for a
+>   pinned pair.
+> - M5d SOLUTIONS & THERMOCHEMISTRY: optional ΔT per REACT row (neutralization
+>   heats, quenching cools — feeds the existing temp field), dissolved-state
+>   concentration channel (salt in water without cells), pH field + litmus
+>   element. ΔT is the cheapest high-impact slice — good first pick.
+> - M5e BALANCE & SCALE: mass-conservation audit per row, rate tuning pass,
+>   WASM hot loop when reaction load meets the 211k-cell ceiling.
+>
+> M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/track),
+> upload gallery, wheel spin visual.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
