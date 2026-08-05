@@ -164,6 +164,26 @@ export class ObjectSystem {
       this.spawn("bubble", q[k] % w.W, (q[k] / w.W) | 0);
     }
     q.length = 0;
+    // blast impulses: explosions launch rigid objects (the cannonball rule);
+    // walls shield — a ball beside a barrel doesn't feel the charge inside
+    const bq = w.blastQueue;
+    for (let k = 0; k < bq.length; k += 3) {
+      const bx = bq[k];
+      const by = bq[k + 1];
+      const R = bq[k + 2] * 2 + 4;
+      for (const o of this.list) {
+        if (o.kind === "bubble") continue;
+        const dx = o.x - bx;
+        const dy = o.y - by;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        if (d > R) continue;
+        if (!w.losClear(bx, by, Math.round(o.x), Math.round(o.y))) continue;
+        const imp = 9 * (1 - d / R);
+        o.vx += (dx / d) * imp;
+        o.vy += (dy / d) * imp - 1; // loft
+      }
+    }
+    bq.length = 0;
     // object-object impulses (all treated as circles)
     for (let a = 0; a < this.list.length; a++) {
       for (let b = a + 1; b < this.list.length; b++) {
@@ -209,8 +229,8 @@ export class ObjectSystem {
         o.vy *= 0.9;
       }
       o.vx *= FRICTION[o.kind];
-      o.vx = Math.max(-4, Math.min(4, o.vx));
-      o.vy = Math.max(-4, Math.min(4, o.vy));
+      o.vx = Math.max(-9, Math.min(9, o.vx));
+      o.vy = Math.max(-9, Math.min(9, o.vy));
       const n = Math.max(1, Math.ceil(Math.max(Math.abs(o.vx), Math.abs(o.vy))));
       const sx = o.vx / n;
       const sy = o.vy / n;

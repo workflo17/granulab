@@ -217,6 +217,20 @@
 > ground contact). QA TRAP (new): the pane throttles rAF when not displayed —
 > wall-clock waits tick NOTHING; always verify with synchronous g.tick(n).
 >
+> BUILDABLE CANNONS shipped (owner ask 8/05: "explosion inside a cannon
+> shoots something out"): (1) explosions now respect WALLS via losClear —
+> Bresenham line-of-sight from the blast center gates the fire core, the
+> debris shockwave, AND object impulses, so a wall barrel channels ALL the
+> energy up the open bore (bystander ball outside the barrel: zero impulse);
+> (2) explosions finally push RIGID OBJECTS (world.blastQueue → ObjectSystem
+> impulse, R = 2r+4, LOS-gated; object speed cap raised 4→9). VERIFIED: a
+> hand-built wall barrel + gunpowder charge + Ball = 7.8 c/t muzzle velocity,
+> 157 cells straight up, or 380-cell horizontal range off a rampart.
+> KNOWN PHYSICS: packed CELL slugs jam (impulse dissipates through lossy
+> cell-to-cell transfer — no sustained gas pressure); use a Ball as the shot
+> or loose gravel as a blunderbuss spray. Impact transfer now keeps half the
+> flyer's speed (spring-chain), which livens piles but can't fix slugs.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays), upload gallery, WASM.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

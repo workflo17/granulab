@@ -67,6 +67,9 @@ export class World {
   /** soapy cells whipped off by wind this tick — ObjectSystem drains these
    *  into bubble objects (the world can't spawn entities itself) */
   readonly bubbleQueue: number[] = [];
+  /** blasts this tick as (cx, cy, r) triplets — ObjectSystem turns them into
+   *  impulses on balls/boxes/wheels (a cannonball on a charge must launch) */
+  readonly blastQueue: number[] = [];
 
   constructor(w: number, h: number, seed = 0xc0ffee) {
     this.W = w;
@@ -653,13 +656,18 @@ export class World {
         vy = (vy / 2) | 0;
         continue;
       }
-      // hard impact: pass most of the momentum into a movable target
+      // hard impact: pass most of the momentum into a movable target — and
+      // keep half for the next tick, so packed columns drive through like a
+      // spring chain instead of jamming (this is what makes slug cannons work)
       if ((ob === B.POWDER || ob === B.SUPERBALL) && (adx > 24 || ady > 24)) {
         this.vx8[j] = (vx * 7 / 8) | 0;
         this.vy8[j] = (vy * 7 / 8) | 0;
         this.wake(nx, ny);
+        vx = (vx / 2) | 0;
+        vy = (vy / 2) | 0;
+      } else {
+        vx = 0; vy = 0;
       }
-      vx = 0; vy = 0;
       break;
     }
     this.vx8[ci] = vx;
@@ -1567,8 +1575,28 @@ export class World {
     return true;
   }
 
+  /** straight line from the blast center, walls block — this is what makes a
+   *  wall barrel a CANNON: the pressure only travels up the open bore */
+  losClear(x0: number, y0: number, x1: number, y1: number): boolean {
+    let dx = Math.abs(x1 - x0);
+    let dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    let x = x0;
+    let y = y0;
+    while (x !== x1 || y !== y1) {
+      const e2 = err * 2;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx) { err += dx; y += sy; }
+      if (this.species[y * this.W + x] === E.WALL && !(x === x1 && y === y1)) return false;
+    }
+    return true;
+  }
+
   private explode(cx: number, cy: number, r: number): void {
     const { W, H } = this;
+    if (this.blastQueue.length < 96) this.blastQueue.push(cx, cy, r);
     const r2 = r * r;
     for (let dy = -r; dy <= r; dy++) {
       const y = cy + dy;
@@ -1580,6 +1608,7 @@ export class World {
         const i = y * W + x;
         const o = this.species[i];
         if (o === E.WALL) continue;
+        if (!this.losClear(cx, cy, x, y)) continue; // shielded by walls
         // heavy rubble mostly survives the fireball and becomes ejecta instead
         const dense = BEHAVIOR[o] === B.POWDER && DENSITY[o] >= 70;
         if (this.rng.byte() < (dense ? 50 : 200)) {
@@ -1603,6 +1632,7 @@ export class World {
         const i = y * W + x;
         const b = BEHAVIOR[this.species[i]];
         if (b !== B.POWDER && b !== B.LIQUID && b !== B.SUPERBALL) continue;
+        if (!this.losClear(cx, cy, x, y)) continue; // walls shield the debris too
         const d = Math.sqrt(d2);
         const mag = 110 * (1 - d / R2) + 16; // up to ~7.9 cells/tick at the core
         this.vx8[i] = Math.max(-120, Math.min(120, ((dx / d) * mag) | 0));
@@ -1663,6 +1693,7 @@ export class World {
     this.thermalCur.fill(0);
     this.thermalNext.fill(0);
     this.fans.length = 0;
+    this.blastQueue.length = 0;
     this.dots = 0;
   }
 }
