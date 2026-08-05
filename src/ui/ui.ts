@@ -2,9 +2,9 @@
 // color (--accent-l / --accent-r) — the chassis stays neutral, substances carry chroma.
 
 import {
-  E, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, REACT_DT, PH, N_IDS, HOT_AT,
-  HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R, pairKey,
-  type CustomSpec,
+  E, B, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, REACT_DT, PH, CONDUCTS,
+  N_IDS, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R,
+  pairKey, type CustomSpec,
 } from "../engine/elements";
 
 export interface UiState {
@@ -37,11 +37,21 @@ export const TOOL_FIGHTER = -3;
 
 export type PenMode = "free" | "line" | "rect";
 
-const SUBSTANCE_IDS: number[] = [E.WALL];
-const DEVICE_IDS: number[] = [];
+// palette rails: explicit registry group, else derived from behavior/device
+const RAIL_ORDER = ["SOLIDS", "LIQUIDS", "GASES", "METALS", "REAGENTS", "LIFE & ENERGY", "DEVICES"] as const;
+const railOf = (el: (typeof ELEMENTS)[number]): string => {
+  if (el.group === "HIDDEN") return "HIDDEN";
+  if (el.group) return el.group;
+  if (el.device) return "DEVICES";
+  if (el.behavior === B.LIQUID) return "LIQUIDS";
+  if (el.behavior === B.GAS) return "GASES";
+  return "SOLIDS";
+};
+const RAILS = new Map<string, number[]>(RAIL_ORDER.map((r) => [r, []]));
+RAILS.get("SOLIDS")!.push(E.WALL);
 for (const el of ELEMENTS) {
   if (el.id === E.EMPTY || el.id === E.WALL) continue;
-  (el.device ? DEVICE_IDS : SUBSTANCE_IDS).push(el.id);
+  RAILS.get(railOf(el))?.push(el.id);
 }
 
 export class Ui {
@@ -119,16 +129,7 @@ export class Ui {
           <output id="penout">6</output>
         </label>
       </header>
-      <aside>
-        <div class="rail-label">SUBSTANCES</div>
-        <div class="palette" id="palette"></div>
-        <div class="rail-label">DEVICES</div>
-        <div class="palette" id="devices"></div>
-        <div class="rail-label">CUSTOM</div>
-        <div class="palette" id="custom"></div>
-        <div class="rail-label">TOOLS</div>
-        <div class="palette" id="tools"></div>
-      </aside>
+      <aside id="rails"></aside>
       <dialog id="eldialog">
         <form method="dialog" id="elform">
           <h3>New element</h3>
@@ -189,16 +190,30 @@ export class Ui {
       host.appendChild(btn);
       this.buttons.set(id, btn);
     };
-    const palette = root.querySelector<HTMLElement>("#palette")!;
-    const devices = root.querySelector<HTMLElement>("#devices")!;
-    const tools = root.querySelector<HTMLElement>("#tools")!;
-    for (const id of SUBSTANCE_IDS) addButton(palette, id);
-    for (const id of DEVICE_IDS) addButton(devices, id);
+    const aside = root.querySelector<HTMLElement>("#rails")!;
+    const makeRail = (label: string): HTMLElement => {
+      const lab = document.createElement("div");
+      lab.className = "rail-label";
+      lab.textContent = label;
+      const pal = document.createElement("div");
+      pal.className = "palette";
+      aside.appendChild(lab);
+      aside.appendChild(pal);
+      return pal;
+    };
+    for (const rail of RAIL_ORDER) {
+      const ids = RAILS.get(rail)!;
+      if (ids.length === 0) continue;
+      const host = makeRail(rail);
+      for (const id of ids) addButton(host, id);
+    }
+    const customHost = makeRail("CUSTOM");
+    const tools = makeRail("TOOLS");
     addButton(tools, E.EMPTY);
     addButton(tools, TOOL_PLAYER);
     addButton(tools, TOOL_FIGHTER);
     this.addButtonFn = addButton;
-    this.customHost = root.querySelector<HTMLElement>("#custom")!;
+    this.customHost = customHost;
     const newBtn = document.createElement("button");
     newBtn.className = "el";
     newBtn.innerHTML = `<span class="sw" style="background:linear-gradient(45deg,#e84a9a,#7ab8c8)"></span>+ New…`;
@@ -388,6 +403,7 @@ export class Ui {
     else if (FLAMMABLE[id] > 0) flags.push("flammable");
     if (EXPLODE_R[id] > 0) flags.push(`blast r${EXPLODE_R[id]}`);
     if (PH[id] !== 255) flags.push(`pH ${PH[id]}`);
+    if (CONDUCTS[id] > 0) flags.push("conducts");
     if (flags.length) rows.push(`<div class="rx flags">${flags.join(" · ")}</div>`);
     if (rows.length === 0) { card.hidden = true; return; }
     card.innerHTML = `<div class="rhead">${sw(id)}${ELEMENTS[id].name}</div>` + rows.join("");

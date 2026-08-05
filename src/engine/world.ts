@@ -4,6 +4,7 @@
 import {
   E, B, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
   EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT, REACT_DT, PH,
+  CONDUCTS, CONDUCT_IDX, CONDUCTOR_IDS,
   TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
 } from "./elements";
 import { Rng } from "./rng";
@@ -130,7 +131,7 @@ export class World {
     // metal; fire painted onto a flammable ignites it in place
     const replaceable =
       old === E.EMPTY || id === E.EMPTY || id === E.WALL ||
-      (id === E.SPARK && old === E.METAL) ||
+      (id === E.SPARK && CONDUCTS[old] > 0) ||
       (id === E.FIRE && FLAMMABLE[old] > 0);
     if (!replaceable) return;
     if (id === E.FIRE && old !== E.EMPTY && EXPLODE_R[old] > 0) {
@@ -141,9 +142,12 @@ export class World {
     if (id !== E.EMPTY && id !== E.WALL) this.dots++;
     this.species[i] = id;
     this.shade[i] = this.rng.byte();
-    // sparks track wire-born-ness in shade bit 0 (painted onto metal = wire)
+    // sparks track wire-born-ness in shade bit 0 (painted onto a conductor =
+    // wire) and which conductor they were in bits 1-2
     if (id === E.SPARK) {
-      this.shade[i] = old === E.METAL ? this.shade[i] | 1 : this.shade[i] & 0xfe;
+      this.shade[i] = CONDUCTS[old] > 0
+        ? (this.shade[i] & 0xf8) | 1 | (CONDUCT_IDX[old] << 1)
+        : this.shade[i] & 0xfe;
     }
     this.life[i] = aux !== undefined ? aux : LIFE0[id];
     this.vx8[i] = 0;
@@ -1051,21 +1055,27 @@ export class World {
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const j = ny * W + nx;
       const o = species[j];
-      if (o === E.METAL) {
+      if (CONDUCTS[o] > 0) {
         metalNear = true;
         // refractory metal (life > 0, still cooling) can't re-spark — keeps the
         // pulse a thin traveling dot instead of saturating the whole wire
         if (this.life[j] === 0 && this.rng.byte() < 250) {
           this.set(j, nx, ny, E.SPARK, LIFE0[E.SPARK]);
-          this.shade[j] = this.rng.byte() | 1; // wire-born: restores to metal
+          // wire-born + remember WHICH conductor this cell restores to
+          this.shade[j] = (this.rng.byte() & 0xf8) | 1 | (CONDUCT_IDX[o] << 1);
         }
       } else if (o === E.SPARK) metalNear = true;
     }
     if (this.life[i] === 0) {
-      // only wire-born sparks restore to metal — a free spark that dies next
-      // to a wire must not weld a stub onto it (that entombs clone pulsers)
+      // only wire-born sparks restore to their conductor — a free spark that
+      // dies next to a wire must not weld a stub onto it (entombs pulsers)
       const wireborn = metalNear && (this.shade[i] & 1) === 1;
-      this.set(i, x, y, wireborn ? E.METAL : E.EMPTY, wireborn ? 12 : 0);
+      if (wireborn) {
+        const cid = CONDUCTOR_IDS[(this.shade[i] >> 1) & 3];
+        this.set(i, x, y, cid, CONDUCTS[cid]);
+      } else {
+        this.set(i, x, y, E.EMPTY, 0);
+      }
       return;
     }
     this.life[i]--;
@@ -1207,6 +1217,7 @@ export class World {
     if (o === E.WATER || o === E.SEAWATER || o === E.SALT) return false;
     if (BEHAVIOR[o] === B.GAS || o === E.CO2 || o === E.CHLORINE) return false;
     if (o === E.LITMUS) return false; // the instrument survives to show pH 1
+    if (o === E.GOLD || o === E.COPPER || o === E.TUNGSTEN) return false; // noble
     if (o !== E.EMPTY && o !== E.WALL && o !== E.ACID && o !== E.FIRE && this.rng.byte() < 60) {
       this.set(j, nx, ny, E.EMPTY, 0);
       this.life[i]--;
@@ -1233,9 +1244,12 @@ export class World {
       this.life[i]--;
       this.wake(x, y);
     }
-    // waterline corrosion: rust needs BOTH seawater and air — submerged
-    // electrodes and tank bottoms are safe, the splash zone slowly crumbles
-    if (this.rng.byte() < 3) {
+    // waterline corrosion: needs BOTH seawater and air — submerged electrodes
+    // and tank bottoms are safe, the splash zone slowly crumbles. Iron rusts,
+    // copper patinas green; gold and tungsten never corrode.
+    const me = this.species[i];
+    const corrodesTo = me === E.METAL ? E.RUST : me === E.COPPER ? E.VERDIGRIS : 0;
+    if (corrodesTo !== 0 && this.rng.byte() < 3) {
       const { W, H, species } = this;
       let sea = false;
       let air = false;
@@ -1248,7 +1262,7 @@ export class World {
         else if (o === E.EMPTY) air = true;
       }
       if (sea && air && this.rng.byte() < 24) {
-        this.set(i, x, y, E.RUST, 0);
+        this.set(i, x, y, corrodesTo, 0);
         this.shade[i] = this.rng.byte();
       }
     }
@@ -1377,9 +1391,9 @@ export class World {
         cy++;
         continue;
       }
-      if (o === E.METAL) {
+      if (CONDUCTS[o] > 0) {
         this.set(j, x, cy + 1, E.SPARK, LIFE0[E.SPARK]);
-        this.shade[j] |= 1; // struck wire restores to metal
+        this.shade[j] = (this.shade[j] & 0xf8) | 1 | (CONDUCT_IDX[o] << 1);
       } else this.explode(x, cy + 1, 4);
       return;
     }

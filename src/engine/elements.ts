@@ -76,6 +76,15 @@ export const E = {
   COOLER: 67, // pure cold plate
   FILTER: 68, // mesh: gases pass through, liquids and powders don't
   LITMUS: 69, // indicator powder: takes the color of the pH it touches
+  // ---- M5f metals & mediums ----
+  WOOD: 70, // building material; fire chars it into charcoal
+  WAX: 71, // melts at 62° into tallow; tallow refreezes — thermal storage
+  TALLOW: 72, // molten wax: slow candle fuel
+  TAR: 73, // viscous, sticky, burns long; traps critters
+  COPPER: 74, // fast conductor (refractory 8); waterline-patinas to verdigris
+  GOLD: 75, // noble: nothing corrodes it — only mercury takes it
+  TUNGSTEN: 76, // conducts and shrugs off magma: lava-proof wiring
+  VERDIGRIS: 77, // green copper patina; roasts back to copper
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -129,6 +138,8 @@ export interface ElementDef {
   coldTo: number; // ...into this element (0 = no cold transition)
   ignitesAt: number; // T above this auto-ignites (uses flammable pathway)
   ph: number; // 0-14 acidity for aqueous chemistry; 255 = not applicable
+  group: string; // palette rail; "" = derived from behavior/device
+  conducts: number; // >0: carries spark pulses; value = refractory ticks
 }
 
 const def = (d: Partial<ElementDef> & { id: number; name: string; color: string }): ElementDef => ({
@@ -150,6 +161,8 @@ const def = (d: Partial<ElementDef> & { id: number; name: string; color: string 
   coldTo: 0,
   ignitesAt: 0,
   ph: 255,
+  group: "",
+  conducts: 0,
   ...d,
 });
 
@@ -159,26 +172,26 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.POWDER, name: "Powder", color: "#cfb47c", behavior: B.POWDER, density: 60, flammable: 15, burnLife: 20 }),
   def({ id: E.WATER, name: "Water", color: "#3a76e8", behavior: B.LIQUID, density: 30, disperse: 5, hotAt: 100, hotTo: E.STEAM, coldAt: -3, coldTo: E.ICE, ph: 7 }),
   def({ id: E.OIL, name: "Oil", color: "#6e5b23", behavior: B.LIQUID, density: 20, disperse: 3, flammable: 40, burnLife: 70, ignitesAt: 340 }),
-  def({ id: E.FIRE, name: "Fire", color: "#ff7a1a", behavior: B.FIRE, density: 1, life0: 40, hot: true, temp0: 600, pump: 0.25 }),
+  def({ id: E.FIRE, name: "Fire", color: "#ff7a1a", behavior: B.FIRE, density: 1, life0: 40, hot: true, temp0: 600, pump: 0.25, group: "LIFE & ENERGY" }),
   def({ id: E.GAS, name: "Gas", color: "#9fe07a", behavior: B.GAS, density: 2, disperse: 3, flammable: 220, burnLife: 12, ignitesAt: 280 }),
   def({ id: E.STEAM, name: "Steam", color: "#b9c7d4", behavior: B.GAS, density: 1, disperse: 4, life0: 180, temp0: 110, pump: 0.06, coldAt: 35, coldTo: E.WATER }),
-  def({ id: E.SEED, name: "Seed", color: "#7ac74f", behavior: B.POWDER, density: 55, flammable: 30, burnLife: 40 }),
-  def({ id: E.VINE, name: "Vine", color: "#3f9b2f", behavior: B.VINE, density: 255, flammable: 70, burnLife: 50, life0: 36 }),
-  def({ id: E.GUNPOWDER, name: "Gunpowder", color: "#4a4a52", behavior: B.POWDER, density: 58, flammable: 255, explodeR: 6, ignitesAt: 300 }),
+  def({ id: E.SEED, name: "Seed", color: "#7ac74f", behavior: B.POWDER, density: 55, flammable: 30, burnLife: 40, group: "LIFE & ENERGY" }),
+  def({ id: E.VINE, name: "Vine", color: "#3f9b2f", behavior: B.VINE, density: 255, flammable: 70, burnLife: 50, life0: 36, group: "LIFE & ENERGY" }),
+  def({ id: E.GUNPOWDER, name: "Gunpowder", color: "#4a4a52", behavior: B.POWDER, density: 58, flammable: 255, explodeR: 6, ignitesAt: 300, group: "REAGENTS" }),
   def({ id: E.ACID, name: "Acid", color: "#b8e33c", behavior: B.LIQUID, density: 28, disperse: 4, life0: 80, ph: 1 }),
   def({ id: E.STONE, name: "Stone", color: "#8d8478", behavior: B.POWDER, density: 90 }),
-  def({ id: E.SALT, name: "Salt", color: "#e8e4da", behavior: B.POWDER, density: 55 }),
+  def({ id: E.SALT, name: "Salt", color: "#e8e4da", behavior: B.POWDER, density: 55, group: "REAGENTS" }),
   def({ id: E.SEAWATER, name: "Seawater", color: "#3aa0c8", behavior: B.LIQUID, density: 32, disperse: 5, hotAt: 102, hotTo: E.STEAM, ph: 8 }),
   def({ id: E.MAGMA, name: "Magma", color: "#e25822", behavior: B.LIQUID, density: 40, disperse: 2, hot: true, temp0: 1000, pump: 0.08, coldAt: 350, coldTo: E.STONE }),
   def({ id: E.ICE, name: "Ice", color: "#a8d8f0", density: 255, temp0: -25, pump: 0.05, hotAt: 2, hotTo: E.WATER }),
   def({ id: E.SNOW, name: "Snow", color: "#eef4f8", behavior: B.POWDER, density: 40, temp0: -8, pump: 0.03, hotAt: 1, hotTo: E.WATER }),
   def({ id: E.NITRO, name: "Nitro", color: "#7fae3e", behavior: B.LIQUID, density: 35, disperse: 3, flammable: 255, explodeR: 8, ignitesAt: 240, ph: 2 }),
   def({ id: E.BOMB, name: "Bomb", color: "#5a3038", behavior: B.POWDER, density: 60, flammable: 255, explodeR: 12, device: true }),
-  def({ id: E.METAL, name: "Metal", color: "#8a929e", behavior: B.METAL, density: 255, device: true }),
+  def({ id: E.METAL, name: "Metal", color: "#8a929e", behavior: B.METAL, density: 255, conducts: 12, group: "METALS" }),
   def({ id: E.TORCH, name: "Torch", color: "#d0582a", behavior: B.EMITTER, density: 255, hot: true, device: true, temp0: 700, pump: 0.3 }),
   def({ id: E.FUSE, name: "Fuse", color: "#b08050", density: 255, flammable: 140, burnLife: 25, device: true }),
-  def({ id: E.VIRUS, name: "Virus", color: "#c05ac0", behavior: B.VIRUS, density: 55, life0: 120 }),
-  def({ id: E.ANT, name: "Ant", color: "#2e2620", behavior: B.ANT, density: 60, flammable: 120, burnLife: 15 }),
+  def({ id: E.VIRUS, name: "Virus", color: "#c05ac0", behavior: B.VIRUS, density: 55, life0: 120, group: "LIFE & ENERGY" }),
+  def({ id: E.ANT, name: "Ant", color: "#2e2620", behavior: B.ANT, density: 60, flammable: 120, burnLife: 15, group: "LIFE & ENERGY" }),
   def({ id: E.MERCURY, name: "Mercury", color: "#b8bcc8", behavior: B.LIQUID, density: 120, disperse: 4 }),
   def({ id: E.SPARK, name: "Spark", color: "#ffe94a", behavior: B.SPARK, density: 255, life0: 4, hot: true, device: true, temp0: 180, pump: 0.04 }),
   def({ id: E.CLONE, name: "Clone", color: "#d8c850", behavior: B.CLONE, density: 255, device: true }),
@@ -186,14 +199,14 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.SAND, name: "Sand", color: "#d9a95f", behavior: B.POWDER, density: 62, hotAt: 700, hotTo: E.GLASS }),
   def({ id: E.MUD, name: "Mud", color: "#7a5c38", behavior: B.LIQUID, density: 70, disperse: 1, ph: 6 }),
   def({ id: E.GLASS, name: "Glass", color: "#b8d4dc", density: 255 }),
-  def({ id: E.SUPERBALL, name: "Superball", color: "#e84a9a", behavior: B.SUPERBALL, density: 60 }),
-  def({ id: E.BIRD, name: "Bird", color: "#e8e8f0", behavior: B.BIRD, density: 50, flammable: 100, burnLife: 15 }),
-  def({ id: E.CLOUD, name: "Cloud", color: "#d8dde4", behavior: B.CLOUD, density: 255 }),
+  def({ id: E.SUPERBALL, name: "Superball", color: "#e84a9a", behavior: B.SUPERBALL, density: 60, group: "LIFE & ENERGY" }),
+  def({ id: E.BIRD, name: "Bird", color: "#e8e8f0", behavior: B.BIRD, density: 50, flammable: 100, burnLife: 15, group: "LIFE & ENERGY" }),
+  def({ id: E.CLOUD, name: "Cloud", color: "#d8dde4", behavior: B.CLOUD, density: 255, group: "LIFE & ENERGY" }),
   def({ id: E.LASER, name: "Laser", color: "#ff2a2a", behavior: B.LASER, density: 1, device: true }),
-  def({ id: E.THUNDER, name: "Thunder", color: "#f0f04a", behavior: B.THUNDER, density: 1 }),
-  def({ id: E.FIREWORKS, name: "Fireworks", color: "#c04a68", behavior: B.POWDER, density: 55, flammable: 255, device: true, ignitesAt: 400 }),
+  def({ id: E.THUNDER, name: "Thunder", color: "#f0f04a", behavior: B.THUNDER, density: 1, group: "LIFE & ENERGY" }),
+  def({ id: E.FIREWORKS, name: "Fireworks", color: "#c04a68", behavior: B.POWDER, density: 55, flammable: 255, device: true, ignitesAt: 400, group: "LIFE & ENERGY" }),
   def({ id: E.ROCKET, name: "Rocket", color: "#ff9a4a", behavior: B.ROCKET, density: 1, life0: 30 }),
-  def({ id: E.STICK, name: "Stick", color: "#181a1e", density: 255 }),
+  def({ id: E.STICK, name: "Stick", color: "#181a1e", density: 255, group: "HIDDEN" }),
   def({ id: E.BALL, name: "Ball", color: "#c25a3a", density: 255, device: true }),
   def({ id: E.BOX, name: "Box", color: "#9a7d4e", density: 255, device: true }),
   def({ id: E.WHEEL, name: "Wheel", color: "#6e7682", density: 255, device: true }),
@@ -201,22 +214,22 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.BUBBLE, name: "Bubble", color: "#d8c2ec", density: 255, device: true }),
   // ---- M4.5 chemistry set ----
   def({ id: E.SOAPY, name: "Soapy", color: "#e0a8c8", behavior: B.LIQUID, density: 22, disperse: 4, ph: 10 }),
-  def({ id: E.LYE, name: "Lye", color: "#e6e2c8", behavior: B.POWDER, density: 55, ph: 13 }),
+  def({ id: E.LYE, name: "Lye", color: "#e6e2c8", behavior: B.POWDER, density: 55, ph: 13, group: "REAGENTS" }),
   def({ id: E.HYDROGEN, name: "Hydrogen", color: "#c8d8f8", behavior: B.GAS, density: 1, disperse: 4, flammable: 255, burnLife: 8, ignitesAt: 480 }),
   def({ id: E.CHLORINE, name: "Chlorine", color: "#b0b832", behavior: B.LIQUID, density: 5, disperse: 5, ph: 3 }),
-  def({ id: E.SODA, name: "Soda", color: "#efe9d6", behavior: B.POWDER, density: 55, hotAt: 250, hotTo: E.CO2, ph: 9 }),
+  def({ id: E.SODA, name: "Soda", color: "#efe9d6", behavior: B.POWDER, density: 55, hotAt: 250, hotTo: E.CO2, ph: 9, group: "REAGENTS" }),
   def({ id: E.CO2, name: "CO2", color: "#6a7078", behavior: B.LIQUID, density: 3, disperse: 6 }),
   def({ id: E.OXYGEN, name: "Oxygen", color: "#c8f0e8", behavior: B.GAS, density: 2, disperse: 3 }),
-  def({ id: E.RUST, name: "Rust", color: "#a05628", behavior: B.POWDER, density: 58 }),
-  def({ id: E.CEMENT, name: "Cement", color: "#a8a49c", behavior: B.POWDER, density: 60 }),
+  def({ id: E.RUST, name: "Rust", color: "#a05628", behavior: B.POWDER, density: 58, group: "METALS" }),
+  def({ id: E.CEMENT, name: "Cement", color: "#a8a49c", behavior: B.POWDER, density: 60, group: "REAGENTS" }),
   // ---- M5a recipe shelf ----
-  def({ id: E.CHARCOAL, name: "Charcoal", color: "#33302c", behavior: B.POWDER, density: 45, flammable: 90, burnLife: 120 }),
-  def({ id: E.SALTPETER, name: "Saltpeter", color: "#d8d2e8", behavior: B.POWDER, density: 55 }),
-  def({ id: E.SULFUR, name: "Sulfur", color: "#e8d44a", behavior: B.POWDER, density: 50, flammable: 200, burnLife: 30, ignitesAt: 260 }),
+  def({ id: E.CHARCOAL, name: "Charcoal", color: "#33302c", behavior: B.POWDER, density: 45, flammable: 40, burnLife: 120, group: "REAGENTS" }),
+  def({ id: E.SALTPETER, name: "Saltpeter", color: "#d8d2e8", behavior: B.POWDER, density: 55, group: "REAGENTS" }),
+  def({ id: E.SULFUR, name: "Sulfur", color: "#e8d44a", behavior: B.POWDER, density: 50, flammable: 200, burnLife: 30, ignitesAt: 260, group: "REAGENTS" }),
   def({ id: E.LIMESTONE, name: "Limestone", color: "#cfc9b8", behavior: B.POWDER, density: 80, hotAt: 460, hotTo: E.LIME }),
-  def({ id: E.LIME, name: "Lime", color: "#f4f0e2", behavior: B.POWDER, density: 36, ph: 12 }),
-  def({ id: E.ALUMINUM, name: "Aluminum", color: "#cdd4dc", behavior: B.POWDER, density: 56 }),
-  def({ id: E.THERMITE, name: "Thermite", color: "#7a4a3a", behavior: B.POWDER, density: 62, hotAt: 550, hotTo: E.MAGMA }),
+  def({ id: E.LIME, name: "Lime", color: "#f4f0e2", behavior: B.POWDER, density: 36, ph: 12, group: "REAGENTS" }),
+  def({ id: E.ALUMINUM, name: "Aluminum", color: "#cdd4dc", behavior: B.POWDER, density: 56, group: "METALS" }),
+  def({ id: E.THERMITE, name: "Thermite", color: "#7a4a3a", behavior: B.POWDER, density: 62, hotAt: 550, hotTo: E.MAGMA, group: "METALS" }),
   def({ id: E.GLYCERIN, name: "Glycerin", color: "#d8c8a0", behavior: B.LIQUID, density: 33, disperse: 2, ph: 6 }),
   def({ id: E.ALCOHOL, name: "Alcohol", color: "#c8e0d8", behavior: B.LIQUID, density: 18, disperse: 5, flammable: 230, burnLife: 25, ignitesAt: 300, ph: 7 }),
   // ---- M5b devices ----
@@ -226,7 +239,16 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.HEATER, name: "Heater", color: "#d86a3a", density: 255, device: true, temp0: 400, pump: 0.25 }),
   def({ id: E.COOLER, name: "Cooler", color: "#5a9ad8", density: 255, device: true, temp0: -60, pump: 0.25 }),
   def({ id: E.FILTER, name: "Filter", color: "#7a8a78", behavior: B.FILTER, density: 255, device: true }),
-  def({ id: E.LITMUS, name: "Litmus", color: "#b8a8d0", behavior: B.LITMUS, density: 50 }),
+  def({ id: E.LITMUS, name: "Litmus", color: "#b8a8d0", behavior: B.LITMUS, density: 50, group: "REAGENTS" }),
+  // ---- M5f metals & mediums ----
+  def({ id: E.WOOD, name: "Wood", color: "#7a5a33", density: 255, flammable: 12, burnLife: 80 }),
+  def({ id: E.WAX, name: "Wax", color: "#e8dcc0", density: 255, hotAt: 62, hotTo: E.TALLOW }),
+  def({ id: E.TALLOW, name: "Tallow", color: "#e0d0a8", behavior: B.LIQUID, density: 21, disperse: 2, coldAt: 45, coldTo: E.WAX, flammable: 25, burnLife: 120 }),
+  def({ id: E.TAR, name: "Tar", color: "#26221e", behavior: B.LIQUID, density: 25, disperse: 1, flammable: 35, burnLife: 160, ignitesAt: 380 }),
+  def({ id: E.COPPER, name: "Copper", color: "#c87f4a", behavior: B.METAL, density: 255, conducts: 8, group: "METALS" }),
+  def({ id: E.GOLD, name: "Gold", color: "#e8c34a", behavior: B.METAL, density: 255, conducts: 10, group: "METALS" }),
+  def({ id: E.TUNGSTEN, name: "Tungsten", color: "#4a5058", behavior: B.METAL, density: 255, conducts: 16, group: "METALS" }),
+  def({ id: E.VERDIGRIS, name: "Verdigris", color: "#5aa88a", behavior: B.POWDER, density: 57, group: "METALS" }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -248,6 +270,11 @@ export const COLD_AT = new Int16Array(N_IDS);
 export const COLD_TO = new Uint8Array(N_IDS);
 export const IGNITES_AT = new Int16Array(N_IDS);
 export const PH = new Uint8Array(N_IDS).fill(255);
+// conductor family: CONDUCTS = refractory ticks (0 = insulator); a spark on a
+// wire remembers which conductor it was via CONDUCT_IDX (2 bits in shade)
+export const CONDUCTS = new Uint8Array(N_IDS);
+export const CONDUCT_IDX = new Uint8Array(N_IDS);
+export const CONDUCTOR_IDS = [E.METAL, E.COPPER, E.GOLD, E.TUNGSTEN];
 // THERMAL[id] = 1 if the element pumps heat/cold or has any temperature transition
 export const THERMAL = new Uint8Array(N_IDS);
 // Palette as flat RGB floats for the shader uniform (vec3[N_IDS]); filled by applyDef
@@ -271,6 +298,7 @@ function applyDef(el: ElementDef): void {
   COLD_TO[el.id] = el.coldTo;
   IGNITES_AT[el.id] = el.ignitesAt > 0 ? el.ignitesAt : 32767;
   PH[el.id] = el.ph;
+  CONDUCTS[el.id] = el.conducts;
   THERMAL[el.id] = el.pump > 0 || el.hotTo !== 0 || el.coldTo !== 0 || el.ignitesAt > 0 ? 1 : 0;
   const n = parseInt(el.color.slice(1), 16);
   PALETTE[el.id * 3] = ((n >> 16) & 255) / 255;
@@ -279,6 +307,7 @@ function applyDef(el: ElementDef): void {
 }
 
 for (const el of ELEMENTS) applyDef(el);
+CONDUCTOR_IDS.forEach((id, k) => { CONDUCT_IDX[id] = k; });
 
 // ---- Custom Element Maker (M4) -----------------------------------------
 // User-authored elements are the same parameter bundles as built-ins.
@@ -413,4 +442,12 @@ react(E.LIME, E.WATER, E.CEMENT, E.EMPTY, 80, "Slaking", 120); // slaking
 react(E.LIME, E.CO2, E.LIMESTONE, E.EMPTY, 40, "Carbonation", 30); // carbonation closes the cycle
 react(E.ALUMINUM, E.RUST, E.THERMITE, E.THERMITE, 50, "Thermite mixing"); // thermite mix
 react(E.GLYCERIN, E.ACID, E.NITRO, E.NITRO, 25, "Nitration", 45); // nitration
+
+// ---- M5f metals & mediums ---------------------------------------------------
+react(E.WOOD, E.FIRE, E.CHARCOAL, E.EMPTY, 60, "Charring"); // char smothers its flame
+react(E.TAR, E.ANT, E.TAR, E.EMPTY, 80, "Tar pit");
+react(E.TAR, E.BIRD, E.TAR, E.EMPTY, 80, "Tar pit");
+react(E.MAGMA, E.COPPER, E.MAGMA, E.MAGMA, 2, "Foundry melt");
+react(E.MERCURY, E.GOLD, E.MERCURY, E.MERCURY, 2, "Gold amalgam");
+react(E.VERDIGRIS, E.FIRE, E.COPPER, E.FIRE, 20, "Patina roasting");
 

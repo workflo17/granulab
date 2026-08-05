@@ -188,6 +188,23 @@
 > instrument before it could show red). Verified: acid 1 / water 7 /
 > seawater 8 / lye-contact 13, all 231 grains surviving the acid bath.
 > Still open from M5d: dissolved-state concentration channel.
+>
+> M5f SHIPPED — METALS FAMILY, NEW MEDIUMS, GROUPED PALETTE (78 ids, customs
+> from 78): CONDUCTOR FAMILY — CONDUCTS[] = per-metal refractory (iron 12,
+> copper 8 = fast clock lines, gold 10, tungsten 16); sparks remember their
+> conductor in shade bits 1-2 and restore it (a pulsed copper wire stays
+> copper). Distinct chemistry: iron rusts at the seawater waterline, COPPER
+> patinas to VERDIGRIS (roasts back in fire), GOLD is untouchable except by
+> mercury (amalgam), TUNGSTEN conducts THROUGH magma baths (verified pulse
+> crossing a lava pool — lava-proof wiring). Acid can't eat Cu/Au/W.
+> MEDIUMS: WOOD chars to charcoal (char quenches its own flame; charcoal
+> flammable 40 — harvest by QUENCHING the burn like a real kiln: burn 350
+> ticks + flood = same char, 82% wood saved; wood→char→+saltpeter→gunpowder
+> chain verified), WAX⇄TALLOW reversible melt at 62°/45° (thermal storage,
+> candle fuel), TAR (viscous, long burn, traps ants/birds — took 246/246).
+> PALETTE: registry `group` field → rails SOLIDS/LIQUIDS/GASES/METALS/
+> REAGENTS/LIFE & ENERGY/DEVICES/CUSTOM/TOOLS (derived from behavior when
+> unset; STICK hidden — it had been a paintable ghost since M2b).
 > - M5e BALANCE & SCALE: mass-conservation audit per row, rate tuning pass,
 >   WASM hot loop when reaction load meets the 211k-cell ceiling.
 >
