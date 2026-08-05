@@ -1,0 +1,1190 @@
+// Granulab world: flat typed arrays, bottom-up alternating scan, 32x32 dirty chunks,
+// quarter-res wind field driven by fan beams. Zero allocation in the tick loop.
+
+import {
+  E, B, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
+  EXPLODE_R, HOT, REACT, HAS_REACT,
+  TEMP0, PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
+} from "./elements";
+import { Rng } from "./rng";
+
+const CHUNK = 32;
+const CHUNK_SHIFT = 5;
+
+// liquids that calm down and sleep when nothing around them changes
+// (acid/magma excluded: their life byte is a corrosion budget / they must stay hot)
+const HYST = new Uint8Array(64);
+HYST[E.WATER] = HYST[E.SEAWATER] = HYST[E.OIL] = HYST[E.MERCURY] = HYST[E.MUD] = HYST[E.NITRO] = 1;
+const SETTLE = 6; // ticks of stillness before a liquid cell stops dispersing
+const MARGIN = 2; // changes this close to a chunk border wake the neighbor
+const WSHIFT = 2; // wind cell = 4x4 sim cells
+const FAN_BEAM = 64; // beam length in wind cells (256 sim px)
+const MAX_FAN_BEAMS = 512; // per tick, stride over the list beyond this
+const TSHIFT = 1; // temperature cell = 2x2 sim cells
+const AMBIENT = 20; // °C — the field drifts back here and sleeps
+
+export class World {
+  readonly W: number;
+  readonly H: number;
+  readonly species: Uint8Array;
+  readonly shade: Uint8Array; // per-grain color variation, travels with the grain
+  readonly life: Uint8Array; // fuse timers, burn life, fan angle, clone memory
+  readonly clock: Uint8Array; // frame stamp — prevents double-updating moved cells
+
+  readonly chunksX: number;
+  readonly chunksY: number;
+  private activeCur: Uint8Array;
+  private activeNext: Uint8Array;
+
+  // wind field (quarter resolution)
+  readonly WX: number;
+  readonly WY: number;
+  readonly vx: Float32Array;
+  readonly vy: Float32Array;
+  private fans: number[] = []; // cell indices of painted fans (lazy-validated)
+
+  // temperature field (half resolution), chunk-gated like the cell sim
+  readonly TW: number;
+  readonly TH: number;
+  readonly temp: Float32Array;
+  private thermalCur: Uint8Array;
+  private thermalNext: Uint8Array;
+
+  readonly rng: Rng;
+  frame = 0;
+  dots = 0; // non-empty, non-wall cell count
+
+  constructor(w: number, h: number, seed = 0xc0ffee) {
+    this.W = w;
+    this.H = h;
+    const n = w * h;
+    this.species = new Uint8Array(n);
+    this.shade = new Uint8Array(n);
+    this.life = new Uint8Array(n);
+    this.clock = new Uint8Array(n);
+    this.chunksX = Math.ceil(w / CHUNK);
+    this.chunksY = Math.ceil(h / CHUNK);
+    this.activeCur = new Uint8Array(this.chunksX * this.chunksY);
+    this.activeNext = new Uint8Array(this.chunksX * this.chunksY);
+    this.WX = w >> WSHIFT;
+    this.WY = h >> WSHIFT;
+    this.vx = new Float32Array(this.WX * this.WY);
+    this.vy = new Float32Array(this.WX * this.WY);
+    this.TW = w >> TSHIFT;
+    this.TH = h >> TSHIFT;
+    this.temp = new Float32Array(this.TW * this.TH).fill(AMBIENT);
+    this.thermalCur = new Uint8Array(this.chunksX * this.chunksY);
+    this.thermalNext = new Uint8Array(this.chunksX * this.chunksY);
+    this.rng = new Rng(seed);
+  }
+
+  // ---- chunk bookkeeping -------------------------------------------------
+
+  private wake(x: number, y: number): void {
+    const cx = x >> CHUNK_SHIFT;
+    const cy = y >> CHUNK_SHIFT;
+    const cw = this.chunksX;
+    this.activeNext[cy * cw + cx] = 1;
+    const lx = x & (CHUNK - 1);
+    const ly = y & (CHUNK - 1);
+    if (lx < MARGIN && cx > 0) this.activeNext[cy * cw + cx - 1] = 1;
+    if (lx >= CHUNK - MARGIN && cx < cw - 1) this.activeNext[cy * cw + cx + 1] = 1;
+    if (ly < MARGIN && cy > 0) this.activeNext[(cy - 1) * cw + cx] = 1;
+    if (ly >= CHUNK - MARGIN && cy < this.chunksY - 1) this.activeNext[(cy + 1) * cw + cx] = 1;
+    // also keep it live for the current pass so cascades continue this frame
+    this.activeCur[cy * cw + cx] = 1;
+  }
+
+  activeChunkCount(): number {
+    let c = 0;
+    for (let i = 0; i < this.activeCur.length; i++) c += this.activeCur[i];
+    return c;
+  }
+
+  // ---- cell mutation (all writes go through these) -----------------------
+
+  /** Paint/spawn a cell. Elements only fill EMPTY; WALL and EMPTY overwrite.
+   *  `aux` overrides the initial life value (fan angle byte). */
+  paint(x: number, y: number, id: number, aux?: number): void {
+    if (x < 0 || y < 0 || x >= this.W || y >= this.H) return;
+    const i = y * this.W + x;
+    const old = this.species[i];
+    if (id === old && id !== E.FAN) return;
+    // elements fill empty cells only; wall/erase overwrite; spark conducts onto
+    // metal; fire painted onto a flammable ignites it in place
+    const replaceable =
+      old === E.EMPTY || id === E.EMPTY || id === E.WALL ||
+      (id === E.SPARK && old === E.METAL) ||
+      (id === E.FIRE && FLAMMABLE[old] > 0);
+    if (!replaceable) return;
+    if (id === E.FIRE && old !== E.EMPTY && EXPLODE_R[old] > 0) {
+      this.explode(x, y, EXPLODE_R[old]);
+      return;
+    }
+    if (old !== E.EMPTY && old !== E.WALL) this.dots--;
+    if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+    this.species[i] = id;
+    this.shade[i] = this.rng.byte();
+    this.life[i] = aux !== undefined ? aux : LIFE0[id];
+    if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
+    if (PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], 0.6); // seed the heat field
+    this.wake(x, y);
+    // painting unsettles adjacent calm liquids so pools react to edits
+    for (let k = 0; k < 4; k++) {
+      const nx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
+      const ny = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (nx < 0 || ny < 0 || nx >= this.W || ny >= this.H) continue;
+      const j = ny * this.W + nx;
+      if (HYST[this.species[j]]) this.life[j] = 0;
+    }
+  }
+
+  /** direct cell write for rigid-object footprints — bypasses paint rules */
+  rawSet(x: number, y: number, id: number, shade = 170): void {
+    const i = y * this.W + x;
+    const old = this.species[i];
+    if (old === id) return;
+    if (old !== E.EMPTY && old !== E.WALL) this.dots--;
+    if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+    this.species[i] = id;
+    this.shade[i] = shade;
+    this.life[i] = 0;
+    this.wake(x, y);
+  }
+
+  private set(i: number, x: number, y: number, id: number, lifeVal: number): void {
+    const old = this.species[i];
+    if (old !== E.EMPTY && old !== E.WALL) this.dots--;
+    if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+    this.species[i] = id;
+    this.life[i] = lifeVal;
+    this.clock[i] = this.stamp;
+    this.wake(x, y);
+  }
+
+  private swap(i: number, j: number, xi: number, yi: number, xj: number, yj: number): void {
+    const s = this.species;
+    const sh = this.shade;
+    const lf = this.life;
+    let t = s[i]; s[i] = s[j]; s[j] = t;
+    t = sh[i]; sh[i] = sh[j]; sh[j] = t;
+    t = lf[i]; lf[i] = lf[j]; lf[j] = t;
+    this.clock[i] = this.stamp;
+    this.clock[j] = this.stamp;
+    this.wake(xi, yi);
+    this.wake(xj, yj);
+  }
+
+  // ---- wind field --------------------------------------------------------
+
+  private windTicks = 0; // wind sim runs only while energy is in the field
+
+  private stepWind(): void {
+    if (this.fans.length === 0 && this.windTicks === 0) return;
+    if (this.fans.length > 0) this.windTicks = 240;
+    else this.windTicks--;
+    const { vx, vy, WX, WY } = this;
+    // decay + one cheap in-place diffusion pass (interior only)
+    for (let y = 1; y < WY - 1; y++) {
+      const r = y * WX;
+      for (let x = 1; x < WX - 1; x++) {
+        const i = r + x;
+        vx[i] = vx[i] * 0.78 + (vx[i - 1] + vx[i + 1] + vx[i - WX] + vx[i + WX]) * 0.05;
+        vy[i] = vy[i] * 0.78 + (vy[i - 1] + vy[i + 1] + vy[i - WX] + vy[i + WX]) * 0.05;
+      }
+    }
+    // fan beams
+    const fans = this.fans;
+    if (fans.length === 0) return;
+    const stride = fans.length > MAX_FAN_BEAMS ? Math.ceil(fans.length / MAX_FAN_BEAMS) : 1;
+    const phase = this.frame % stride;
+    let write = 0;
+    for (let k = 0; k < fans.length; k++) {
+      const i = fans[k];
+      if (this.species[i] !== E.FAN) continue; // erased — drop from list
+      fans[write++] = i;
+      if (k % stride !== phase) continue;
+      const fx = (i % this.W) >> WSHIFT;
+      const fy = ((i / this.W) | 0) >> WSHIFT;
+      const ang = (this.life[i] / 256) * Math.PI * 2;
+      const dx = Math.cos(ang);
+      const dy = Math.sin(ang);
+      for (let t = 1; t <= FAN_BEAM; t++) {
+        const wx = Math.round(fx + dx * t);
+        const wy = Math.round(fy + dy * t);
+        if (wx < 0 || wy < 0 || wx >= this.WX || wy >= this.WY) break;
+        const sx = (wx << WSHIFT) + 2;
+        const sy = (wy << WSHIFT) + 2;
+        if (this.species[sy * this.W + sx] === E.WALL) break;
+        const p = 2.0 * (1 - t / FAN_BEAM) * stride;
+        const wi = wy * this.WX + wx;
+        this.vx[wi] = Math.max(-8, Math.min(8, this.vx[wi] + dx * p));
+        this.vy[wi] = Math.max(-8, Math.min(8, this.vy[wi] + dy * p));
+        if ((t & 1) === 0) this.wake(sx, sy);
+      }
+    }
+    fans.length = write;
+  }
+
+  // ---- temperature field -------------------------------------------------
+
+  private markThermalCoarse(tx: number, ty: number): void {
+    const cx = tx >> 4; // 16 coarse cells per 32-sim-cell chunk
+    const cy = ty >> 4;
+    const cw = this.chunksX;
+    this.thermalNext[cy * cw + cx] = 1;
+    this.thermalCur[cy * cw + cx] = 1;
+    if ((tx & 15) === 0 && cx > 0) this.thermalNext[cy * cw + cx - 1] = 1;
+    if ((tx & 15) === 15 && cx < cw - 1) this.thermalNext[cy * cw + cx + 1] = 1;
+    if ((ty & 15) === 0 && cy > 0) this.thermalNext[(cy - 1) * cw + cx] = 1;
+    if ((ty & 15) === 15 && cy < this.chunksY - 1) this.thermalNext[(cy + 1) * cw + cx] = 1;
+  }
+
+  /** drive the heat field at a sim cell toward `target` with strength k */
+  pumpHeat(x: number, y: number, target: number, k: number): void {
+    const tx = x >> TSHIFT;
+    const ty = y >> TSHIFT;
+    const ti = ty * this.TW + tx;
+    this.temp[ti] += (target - this.temp[ti]) * k;
+    this.markThermalCoarse(tx, ty);
+  }
+
+  tempAt(x: number, y: number): number {
+    return this.temp[(y >> TSHIFT) * this.TW + (x >> TSHIFT)];
+  }
+
+  thermalChunkCount(): number {
+    let c = 0;
+    for (let i = 0; i < this.thermalCur.length; i++) c += this.thermalCur[i];
+    return c;
+  }
+
+  /** encode temp for the thermography shader: byte = (T + 60) * 0.18 */
+  fillTempTex(buf: Uint8Array): void {
+    const t = this.temp;
+    for (let i = 0; i < t.length; i++) {
+      buf[i] = Math.max(0, Math.min(255, (t[i] + 60) * 0.18)) | 0;
+    }
+  }
+
+  private stepTemp(): void {
+    const swap = this.thermalCur;
+    this.thermalCur = this.thermalNext;
+    this.thermalNext = swap;
+    this.thermalNext.fill(0);
+    const { temp, TW, TH, chunksX, chunksY, species, W } = this;
+    const cur = this.thermalCur;
+    for (let cy = 0; cy < chunksY; cy++) {
+      for (let cx = 0; cx < chunksX; cx++) {
+        if (!cur[cy * chunksX + cx]) continue;
+        const tx0 = cx << 4;
+        const ty0 = cy << 4;
+        const tx1 = Math.min(tx0 + 16, TW);
+        const ty1 = Math.min(ty0 + 16, TH);
+        for (let ty = ty0; ty < ty1; ty++) {
+          const row = ty * TW;
+          for (let tx = tx0; tx < tx1; tx++) {
+            const i = row + tx;
+            // diffuse (in-place, clamped neighbors) + drift toward ambient
+            const l = tx > 0 ? temp[i - 1] : AMBIENT;
+            const r = tx < TW - 1 ? temp[i + 1] : AMBIENT;
+            const u = ty > 0 ? temp[i - TW] : AMBIENT;
+            const d = ty < TH - 1 ? temp[i + TW] : AMBIENT;
+            let t = temp[i] * 0.72 + (l + r + u + d) * 0.07;
+            t += (AMBIENT - t) * 0.004;
+            temp[i] = t;
+            if (t > AMBIENT + 2 || t < AMBIENT - 2) this.markThermalCoarse(tx, ty);
+            else continue; // thermally boring cell: skip the phase scan
+            // phase pass over this coarse cell's 2x2 sim cells
+            const sx0 = tx << TSHIFT;
+            const sy0 = ty << TSHIFT;
+            for (let sy = sy0; sy < sy0 + 2; sy++) {
+              const sRow = sy * W;
+              for (let sx = sx0; sx < sx0 + 2; sx++) {
+                const si = sRow + sx;
+                const id = species[si];
+                if (!THERMAL[id]) continue;
+                // pump at most once per coarse cell so dense blocks don't overpower
+                if (PUMP[id] > 0 && sx === sx0 && sy === sy0) {
+                  const tg = TEMP0[id];
+                  temp[i] += (tg - temp[i]) * PUMP[id];
+                }
+                if (t >= IGNITES_AT[id] && this.rng.byte() < 60) {
+                  if (id === E.FIREWORKS) this.set(si, sx, sy, E.ROCKET, LIFE0[E.ROCKET] + this.rng.int(16));
+                  else if (EXPLODE_R[id] > 0) this.explode(sx, sy, EXPLODE_R[id]);
+                  else this.set(si, sx, sy, E.FIRE, BURNLIFE[id]);
+                  continue;
+                }
+                if (t >= HOT_AT[id]) {
+                  const p = Math.min(220, (t - HOT_AT[id]) * 6);
+                  if (this.rng.byte() < p) {
+                    const to = HOT_TO[id];
+                    this.set(si, sx, sy, to, LIFE0[to]);
+                    this.shade[si] = this.rng.byte();
+                  }
+                } else if (t <= COLD_AT[id]) {
+                  const p = Math.min(180, (COLD_AT[id] - t) * 3);
+                  if (this.rng.byte() < p) {
+                    const to = COLD_TO[id];
+                    this.set(si, sx, sy, to, LIFE0[to]);
+                    this.shade[si] = this.rng.byte();
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  windAt(x: number, y: number): [number, number] {
+    const wi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
+    return [this.vx[wi], this.vy[wi]];
+  }
+
+  /** fill an RG byte buffer (128-centered) for the air-view shader */
+  fillWindTex(buf: Uint8Array): void {
+    const { vx, vy } = this;
+    for (let i = 0; i < vx.length; i++) {
+      buf[i * 2] = Math.max(0, Math.min(255, 128 + vx[i] * 14)) | 0;
+      buf[i * 2 + 1] = Math.max(0, Math.min(255, 128 + vy[i] * 14)) | 0;
+    }
+  }
+
+  /** wind shove for mobile cells; returns true if the cell moved */
+  private tryWindPush(i: number, x: number, y: number, k: number): boolean {
+    const wi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
+    const wx = this.vx[wi];
+    const wy = this.vy[wi];
+    const m = (wx < 0 ? -wx : wx) + (wy < 0 ? -wy : wy);
+    if (m < 0.5) return false;
+    if (this.rng.next() >= m * k) return false;
+    let dx = wx > 0.4 ? 1 : wx < -0.4 ? -1 : 0;
+    let dy = wy > 0.4 ? 1 : wy < -0.4 ? -1 : 0;
+    if (dx === 0 && dy === 0) return false;
+    const { W, H, species } = this;
+    let nx = x + dx;
+    let ny = y + dy;
+    if (nx >= 0 && ny >= 0 && nx < W && ny < H && species[ny * W + nx] === E.EMPTY) {
+      this.swap(i, ny * W + nx, x, y, nx, ny);
+      return true;
+    }
+    if (dx !== 0 && dy !== 0) {
+      nx = x + dx;
+      if (nx >= 0 && nx < W && species[y * W + nx] === E.EMPTY) {
+        this.swap(i, y * W + nx, x, y, nx, y);
+        return true;
+      }
+    }
+    // saltation: horizontal wind lofts surface grains up-and-over obstacles
+    if (dx !== 0) {
+      nx = x + dx;
+      ny = y - 1;
+      if (nx >= 0 && ny >= 0 && nx < W && species[ny * W + nx] === E.EMPTY && this.rng.byte() < 200) {
+        this.swap(i, ny * W + nx, x, y, nx, ny);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ---- the tick ----------------------------------------------------------
+
+  private stamp = 0;
+
+  step(): void {
+    this.frame++;
+    this.stamp = this.frame & 0xff;
+    const t = this.activeCur;
+    this.activeCur = this.activeNext;
+    this.activeNext = t;
+    this.activeNext.fill(0);
+
+    this.stepWind();
+    this.stepTemp();
+
+    const { W, H, species, clock, chunksX } = this;
+    const cur = this.activeCur;
+    const stamp = this.stamp;
+    const ltrFrame = (this.frame & 1) === 0;
+
+    for (let y = H - 1; y >= 0; y--) {
+      const cy = y >> CHUNK_SHIFT;
+      const rowChunk = cy * chunksX;
+      const rowBase = y * W;
+      const ltr = ltrFrame !== ((y & 1) === 1);
+      if (ltr) {
+        for (let cx = 0; cx < chunksX; cx++) {
+          if (!cur[rowChunk + cx]) continue;
+          const x0 = cx << CHUNK_SHIFT;
+          const x1 = Math.min(x0 + CHUNK, W);
+          for (let x = x0; x < x1; x++) {
+            const i = rowBase + x;
+            const id = species[i];
+            if (id <= E.WALL || clock[i] === stamp) continue;
+            this.updateCell(i, x, y, id);
+          }
+        }
+      } else {
+        for (let cx = chunksX - 1; cx >= 0; cx--) {
+          if (!cur[rowChunk + cx]) continue;
+          const x0 = cx << CHUNK_SHIFT;
+          const x1 = Math.min(x0 + CHUNK, W);
+          for (let x = x1 - 1; x >= x0; x--) {
+            const i = rowBase + x;
+            const id = species[i];
+            if (id <= E.WALL || clock[i] === stamp) continue;
+            this.updateCell(i, x, y, id);
+          }
+        }
+      }
+    }
+  }
+
+  private updateCell(i: number, x: number, y: number, id: number): void {
+    // mobile heat/cold sources drive the temperature field from their behavior
+    if (PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], PUMP[id]);
+    // contact reaction with one random neighbor (data-driven table);
+    // inert elements skip the roll entirely — this is the hot loop's fast path
+    if (HAS_REACT[id]) {
+      const rk = this.rng.int(4);
+      const rdx = rk === 0 ? 1 : rk === 1 ? -1 : 0;
+      const rdy = rk === 2 ? 1 : rk === 3 ? -1 : 0;
+      const rx = x + rdx;
+      const ry = y + rdy;
+      if (rx >= 0 && ry >= 0 && rx < this.W && ry < this.H) {
+        const j = ry * this.W + rx;
+        const r = REACT[id * N_IDS + this.species[j]];
+        if (r !== 0) {
+          if (this.rng.byte() < r >>> 16) {
+            const newA = (r >>> 8) & 255;
+            const newB = r & 255;
+            this.set(i, x, y, newA, LIFE0[newA]);
+            this.set(j, rx, ry, newB, LIFE0[newB]);
+            return;
+          }
+          this.wake(x, y); // reactive pair stays awake until it resolves
+        }
+      }
+    }
+    switch (BEHAVIOR[id]) {
+      case B.POWDER: this.doPowder(i, x, y, id); break;
+      case B.LIQUID: this.doLiquid(i, x, y, id); break;
+      case B.GAS: this.doGas(i, x, y, id); break;
+      case B.FIRE: this.doFire(i, x, y); break;
+      case B.VINE: this.doVine(i, x, y); break;
+      case B.EMITTER: this.doEmitter(i, x, y); break;
+      case B.SPARK: this.doSpark(i, x, y); break;
+      case B.CLONE: this.doClone(i, x, y); break;
+      case B.ANT: this.doAnt(i, x, y); break;
+      case B.VIRUS: this.doVirus(i, x, y); break;
+      case B.METAL: this.doMetalCool(i, x, y); break;
+      case B.SUPERBALL: this.doSuperball(i, x, y); break;
+      case B.BIRD: this.doBird(i, x, y); break;
+      case B.CLOUD: this.doCloud(i, x, y); break;
+      case B.LASER: this.doLaser(i, x, y); break;
+      case B.THUNDER: this.doThunder(i, x, y); break;
+      case B.ROCKET: this.doRocket(i, x, y); break;
+    }
+  }
+
+  /** can `id` displace the occupant of cell j by falling into it? */
+  private sinksInto(id: number, j: number): boolean {
+    const o = this.species[j];
+    if (o === E.EMPTY) return true;
+    const b = BEHAVIOR[o];
+    return (b === B.LIQUID || b === B.GAS) && DENSITY[id] > DENSITY[o];
+  }
+
+  private doPowder(i: number, x: number, y: number, id: number): void {
+    const { W, H } = this;
+    if (this.tryWindPush(i, x, y, 0.35)) return;
+    if (id === E.SEED && this.trySprout(i, x, y)) return;
+    if (y + 1 >= H) return;
+    const below = i + W;
+    if (this.sinksInto(id, below)) {
+      if (this.species[below] === E.EMPTY || this.rng.byte() < 90) {
+        this.swap(i, below, x, y, x, y + 1);
+      } else {
+        this.wake(x, y);
+      }
+      return;
+    }
+    const dir = this.rng.bool() ? 1 : -1;
+    for (let k = 0; k < 2; k++) {
+      const dx = k === 0 ? dir : -dir;
+      const nx = x + dx;
+      if (nx < 0 || nx >= W) continue;
+      const j = below + dx;
+      if (this.sinksInto(id, j) && this.species[i + dx] === E.EMPTY) {
+        this.swap(i, j, x, y, nx, y + 1);
+        return;
+      }
+    }
+  }
+
+  private doLiquid(i: number, x: number, y: number, id: number): void {
+    const { W, H } = this;
+    const hyst = HYST[id];
+    if (this.tryWindPush(i, x, y, 0.08)) return;
+    if (id === E.ACID && this.doCorrode(i, x, y)) return;
+    if (id === E.MAGMA) this.hotContact4(x, y);
+    if (y + 1 < H) {
+      const below = i + W;
+      if (this.sinksInto(id, below)) {
+        this.swap(i, below, x, y, x, y + 1);
+        if (hyst) this.life[below] = 0;
+        return;
+      }
+      const dir = this.rng.bool() ? 1 : -1;
+      for (let k = 0; k < 2; k++) {
+        const dx = k === 0 ? dir : -dir;
+        const nx = x + dx;
+        if (nx < 0 || nx >= W) continue;
+        if (this.sinksInto(id, below + dx) && this.species[i + dx] === E.EMPTY) {
+          this.swap(i, below + dx, x, y, nx, y + 1);
+          if (hyst) this.life[below + dx] = 0;
+          return;
+        }
+      }
+    }
+    // settled-liquid hysteresis: a calm cell stops dispersing and goes to sleep
+    if (hyst && this.life[i] > SETTLE) return;
+    const disp = DISPERSE[id];
+    const dir = this.rng.bool() ? 1 : -1;
+    let moved = 0;
+    let from = i;
+    let fx = x;
+    for (let s = 0; s < disp; s++) {
+      const nx = fx + dir;
+      if (nx < 0 || nx >= W) break;
+      const j = from + dir;
+      if (this.species[j] !== E.EMPTY) break;
+      this.swap(from, j, fx, y, nx, y);
+      from = j;
+      fx = nx;
+      moved++;
+    }
+    if (moved > 0) {
+      if (hyst) this.life[from] = 0;
+      return;
+    }
+    const nx = x - dir;
+    if (nx >= 0 && nx < W && this.species[i - dir] === E.EMPTY) {
+      this.swap(i, i - dir, x, y, nx, y);
+      if (hyst) this.life[i - dir] = 0;
+      return;
+    }
+    // nothing moved: count toward settling, stay briefly awake, then sleep
+    if (hyst) {
+      if (this.life[i] < 200) this.life[i]++;
+      if (this.life[i] <= SETTLE) this.wake(x, y);
+    }
+  }
+
+  private doGas(i: number, x: number, y: number, id: number): void {
+    const { W } = this;
+    if (LIFE0[id] > 0) {
+      if (this.life[i] === 0) {
+        if (id === E.STEAM && this.rng.byte() < 77) {
+          this.set(i, x, y, E.WATER, 0);
+          this.shade[i] = this.rng.byte();
+        } else {
+          this.set(i, x, y, E.EMPTY, 0);
+        }
+        return;
+      }
+      this.life[i]--;
+      this.wake(x, y);
+    }
+    if (this.tryWindPush(i, x, y, 0.35)) return;
+    if (y - 1 >= 0 && this.rng.byte() < 200) {
+      const up = i - W;
+      const dx = this.rng.int(3) - 1;
+      const nx = x + dx;
+      if (nx >= 0 && nx < W && this.species[up + dx] === E.EMPTY) {
+        this.swap(i, up + dx, x, y, nx, y - 1);
+        return;
+      }
+      if (this.species[up] === E.EMPTY) {
+        this.swap(i, up, x, y, x, y - 1);
+        return;
+      }
+    }
+    const dir = this.rng.bool() ? 1 : -1;
+    const nx = x + dir;
+    if (nx >= 0 && nx < W && this.species[i + dir] === E.EMPTY) {
+      this.swap(i, i + dir, x, y, nx, y);
+    }
+  }
+
+  /** ignite/melt scan over 4 neighbors — shared by magma, torch, spark */
+  private hotContact4(x: number, y: number): void {
+    const { W, H, species } = this;
+    for (let k = 0; k < 4; k++) {
+      const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+      const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      const o = species[j];
+      const fl = FLAMMABLE[o];
+      if (fl > 0 && this.rng.byte() < fl) {
+        if (o === E.FIREWORKS) this.set(j, nx, ny, E.ROCKET, LIFE0[E.ROCKET] + this.rng.int(16));
+        else if (EXPLODE_R[o] > 0) this.explode(nx, ny, EXPLODE_R[o]);
+        else {
+          this.set(j, nx, ny, E.FIRE, BURNLIFE[o]);
+          this.shade[j] = this.rng.byte();
+        }
+      }
+    }
+  }
+
+  private doFire(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    if (this.life[i] === 0) {
+      this.set(i, x, y, E.EMPTY, 0);
+      return;
+    }
+    this.life[i]--;
+    this.wake(x, y);
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = y + dy;
+      if (ny < 0 || ny >= H) continue;
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx;
+        if (nx < 0 || nx >= W) continue;
+        const j = ny * W + nx;
+        const o = species[j];
+        if (o === E.WATER || o === E.SEAWATER) {
+          if (this.rng.byte() < 77) this.set(j, nx, ny, E.STEAM, LIFE0[E.STEAM]);
+          this.set(i, x, y, E.EMPTY, 0);
+          return;
+        }
+        const fl = FLAMMABLE[o];
+        if (fl > 0 && this.rng.byte() < fl) {
+          if (o === E.FIREWORKS) this.set(j, nx, ny, E.ROCKET, LIFE0[E.ROCKET] + this.rng.int(16));
+          else if (EXPLODE_R[o] > 0) this.explode(nx, ny, EXPLODE_R[o]);
+          else {
+            this.set(j, nx, ny, E.FIRE, BURNLIFE[o]);
+            this.shade[j] = this.rng.byte();
+          }
+        }
+      }
+    }
+    if (this.tryWindPush(i, x, y, 0.3)) return;
+    if (y - 1 >= 0 && this.rng.byte() < 150) {
+      const dx = this.rng.int(3) - 1;
+      const nx = x + dx;
+      if (nx >= 0 && nx < W && species[i - W + dx] === E.EMPTY) {
+        this.swap(i, i - W + dx, x, y, nx, y - 1);
+      }
+    }
+  }
+
+  private doVine(i: number, x: number, y: number): void {
+    if (this.life[i] === 0) return;
+    if (this.rng.byte() < 40) {
+      const dx = this.rng.int(3) - 1;
+      const nx = x + dx;
+      const ny = y - 1;
+      if (nx >= 0 && nx < this.W && ny >= 0) {
+        const j = ny * this.W + nx;
+        if (this.species[j] === E.EMPTY) {
+          this.set(j, nx, ny, E.VINE, this.life[i] - 1);
+          this.shade[j] = this.rng.byte();
+        } else {
+          this.life[i] = 0;
+        }
+      }
+    }
+    this.wake(x, y);
+  }
+
+  private doEmitter(i: number, x: number, y: number): void {
+    this.hotContact4(x, y);
+    if (this.rng.byte() < 60) {
+      const dx = this.rng.int(3) - 1;
+      const nx = x + dx;
+      const ny = y - 1;
+      if (nx >= 0 && nx < this.W && ny >= 0) {
+        const j = ny * this.W + nx;
+        if (this.species[j] === E.EMPTY) {
+          this.set(j, nx, ny, E.FIRE, LIFE0[E.FIRE]);
+          this.shade[j] = this.rng.byte();
+        }
+      }
+    }
+    this.wake(x, y); // torches never sleep
+  }
+
+  private doSpark(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    this.hotContact4(x, y);
+    let metalNear = false;
+    for (let k = 0; k < 4; k++) {
+      const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+      const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      const o = species[j];
+      if (o === E.METAL) {
+        metalNear = true;
+        // refractory metal (life > 0, still cooling) can't re-spark — keeps the
+        // pulse a thin traveling dot instead of saturating the whole wire
+        if (this.life[j] === 0 && this.rng.byte() < 250) {
+          this.set(j, nx, ny, E.SPARK, LIFE0[E.SPARK]);
+          this.shade[j] = this.rng.byte();
+        }
+      } else if (o === E.SPARK) metalNear = true;
+    }
+    if (this.life[i] === 0) {
+      this.set(i, x, y, metalNear ? E.METAL : E.EMPTY, metalNear ? 12 : 0);
+      return;
+    }
+    this.life[i]--;
+    this.wake(x, y);
+  }
+
+  private doClone(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    if (this.life[i] === 0) {
+      // memorize the first touching element
+      for (let k = 0; k < 4; k++) {
+        const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+        const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const o = species[ny * W + nx];
+        if (o !== E.EMPTY && o !== E.WALL && o !== E.CLONE && o !== E.FAN) {
+          this.life[i] = o;
+          break;
+        }
+      }
+    } else if (this.rng.byte() < 40) {
+      const k = this.rng.int(4);
+      const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+      const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < W && ny < H) {
+        const j = ny * W + nx;
+        if (species[j] === E.EMPTY) {
+          const cid = this.life[i];
+          this.set(j, nx, ny, cid, LIFE0[cid]);
+          this.shade[j] = this.rng.byte();
+        }
+      }
+    }
+    this.wake(x, y); // clones never sleep
+  }
+
+  private doAnt(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    // gravity first
+    if (y + 1 < H && species[i + W] === E.EMPTY) {
+      this.swap(i, i + W, x, y, x, y + 1);
+      return;
+    }
+    let dir = this.life[i] === 1 ? 1 : -1;
+    if (this.rng.byte() < 12) {
+      dir = -dir;
+      this.life[i] = dir === 1 ? 1 : 0;
+    }
+    const digInto = (j: number, nx: number, ny: number): boolean => {
+      const o = species[j];
+      if (o === E.EMPTY) {
+        this.swap(i, j, x, y, nx, ny);
+        return true;
+      }
+      if (BEHAVIOR[o] === B.POWDER && o !== E.ANT) {
+        // tunnel: consume the grain, leave a gap behind
+        this.set(j, nx, ny, E.ANT, this.life[i]);
+        this.shade[j] = this.shade[i];
+        this.set(i, x, y, E.EMPTY, 0);
+        return true;
+      }
+      return false;
+    };
+    const nx = x + dir;
+    if (nx >= 0 && nx < W) {
+      // occasionally dig downward, else walk/dig ahead, else climb
+      if (y + 1 < H && this.rng.byte() < 25 && digInto(i + W + dir, nx, y + 1)) return;
+      if (digInto(i + dir, nx, y)) return;
+      if (y - 1 >= 0 && digInto(i - W + dir, nx, y - 1)) return;
+    }
+    this.life[i] = this.life[i] === 1 ? 0 : 1; // blocked: turn around
+    this.wake(x, y);
+  }
+
+  private doVirus(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    if (this.life[i] === 0) {
+      this.set(i, x, y, E.EMPTY, 0);
+      return;
+    }
+    this.life[i]--;
+    const k = this.rng.int(4);
+    const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+    const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx >= 0 && ny >= 0 && nx < W && ny < H) {
+      const j = ny * W + nx;
+      const o = species[j];
+      if (o !== E.EMPTY && o !== E.WALL && o !== E.VIRUS && o !== E.CLONE && o !== E.FAN && this.rng.byte() < 50) {
+        this.set(j, nx, ny, E.VIRUS, LIFE0[E.VIRUS]);
+        this.shade[j] = this.rng.byte();
+      }
+    }
+    this.wake(x, y);
+    // falls like powder
+    if (y + 1 < H && this.sinksInto(E.VIRUS, i + W)) {
+      this.swap(i, i + W, x, y, x, y + 1);
+    }
+  }
+
+  private trySprout(i: number, x: number, y: number): boolean {
+    const { W, H, species } = this;
+    const dirs = [i + W, i - W, i - 1, i + 1];
+    const dxs = [0, 0, -1, 1];
+    const dys = [1, -1, 0, 0];
+    for (let k = 0; k < 4; k++) {
+      const nx = x + dxs[k];
+      const ny = y + dys[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (species[dirs[k]] === E.WATER) {
+        this.set(dirs[k], nx, ny, E.EMPTY, 0);
+        this.set(i, x, y, E.VINE, LIFE0[E.VINE]);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private doCorrode(i: number, x: number, y: number): boolean {
+    if (this.life[i] === 0) {
+      this.set(i, x, y, E.EMPTY, 0);
+      return true;
+    }
+    const k = this.rng.int(4);
+    const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+    const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= this.W || ny >= this.H) return false;
+    const j = ny * this.W + nx;
+    const o = this.species[j];
+    if (o !== E.EMPTY && o !== E.WALL && o !== E.ACID && o !== E.FIRE && this.rng.byte() < 60) {
+      this.set(j, nx, ny, E.EMPTY, 0);
+      this.life[i]--;
+      this.wake(x, y);
+      return true;
+    }
+    return false;
+  }
+
+  /** metal cooling after a spark passed — refractory period, then conductive again */
+  private doMetalCool(i: number, x: number, y: number): void {
+    if (this.life[i] > 0) {
+      this.life[i]--;
+      this.wake(x, y);
+    }
+  }
+
+  private doSuperball(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    if (this.life[i] > 0) {
+      // rising phase of a bounce
+      this.life[i]--;
+      if (y - 1 >= 0 && species[i - W] === E.EMPTY) {
+        this.swap(i, i - W, x, y, x, y - 1);
+      } else {
+        this.life[i] = 0;
+      }
+      this.wake(x, y);
+      return;
+    }
+    if (y + 1 >= H) {
+      this.life[i] = 8 + this.rng.int(8);
+      this.wake(x, y);
+      return;
+    }
+    const below = i + W;
+    if (this.sinksInto(E.SUPERBALL, below)) {
+      this.swap(i, below, x, y, x, y + 1);
+      return;
+    }
+    if (BEHAVIOR[species[below]] !== B.GAS) {
+      this.life[i] = 8 + this.rng.int(8); // landed: bounce back up
+      this.wake(x, y);
+    }
+  }
+
+  private doBird(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    this.wake(x, y); // birds never sleep
+    let dirx = (this.life[i] & 1) === 1 ? 1 : -1;
+    if (this.rng.byte() < 8) {
+      dirx = -dirx;
+      this.life[i] ^= 1;
+    }
+    let dy = this.rng.int(3) - 1;
+    // ground avoidance: climb when something solid is within 2 cells below
+    const nearGround =
+      (y + 1 < H && species[i + W] !== E.EMPTY) || (y + 2 < H && species[i + 2 * W] !== E.EMPTY);
+    if (nearGround) dy = -1;
+    const nx = x + dirx;
+    const ny = y + dy;
+    if (nx >= 0 && ny >= 0 && nx < W && ny < H && species[ny * W + nx] === E.EMPTY) {
+      this.swap(i, ny * W + nx, x, y, nx, ny);
+      return;
+    }
+    if (nx >= 0 && nx < W && species[i + dirx] === E.EMPTY) {
+      this.swap(i, i + dirx, x, y, nx, y);
+      return;
+    }
+    this.life[i] ^= 1; // blocked: turn around
+  }
+
+  private doCloud(i: number, x: number, y: number): void {
+    // floats in place; occasionally rains itself out
+    if (this.rng.byte() < 3 && y + 1 < this.H) {
+      const below = i + this.W;
+      if (this.species[below] === E.EMPTY) {
+        this.set(below, x, y + 1, E.WATER, 0);
+        this.shade[below] = this.rng.byte();
+        if (this.rng.byte() < 80) {
+          this.set(i, x, y, E.EMPTY, 0);
+          return;
+        }
+      }
+    }
+    this.wake(x, y);
+  }
+
+  private static readonly OCT_DX = [1, 1, 0, -1, -1, -1, 0, 1];
+  private static readonly OCT_DY = [0, 1, 1, 1, 0, -1, -1, -1];
+
+  /** life packs direction in bits 5-7; beams fly until they hit or leave the grid */
+  private doLaser(i: number, x: number, y: number): void {
+    const lf = this.life[i];
+    const d = lf >>> 5;
+    const dx = World.OCT_DX[d];
+    const dy = World.OCT_DY[d];
+    let cx = x;
+    let cy = y;
+    let ci = i;
+    this.set(ci, cx, cy, E.EMPTY, 0);
+    for (let hop = 0; hop < 3; hop++) {
+      let nx = cx + dx;
+      let ny = cy + dy;
+      // glass is transparent to lasers
+      while (nx >= 0 && ny >= 0 && nx < this.W && ny < this.H && this.species[ny * this.W + nx] === E.GLASS) {
+        nx += dx;
+        ny += dy;
+      }
+      if (nx < 0 || ny < 0 || nx >= this.W || ny >= this.H) return;
+      const j = ny * this.W + nx;
+      const o = this.species[j];
+      if (o === E.EMPTY) {
+        cx = nx;
+        cy = ny;
+        ci = j;
+        continue;
+      }
+      if (o === E.FIREWORKS) this.set(j, nx, ny, E.ROCKET, LIFE0[E.ROCKET] + this.rng.int(16));
+      else if (EXPLODE_R[o] > 0) this.explode(nx, ny, EXPLODE_R[o]);
+      else if (FLAMMABLE[o] > 0) this.set(j, nx, ny, E.FIRE, BURNLIFE[o]);
+      else this.pumpHeat(nx, ny, 900, 0.5); // laser heat melts/boils via the field
+      return; // hit something: beam ends
+    }
+    this.set(ci, cx, cy, E.LASER, lf);
+  }
+
+  private doThunder(i: number, x: number, y: number): void {
+    let cy = y;
+    let ci = i;
+    this.set(ci, x, cy, E.EMPTY, 0);
+    for (let s = 0; s < 6; s++) {
+      if (cy + 1 >= this.H) return; // grounded off-screen
+      const j = ci + this.W;
+      const o = this.species[j];
+      if (o === E.EMPTY) {
+        ci = j;
+        cy++;
+        continue;
+      }
+      if (o === E.METAL) this.set(j, x, cy + 1, E.SPARK, LIFE0[E.SPARK]);
+      else this.explode(x, cy + 1, 4);
+      return;
+    }
+    this.set(ci, x, cy, E.THUNDER, 0);
+  }
+
+  private doRocket(i: number, x: number, y: number): void {
+    this.wake(x, y);
+    if (this.life[i] === 0 || y - 1 < 0) {
+      this.explode(x, y, 6);
+      return;
+    }
+    this.life[i]--;
+    const dx = this.rng.int(3) - 1;
+    const nx = x + dx;
+    const j = (y - 1) * this.W + nx;
+    if (nx >= 0 && nx < this.W && this.species[j] === E.EMPTY) {
+      this.swap(i, j, x, y, nx, y - 1);
+      if (this.rng.byte() < 150) {
+        this.set(i, x, y, E.FIRE, 12 + this.rng.int(10));
+        this.shade[i] = this.rng.byte();
+      }
+      return;
+    }
+    if (this.species[i - this.W] !== E.EMPTY) this.explode(x, y, 6); // nose blocked
+  }
+
+  // ---- save / load -------------------------------------------------------
+
+  /** RLE snapshot of species+life (shade regenerates on load) */
+  serialize(): Uint8Array {
+    const rle = (arr: Uint8Array): number[] => {
+      const out: number[] = [];
+      let v = arr[0];
+      let run = 1;
+      for (let i = 1; i < arr.length; i++) {
+        if (arr[i] === v && run < 65535) run++;
+        else {
+          out.push(v, run & 255, run >> 8);
+          v = arr[i];
+          run = 1;
+        }
+      }
+      out.push(v, run & 255, run >> 8);
+      return out;
+    };
+    const s = rle(this.species);
+    const l = rle(this.life);
+    const buf = new Uint8Array(12 + s.length + l.length);
+    buf.set([0x47, 0x52, 0x4e, 0x31]); // "GRN1"
+    buf[4] = this.W & 255; buf[5] = this.W >> 8;
+    buf[6] = this.H & 255; buf[7] = this.H >> 8;
+    buf[8] = s.length & 255; buf[9] = (s.length >> 8) & 255;
+    buf[10] = (s.length >> 16) & 255; buf[11] = (s.length >> 24) & 255;
+    buf.set(s, 12);
+    buf.set(l, 12 + s.length);
+    return buf;
+  }
+
+  deserialize(buf: Uint8Array): boolean {
+    if (buf[0] !== 0x47 || buf[1] !== 0x52 || buf[2] !== 0x4e || buf[3] !== 0x31) return false;
+    if ((buf[4] | (buf[5] << 8)) !== this.W || (buf[6] | (buf[7] << 8)) !== this.H) return false;
+    const sLen = buf[8] | (buf[9] << 8) | (buf[10] << 16) | (buf[11] << 24);
+    const unrle = (from: number, to: number, target: Uint8Array): void => {
+      let w = 0;
+      for (let p = from; p < to; p += 3) {
+        const v = buf[p];
+        const run = buf[p + 1] | (buf[p + 2] << 8);
+        target.fill(v, w, w + run);
+        w += run;
+      }
+    };
+    unrle(12, 12 + sLen, this.species);
+    unrle(12 + sLen, buf.length, this.life);
+    this.clock.fill(0);
+    this.activeCur.fill(1);
+    this.activeNext.fill(1);
+    this.fans.length = 0;
+    this.dots = 0;
+    this.temp.fill(AMBIENT);
+    this.thermalCur.fill(0);
+    this.thermalNext.fill(0);
+    for (let i = 0; i < this.species.length; i++) {
+      const id = this.species[i];
+      if (id !== E.EMPTY) this.shade[i] = this.rng.byte();
+      if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+      if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
+      if (PUMP[id] > 0) {
+        this.pumpHeat(i % this.W, (i / this.W) | 0, TEMP0[id], 0.6);
+      }
+    }
+    return true;
+  }
+
+  private explode(cx: number, cy: number, r: number): void {
+    const { W, H } = this;
+    const r2 = r * r;
+    for (let dy = -r; dy <= r; dy++) {
+      const y = cy + dy;
+      if (y < 0 || y >= H) continue;
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const x = cx + dx;
+        if (x < 0 || x >= W) continue;
+        const i = y * W + x;
+        const o = this.species[i];
+        if (o === E.WALL) continue;
+        if (this.rng.byte() < 200) {
+          this.set(i, x, y, E.FIRE, 10 + this.rng.int(30));
+          this.shade[i] = this.rng.byte();
+        }
+      }
+    }
+    // heat flash
+    const tr = (r >> TSHIFT) + 2;
+    const tcx = cx >> TSHIFT;
+    const tcy = cy >> TSHIFT;
+    for (let dy = -tr; dy <= tr; dy++) {
+      const ty = tcy + dy;
+      if (ty < 0 || ty >= this.TH) continue;
+      for (let dx = -tr; dx <= tr; dx++) {
+        const tx = tcx + dx;
+        if (tx < 0 || tx >= this.TW) continue;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > tr) continue;
+        this.temp[ty * this.TW + tx] += 260 * (1 - d / tr);
+        this.markThermalCoarse(tx, ty);
+      }
+    }
+    // radial wind impulse
+    this.windTicks = 240;
+    const rw = (r >> WSHIFT) + 2;
+    const wcx = cx >> WSHIFT;
+    const wcy = cy >> WSHIFT;
+    for (let dy = -rw; dy <= rw; dy++) {
+      const wy = wcy + dy;
+      if (wy < 0 || wy >= this.WY) continue;
+      for (let dx = -rw; dx <= rw; dx++) {
+        const wx = wcx + dx;
+        if (wx < 0 || wx >= this.WX) continue;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        if (d > rw) continue;
+        const s = (6 * (1 - d / rw)) / d;
+        const wi = wy * this.WX + wx;
+        this.vx[wi] = Math.max(-8, Math.min(8, this.vx[wi] + dx * s));
+        this.vy[wi] = Math.max(-8, Math.min(8, this.vy[wi] + dy * s));
+      }
+    }
+  }
+
+  clear(): void {
+    this.species.fill(0);
+    this.shade.fill(0);
+    this.life.fill(0);
+    this.clock.fill(0);
+    this.activeCur.fill(1);
+    this.activeNext.fill(1);
+    this.vx.fill(0);
+    this.vy.fill(0);
+    this.temp.fill(AMBIENT);
+    this.thermalCur.fill(0);
+    this.thermalNext.fill(0);
+    this.fans.length = 0;
+    this.dots = 0;
+  }
+}

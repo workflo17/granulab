@@ -1,0 +1,15 @@
+{
+  "name": "granulab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 4870 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 4870 --strictPort"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.8"
+  }
+}

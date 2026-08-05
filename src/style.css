@@ -1,0 +1,182 @@
+/* Granulab chassis — benchtop-instrument neutrals; all chroma comes from the
+   element swatches and the dynamic held-element accent (set via --accent-l/-r). */
+
+:root {
+  --chassis: #16181c;
+  --well: #0b0d10;
+  --hairline: #262a31;
+  --text: #c9ccd1;
+  --dim: #7d828a;
+  --accent-l: #cfb47c; /* left-held element color, set from JS */
+  --accent-r: #3a4049; /* right-held element color, set from JS */
+  --mono: "Cascadia Code", "JetBrains Mono", Consolas, ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--well);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 44px 1fr 28px;
+  grid-template-columns: 148px 1fr;
+  grid-template-areas:
+    "top top"
+    "side canvas"
+    "status status";
+}
+
+/* ---- top bar ---- */
+header {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  background: var(--chassis);
+  border-bottom: 1px solid var(--hairline);
+}
+.wordmark {
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  font-size: 14px;
+}
+.wordmark small {
+  display: block;
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.transport { display: flex; gap: 6px; align-items: center; }
+button {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: #1d2026;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover { background: #262a31; }
+button:focus-visible { outline: 2px solid var(--accent-l); outline-offset: 1px; }
+button.primary { border-color: var(--accent-l); }
+select, input[type="range"] { font-family: var(--mono); accent-color: var(--accent-l); }
+select {
+  background: #1d2026;
+  color: var(--text);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+.pen { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--dim); }
+.pen output { color: var(--text); min-width: 2ch; text-align: right; }
+
+/* ---- ink wells: what each mouse button holds ---- */
+.wells { display: flex; gap: 8px; align-items: center; }
+.well {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: var(--well);
+  color: var(--dim);
+  font-size: 11px;
+}
+.well .dot { width: 10px; height: 10px; border-radius: 50%; }
+.well.left .dot { background: var(--accent-l); }
+.well.right .dot { background: var(--accent-r); }
+.well b { color: var(--text); font-weight: 400; }
+
+/* ---- element palette ---- */
+aside {
+  grid-area: side;
+  background: var(--chassis);
+  border-right: 1px solid var(--hairline);
+  padding: 10px 8px;
+  overflow-y: auto;
+}
+.rail-label {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  margin: 8px 4px 6px;
+}
+.palette { display: grid; grid-template-columns: 1fr; gap: 5px; }
+.el {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px;
+  font-size: 11px;
+  background: #1d2026;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+  text-align: left;
+}
+.el .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.el:hover { background: #262a31; }
+.el.sel-l { border-color: var(--accent-l); box-shadow: 0 0 0 1px var(--accent-l) inset; }
+.el.sel-r { border-style: dashed; border-color: var(--accent-r); }
+
+/* ---- canvas ---- */
+main {
+  grid-area: canvas;
+  position: relative;
+  background: var(--well);
+}
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+/* ---- element maker dialog ---- */
+dialog {
+  background: var(--chassis);
+  color: var(--text);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  max-width: 380px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog h3 { font-size: 13px; letter-spacing: 0.12em; margin-bottom: 12px; }
+dialog .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+dialog label { display: flex; flex-direction: column; gap: 3px; color: var(--dim); }
+dialog input, dialog select {
+  background: #1d2026;
+  color: var(--text);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--mono);
+}
+dialog input[type="color"] { padding: 1px; height: 26px; }
+dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* ---- status readout ---- */
+footer {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+  background: var(--chassis);
+  border-top: 1px solid var(--hairline);
+  font-size: 11px;
+  color: var(--dim);
+}
+footer b { color: var(--text); font-weight: 400; }
+footer .spacer { margin-left: auto; }
