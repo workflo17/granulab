@@ -92,6 +92,7 @@ export class Ui {
             <option value="" selected disabled>demo…</option>
             <option value="sandbox">demo: sandbox</option>
             <option value="chem">demo: chem lab</option>
+            <option value="range">demo: weapons range</option>
           </select>
           <select id="penmode" title="Pen mode">
             <option value="free" selected>pen: free</option>

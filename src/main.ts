@@ -146,6 +146,7 @@ const ui = new Ui(root, {
     fighters.length = 0;
     if (name === "sandbox") demoScene();
     else if (name === "chem") chemScene();
+    else if (name === "range") rangeScene();
   },
 });
 
@@ -585,12 +586,101 @@ function chemScene(): void {
   settle();
 }
 
+// #range: the weapons range — M5b ballistics running as five live exhibits
+function rangeScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  R("Wall", 30, 690, 1250, 700); // the range floor
+
+  // 1) SENTRY GUN: elevated hopper-fed cannon, clone-triggered, shelling the
+  //    castle downrange — shots arc off the perch and rain onto the towers
+  R("Wall", 66, 477, 134, 479); // perch
+  R("Wall", 66, 434, 68, 477); // hopper left wall
+  R("Wall", 84, 434, 86, 466); // hopper right wall (keeps sand off the barrel)
+  R("Sand", 69, 438, 83, 476);
+  for (let y = 468; y <= 476; y++) for (let x = 88; x <= 96; x++) world.paint(x, y, byName("Cannon"), 0); // aimed right
+  world.paint(92, 467, byName("Clone"));
+  world.paint(93, 467, byName("Spark")); // primer
+  // the castle: stone towers, glass caps, a powder keep
+  R("Stone", 280, 636, 292, 688);
+  R("Glass", 280, 626, 292, 634);
+  R("Powder", 298, 656, 338, 688);
+  R("Stone", 344, 636, 356, 688);
+  R("Glass", 344, 626, 356, 634);
+
+  // 2) MORTAR: the fuse runs in a sheltered tunnel under the pit — torch
+  //    contact lights it, it burns left beneath the wall to the charge.
+  //    One big timed shot; relight with the fire pen.
+  R("Wall", 520, 660, 524, 690);
+  R("Wall", 576, 660, 580, 684); // right wall stops short: fuse tunnel below
+  R("Fuse", 526, 687, 595, 687); // the whole run, floor-sheltered
+  R("Bomb", 526, 676, 574, 688); // charge sits on the fuse
+  R("Wall", 581, 685, 595, 685); // roof over the fuse alley — cap spill can't cut it
+  R("Torch", 596, 684, 600, 688); // touches the fuse end -> contact ignition
+  R("Stone", 516, 640, 584, 674); // the cap
+
+  // 3) NITRO THUNDER: clones drip nitro onto a grate over a magma bath —
+  //    500°+ at the anvil, every drop detonates and flings the gravel banks
+  R("Wall", 680, 654, 682, 690);
+  R("Wall", 798, 654, 800, 690);
+  R("Magma", 684, 683, 796, 688);
+  R("Wall", 684, 680, 796, 682); // grate: the detonation anvil
+  R("Stone", 684, 664, 724, 678); // gravel banks
+  R("Stone", 756, 664, 796, 678);
+  // sealed priming cell: nitro locked against the clone face
+  R("Wall", 746, 349, 747, 349);
+  R("Wall", 747, 350, 747, 351);
+  R("Wall", 746, 351, 746, 351);
+  world.paint(746, 350, byName("Nitro"));
+  world.paint(745, 350, byName("Clone"));
+  world.paint(744, 350, byName("Clone"));
+
+  // 4) THERMITE VAULT BREACH: torch embedded at bed level lights the embers;
+  //    the melt burns through the lid and quenches in the tank (steam burst)
+  R("Metal", 850, 640, 1000, 646); // lid
+  R("Metal", 850, 646, 856, 690);
+  R("Metal", 994, 646, 1000, 690);
+  R("Water", 858, 660, 992, 688);
+  R("Torch", 875, 630, 879, 638); // beside the bed, touching it
+  R("Charcoal", 880, 630, 970, 638);
+  R("Thermite", 900, 610, 950, 628);
+
+  // 5) FIREWORKS BATTERY: a 1-wide column lit from the TOP so every rocket
+  //    launches with a clear nose (blocks and tubes both self-destruct — a
+  //    nose-blocked rocket detonates); the clone refills from the base
+  R("Clone", 1100, 688, 1100, 689);
+  R("Fireworks", 1100, 664, 1100, 687);
+  R("Torch", 1101, 662, 1104, 666);
+
+  player.place(220, 680);
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 60 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 60) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
+else if (location.hash.startsWith("#range")) rangeScene();
 
 window.granulab = {
   demo: demoScene,
   chem: chemScene,
+  range: rangeScene,
   player,
   fighters,
   objects,

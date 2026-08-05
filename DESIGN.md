@@ -146,6 +146,16 @@
 > FIXTURE LESSON (cost 3 debug rounds): paint() fills EMPTY only — charge
 > before cap, wire before liquid, and NOTHING falls unless something holds
 > it; a "dead device" is usually a buried trigger or a collapsed feed.
+>
+> WEAPONS RANGE DEMO shipped (#range / demo picker): five live exhibits —
+> elevated sentry gun shelling a castle (hopper+cannon+clone trigger), fuse-
+> timed mortar (fuse in a ROOFED floor tunnel — cap spill severed an open
+> run), nitro thunder pit (clones drip nitro onto a grate over magma; sealed
+> wall pocket holds the priming nitro or it disperses away), thermite vault
+> breach (torch EMBEDDED at bed level — flames rise, contact ignites), and a
+> fireworks battery as a 1-wide TOP-LIT column (any nose-blocked rocket
+> detonates: blocks and tubes both self-destruct; light from above, feed
+> from below). All five verified live at 60fps.
 > - M5c WATCH THE REACTIONS: per-pair reaction counters (REACT_COUNT), a Lab
 >   Notebook panel with Sandboxels-style discovery log ("saponification!"),
 >   reaction-glow BG mode (recent-reaction heatmap), live rate readout for a
