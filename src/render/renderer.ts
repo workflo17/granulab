@@ -3,7 +3,7 @@
 
 import { PALETTE, N_IDS, E } from "../engine/elements";
 
-export const BG_MODES = ["none", "air", "gray", "dark", "silhouet", "TG"] as const;
+export const BG_MODES = ["none", "air", "gray", "dark", "silhouet", "TG", "toon"] as const;
 
 const VS = `#version 300 es
 layout(location = 0) in vec2 aPos;
@@ -88,6 +88,8 @@ void main() {
     if (id != ${E.FIRE}u && id != ${E.MAGMA}u && id != ${E.SPARK}u) col *= 0.22;
   } else if (uMode == 4) {
     col = vec3(0.92);
+  } else if (uMode == 6) {
+    col = floor(col * 5.0 + 0.5) / 5.0; // toon: posterized bands
   }
   frag = vec4(col, 1.0);
 }`;

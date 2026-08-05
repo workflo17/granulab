@@ -79,6 +79,7 @@ export class Ui {
             <option value="3">bg: dark</option>
             <option value="4">bg: silhouet</option>
             <option value="5">bg: TG</option>
+            <option value="6">bg: toon</option>
           </select>
           <button id="clear">clear</button>
           <button id="fit" title="Reset view">fit</button>
