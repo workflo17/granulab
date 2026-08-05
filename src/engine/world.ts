@@ -13,7 +13,7 @@ const CHUNK_SHIFT = 5;
 
 // liquids that calm down and sleep when nothing around them changes
 // (acid/magma excluded: their life byte is a corrosion budget / they must stay hot)
-const HYST = new Uint8Array(64);
+const HYST = new Uint8Array(N_IDS);
 HYST[E.WATER] = HYST[E.SEAWATER] = HYST[E.OIL] = HYST[E.MERCURY] = HYST[E.MUD] = HYST[E.NITRO] = 1;
 HYST[E.SOAPY] = HYST[E.CO2] = HYST[E.CHLORINE] = 1; // heavy gases pool + sleep too
 const SETTLE = 6; // ticks of stillness before a liquid cell stops dispersing
@@ -129,6 +129,10 @@ export class World {
     if (id !== E.EMPTY && id !== E.WALL) this.dots++;
     this.species[i] = id;
     this.shade[i] = this.rng.byte();
+    // sparks track wire-born-ness in shade bit 0 (painted onto metal = wire)
+    if (id === E.SPARK) {
+      this.shade[i] = old === E.METAL ? this.shade[i] | 1 : this.shade[i] & 0xfe;
+    }
     this.life[i] = aux !== undefined ? aux : LIFE0[id];
     if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
     if (HEAT_PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], 0.6); // seed the heat field
@@ -454,7 +458,9 @@ export class World {
     // stay unbiased. A blind single-neighbor roll let static interfaces go to
     // sleep between misses and stall slow reactions forever (found via the
     // M4.5 chemistry set). Inert elements skip everything — the fast path.
-    if (HAS_REACT[id]) {
+    // Sparks never drive the roll: a reacting spark returns before doSpark and
+    // pins at a liquid surface forever — the liquid's own scan electrolyzes.
+    if (HAS_REACT[id] && BEHAVIOR[id] !== B.SPARK) {
       const rk = this.rng.int(4);
       for (let s = 0; s < 4; s++) {
         const k = (rk + s) & 3;
@@ -750,12 +756,15 @@ export class World {
         // pulse a thin traveling dot instead of saturating the whole wire
         if (this.life[j] === 0 && this.rng.byte() < 250) {
           this.set(j, nx, ny, E.SPARK, LIFE0[E.SPARK]);
-          this.shade[j] = this.rng.byte();
+          this.shade[j] = this.rng.byte() | 1; // wire-born: restores to metal
         }
       } else if (o === E.SPARK) metalNear = true;
     }
     if (this.life[i] === 0) {
-      this.set(i, x, y, metalNear ? E.METAL : E.EMPTY, metalNear ? 12 : 0);
+      // only wire-born sparks restore to metal — a free spark that dies next
+      // to a wire must not weld a stub onto it (that entombs clone pulsers)
+      const wireborn = metalNear && (this.shade[i] & 1) === 1;
+      this.set(i, x, y, wireborn ? E.METAL : E.EMPTY, wireborn ? 12 : 0);
       return;
     }
     this.life[i]--;
@@ -789,7 +798,7 @@ export class World {
         if (species[j] === E.EMPTY) {
           const cid = this.life[i];
           this.set(j, nx, ny, cid, LIFE0[cid]);
-          this.shade[j] = this.rng.byte();
+          this.shade[j] = cid === E.SPARK ? this.rng.byte() & 0xfe : this.rng.byte();
         }
       }
     }
@@ -922,6 +931,25 @@ export class World {
       this.life[i]--;
       this.wake(x, y);
     }
+    // waterline corrosion: rust needs BOTH seawater and air — submerged
+    // electrodes and tank bottoms are safe, the splash zone slowly crumbles
+    if (this.rng.byte() < 3) {
+      const { W, H, species } = this;
+      let sea = false;
+      let air = false;
+      for (let k = 0; k < 4; k++) {
+        const nx = x + World.DX4[k];
+        const ny = y + World.DY4[k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const o = species[ny * W + nx];
+        if (o === E.SEAWATER) sea = true;
+        else if (o === E.EMPTY) air = true;
+      }
+      if (sea && air && this.rng.byte() < 24) {
+        this.set(i, x, y, E.RUST, 0);
+        this.shade[i] = this.rng.byte();
+      }
+    }
   }
 
   private doSuperball(i: number, x: number, y: number): void {
@@ -1047,8 +1075,10 @@ export class World {
         cy++;
         continue;
       }
-      if (o === E.METAL) this.set(j, x, cy + 1, E.SPARK, LIFE0[E.SPARK]);
-      else this.explode(x, cy + 1, 4);
+      if (o === E.METAL) {
+        this.set(j, x, cy + 1, E.SPARK, LIFE0[E.SPARK]);
+        this.shade[j] |= 1; // struck wire restores to metal
+      } else this.explode(x, cy + 1, 4);
       return;
     }
     this.set(ci, x, cy, E.THUNDER, 0);
@@ -1086,14 +1116,14 @@ export class World {
     [3, 0, 1, 2],
   ];
 
-  /** pump: life packs carried species (bits 0-5) + travel direction (bits 6-7).
-   *  Adjacent liquids/gases are absorbed; the token walks the pump line with
-   *  momentum (one hop per tick) and ejects where the line ends — one clear dot
-   *  beyond the pump so it can't instantly re-enter (Dan-Ball semantics). */
+  /** pump: life holds the carried species (full byte — ids can exceed 63);
+   *  the travel direction lives in the shade byte's low 2 bits (a ±3/255 tint,
+   *  invisible). Adjacent liquids/gases are absorbed; the token walks the pump
+   *  line with momentum (one hop per tick) and ejects where the line ends —
+   *  one clear dot beyond the pump so it can't instantly re-enter. */
   private doPump(i: number, x: number, y: number): void {
     const { W, H, species } = this;
-    const lf = this.life[i];
-    const carried = lf & 63;
+    const carried = this.life[i];
     if (carried === 0) {
       for (let k = 0; k < 4; k++) {
         const nx = x + World.DX4[k];
@@ -1102,7 +1132,8 @@ export class World {
         const j = ny * W + nx;
         const b = BEHAVIOR[species[j]];
         if (b === B.LIQUID || b === B.GAS) {
-          this.life[i] = species[j] | (World.OPP4[k] << 6);
+          this.life[i] = species[j];
+          this.shade[i] = (this.shade[i] & 0xfc) | World.OPP4[k];
           this.set(j, nx, ny, E.EMPTY, 0);
           this.wake(x, y);
           return;
@@ -1110,15 +1141,16 @@ export class World {
       }
       return; // idle pump: its chunk may sleep
     }
-    const pref = World.PREF4[lf >>> 6];
+    const pref = World.PREF4[this.shade[i] & 3];
     for (let p = 0; p < 4; p++) {
       const d = pref[p];
       const nx = x + World.DX4[d];
       const ny = y + World.DY4[d];
       if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
       const j = ny * W + nx;
-      if (species[j] === E.PUMP && (this.life[j] & 63) === 0) {
-        this.life[j] = carried | (d << 6);
+      if (species[j] === E.PUMP && this.life[j] === 0) {
+        this.life[j] = carried;
+        this.shade[j] = (this.shade[j] & 0xfc) | d;
         this.life[i] = 0;
         this.clock[j] = this.stamp; // one hop per tick
         this.wake(nx, ny);

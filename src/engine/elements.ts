@@ -58,6 +58,16 @@ export const E = {
   OXYGEN: 51, // accelerant: fire spreads into it
   RUST: 52, // crumbled metal — seawater corrodes metal into this
   CEMENT: 53, // powder that sets to stone on water contact
+  // ---- M5a recipe shelf ----
+  CHARCOAL: 54, // slow-ember fuel; + saltpeter = gunpowder
+  SALTPETER: 55, // oxidizer half of the gunpowder recipe
+  SULFUR: 56, // burns readily; enriches gunpowder
+  LIMESTONE: 57, // kiln it (460° — sustained fire/magma) into lime
+  LIME: 58, // floats out of the melt; + water = cement, + CO2 = limestone again
+  ALUMINUM: 59, // + rust = thermite
+  THERMITE: 60, // inert until 550° — then it IS magma
+  GLYCERIN: 61, // + acid = nitro (nitration)
+  ALCOHOL: 62, // light flammable liquid, clean fast burn
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -155,7 +165,7 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.VIRUS, name: "Virus", color: "#c05ac0", behavior: B.VIRUS, density: 55, life0: 120 }),
   def({ id: E.ANT, name: "Ant", color: "#2e2620", behavior: B.ANT, density: 60, flammable: 120, burnLife: 15 }),
   def({ id: E.MERCURY, name: "Mercury", color: "#b8bcc8", behavior: B.LIQUID, density: 120, disperse: 4 }),
-  def({ id: E.SPARK, name: "Spark", color: "#ffe94a", behavior: B.SPARK, density: 255, life0: 4, hot: true, device: true, temp0: 400, pump: 0.2 }),
+  def({ id: E.SPARK, name: "Spark", color: "#ffe94a", behavior: B.SPARK, density: 255, life0: 4, hot: true, device: true, temp0: 180, pump: 0.04 }),
   def({ id: E.CLONE, name: "Clone", color: "#d8c850", behavior: B.CLONE, density: 255, device: true }),
   def({ id: E.FAN, name: "Fan", color: "#7ab8c8", density: 255, device: true }),
   def({ id: E.SAND, name: "Sand", color: "#d9a95f", behavior: B.POWDER, density: 62, hotAt: 700, hotTo: E.GLASS }),
@@ -184,10 +194,20 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.OXYGEN, name: "Oxygen", color: "#c8f0e8", behavior: B.GAS, density: 2, disperse: 3 }),
   def({ id: E.RUST, name: "Rust", color: "#a05628", behavior: B.POWDER, density: 58 }),
   def({ id: E.CEMENT, name: "Cement", color: "#a8a49c", behavior: B.POWDER, density: 60 }),
+  // ---- M5a recipe shelf ----
+  def({ id: E.CHARCOAL, name: "Charcoal", color: "#33302c", behavior: B.POWDER, density: 45, flammable: 90, burnLife: 120 }),
+  def({ id: E.SALTPETER, name: "Saltpeter", color: "#d8d2e8", behavior: B.POWDER, density: 55 }),
+  def({ id: E.SULFUR, name: "Sulfur", color: "#e8d44a", behavior: B.POWDER, density: 50, flammable: 200, burnLife: 30, ignitesAt: 260 }),
+  def({ id: E.LIMESTONE, name: "Limestone", color: "#cfc9b8", behavior: B.POWDER, density: 80, hotAt: 460, hotTo: E.LIME }),
+  def({ id: E.LIME, name: "Lime", color: "#f4f0e2", behavior: B.POWDER, density: 36 }),
+  def({ id: E.ALUMINUM, name: "Aluminum", color: "#cdd4dc", behavior: B.POWDER, density: 56 }),
+  def({ id: E.THERMITE, name: "Thermite", color: "#7a4a3a", behavior: B.POWDER, density: 62, hotAt: 550, hotTo: E.MAGMA }),
+  def({ id: E.GLYCERIN, name: "Glycerin", color: "#d8c8a0", behavior: B.LIQUID, density: 33, disperse: 2 }),
+  def({ id: E.ALCOHOL, name: "Alcohol", color: "#c8e0d8", behavior: B.LIQUID, density: 18, disperse: 5, flammable: 230, burnLife: 25, ignitesAt: 300 }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
-export const N_IDS = 64;
+export const N_IDS = 128;
 export const BEHAVIOR = new Uint8Array(N_IDS);
 export const DENSITY = new Uint8Array(N_IDS);
 export const DISPERSE = new Uint8Array(N_IDS);
@@ -338,7 +358,8 @@ react(E.CHLORINE, E.VINE, E.CHLORINE, E.EMPTY, 120); // defoliant
 react(E.CHLORINE, E.ANT, E.CHLORINE, E.EMPTY, 160); // toxic to critters
 react(E.CHLORINE, E.BIRD, E.CHLORINE, E.EMPTY, 160);
 react(E.CHLORINE, E.WATER, E.ACID, E.WATER, 2); // chlorine water turns acidic
-react(E.METAL, E.SEAWATER, E.RUST, E.SEAWATER, 1); // salt water rusts metal
+// (metal rusting lives in doMetalCool: seawater + AIR at the waterline only —
+// a table row ate submerged electrodes and tanks in seconds)
 react(E.CEMENT, E.WATER, E.STONE, E.EMPTY, 60); // cement sets, absorbing water
 react(E.HYDROGEN, E.CHLORINE, E.ACID, E.ACID, 40); // H2+Cl2 = acid factory
 react(E.LYE, E.CO2, E.SODA, E.EMPTY, 60); // lye scrubs CO2 into carbonate
@@ -348,4 +369,12 @@ react(E.SALT, E.ICE, E.EMPTY, E.WATER, 15); // ...and ice
 react(E.CHLORINE, E.VIRUS, E.CHLORINE, E.EMPTY, 200); // bleach disinfects
 react(E.CHLORINE, E.SEED, E.CHLORINE, E.EMPTY, 120); // herbicide
 react(E.METAL, E.MERCURY, E.MERCURY, E.MERCURY, 1); // slow amalgamation
+
+// ---- M5a recipe shelf ------------------------------------------------------
+react(E.SALTPETER, E.CHARCOAL, E.GUNPOWDER, E.GUNPOWDER, 50); // the recipe
+react(E.SULFUR, E.GUNPOWDER, E.GUNPOWDER, E.GUNPOWDER, 20); // sulfur enriches
+react(E.LIME, E.WATER, E.CEMENT, E.EMPTY, 80); // slaking
+react(E.LIME, E.CO2, E.LIMESTONE, E.EMPTY, 40); // carbonation closes the cycle
+react(E.ALUMINUM, E.RUST, E.THERMITE, E.THERMITE, 50); // thermite mix
+react(E.GLYCERIN, E.ACID, E.NITRO, E.NITRO, 25); // nitration
 

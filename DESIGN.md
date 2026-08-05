@@ -102,14 +102,31 @@
 > stirring (that's real buoyancy — a 1-cell gap = permanent separation); acid
 > fully consumes itself into H2 over bare metal (use glass/wall containers).
 >
-> M5 ROADMAP — CHEMISTRY LAB (owner ask 8/05: a tool to WATCH reactions and
-> BUILD devices from them; staged, each stage ships alone):
-> - M5a REAGENT SHELF II: raise N_IDS 64→128 (pump life-packing needs a cargo
->   side-array — species no longer fits 6 bits). Then: saltpeter/charcoal/
->   sulfur → mix into gunpowder, limestone (heat→lime+CO2; lime+water exothermic
->   slaking), aluminum + thermite (rust+Al), glycerin (+acid→nitro synthesis),
->   alcohol (ferments, distills), wax. Recipes > raw adds: every new id must
->   join ≥2 loops.
+> M5a SHIPPED — REAGENT SHELF II + CHEM DEMO + RECIPE HUD:
+> N_IDS 64→128 (pump cargo = full life byte, direction moved to shade bits 0-1;
+> customs now start at 63, 65 slots). 9 recipe reagents (ids 54-62): Charcoal,
+> Saltpeter, Sulfur, Limestone, Lime, Aluminum, Thermite, Glycerin, Alcohol.
+> Recipes: saltpeter+charcoal→gunpowder (+sulfur enriches), aluminum+rust→
+> thermite (hotAt 550 → IS magma; charcoal ember bed = the reliable igniter,
+> torch alone won't — a magma droplet quenches first), limestone kilns at 460
+> (sinks into the melt, lime density 36 floats back out as crust), lime+water→
+> cement / lime+CO2→limestone (closed lime cycle), glycerin+acid→nitro.
+> REAGENT DATASHEET HUD: bottom-left card auto-generated from REACT + thermal
+> registry for the held element (customs self-document); demo picker in the
+> transport (sandbox / chem lab). #chem scene: 7 self-running stations —
+> electrolysis + chlor-alkali cells (clone-spark pulser on a wire), gunpowder
+> mill, thermite forge over a quench pool, lime kiln, soda-acid fizz whose CO2
+> overflow smothers torches, greenhouse (vine CO2→O2 under glass), soap geyser.
+> ENGINE FIXES earned by the demo: (1) sparks no longer drive the react roll
+> (a reacting spark returned before doSpark and pinned at liquid surfaces);
+> (2) spark cooled to 180°/0.04 pump — 400° sparks DISTILLED brine and the
+> chlor-alkali cell electrolyzed the fresh condensate (real desalination,
+> wrong product); ignition unaffected (hotContact4 is contact, not field);
+> (3) only WIRE-BORN sparks (shade bit 0) restore to metal on death — free
+> sparks welded stubs onto wires and entombed clone pulsers after one shot;
+> (4) metal rusting moved from the REACT table into doMetalCool as a waterline
+> rule (needs seawater AND air) — a table row ate submerged electrodes in
+> seconds; tanks and deep wiring are now safe, splash zones crumble.
 > - M5b CHEMICAL DEVICES: DETECTOR (clone-style memory; emits a spark pulse
 >   when its species touches it → chemical→electrical sensors), VALVE (wall
 >   that opens while sparked), HEATER/COOLER plates (pure registry entries),

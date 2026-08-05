@@ -1,7 +1,10 @@
 // Toolbar, palette, wells, status readout. The UI's accent is the held element's
 // color (--accent-l / --accent-r) — the chassis stays neutral, substances carry chroma.
 
-import { E, ELEMENTS, type CustomSpec } from "../engine/elements";
+import {
+  E, ELEMENTS, REACT, N_IDS, HOT_AT, HOT_TO, COLD_AT, COLD_TO,
+  IGNITES_AT, FLAMMABLE, EXPLODE_R, type CustomSpec,
+} from "../engine/elements";
 
 export interface UiState {
   toolL: number;
@@ -23,6 +26,7 @@ export interface UiHooks {
   onCopyCode(): void;
   onPasteCode(): void;
   onCreateElement(spec: CustomSpec): void;
+  onDemo(name: string): void;
 }
 
 /** pseudo-tool: click the canvas to (re)place the stickman */
@@ -58,6 +62,7 @@ export class Ui {
   private statDots!: HTMLElement;
   private statChunks!: HTMLElement;
   private statPos!: HTMLElement;
+  private reagentCard!: HTMLElement;
 
   constructor(root: HTMLElement, private hooks: UiHooks) {
     root.innerHTML = `
@@ -83,6 +88,11 @@ export class Ui {
           </select>
           <button id="clear">clear</button>
           <button id="fit" title="Reset view">fit</button>
+          <select id="demosel" title="Load a prebuilt scene" aria-label="Load a prebuilt demo scene">
+            <option value="" selected disabled>demo…</option>
+            <option value="sandbox">demo: sandbox</option>
+            <option value="chem">demo: chem lab</option>
+          </select>
           <select id="penmode" title="Pen mode">
             <option value="free" selected>pen: free</option>
             <option value="line">pen: line</option>
@@ -146,7 +156,7 @@ export class Ui {
           </menu>
         </form>
       </dialog>
-      <main><canvas id="dish"></canvas></main>
+      <main><canvas id="dish"></canvas><div id="reagent" aria-live="polite" hidden></div></main>
       <footer>
         <span>fps <b id="s-fps">–</b></span>
         <span>tick <b id="s-tick">–</b> ms</span>
@@ -284,6 +294,10 @@ export class Ui {
     root.querySelector<HTMLSelectElement>("#penmode")!.addEventListener("change", (e) => {
       this.state.penMode = (e.target as HTMLSelectElement).value as PenMode;
     });
+    root.querySelector<HTMLSelectElement>("#demosel")!.addEventListener("change", (e) => {
+      hooks.onDemo((e.target as HTMLSelectElement).value);
+    });
+    this.reagentCard = root.querySelector<HTMLElement>("#reagent")!;
     this.penInput.addEventListener("input", () => this.setPen(parseInt(this.penInput.value)));
 
     this.bind("L", E.POWDER);
@@ -306,6 +320,53 @@ export class Ui {
       btn.classList.toggle("sel-l", bid === this.state.toolL);
       btn.classList.toggle("sel-r", bid === this.state.toolR);
     }
+    if (side === "L") this.renderRecipes(id);
+  }
+
+  /** reagent datasheet: what the held element reacts with, straight from the
+   *  live REACT table + thermal registry — custom elements document themselves */
+  private renderRecipes(id: number): void {
+    const card = this.reagentCard;
+    if (id <= E.WALL || id >= ELEMENTS.length) { card.hidden = true; return; }
+    const sw = (eid: number): string =>
+      eid === E.EMPTY
+        ? `<i class="rsw" style="border:1px solid var(--hairline)"></i>`
+        : `<i class="rsw" style="background:${ELEMENTS[eid].color}"></i>`;
+    const nm = (eid: number): string => (eid === E.EMPTY ? "∅" : ELEMENTS[eid].name);
+    const rows: string[] = [];
+    for (let b = E.WALL + 1; b < ELEMENTS.length; b++) {
+      const r = REACT[id * N_IDS + b];
+      if (r === 0) continue;
+      const newA = (r >>> 8) & 255;
+      const newB = r & 255;
+      const prods: number[] = [];
+      if (newA !== id) prods.push(newA);
+      if (newB !== b) prods.push(newB);
+      const shown = prods.filter((p) => p !== E.EMPTY); // absorbed partners read cleaner unlisted
+      let prod: string;
+      if (prods.length === 2 && prods[0] === prods[1] && prods[0] !== E.EMPTY) {
+        prod = `${sw(prods[0])}${nm(prods[0])} ×2`;
+      } else if (shown.length > 0) {
+        prod = shown.map((p) => sw(p) + nm(p)).join(" + ");
+      } else {
+        prod = "∅";
+      }
+      rows.push(`<div class="rx"><span>+ ${sw(b)}${nm(b)}</span><span class="arr">→</span><span>${prod}</span></div>`);
+    }
+    if (HOT_TO[id] !== 0) {
+      rows.push(`<div class="rx"><span>≥ ${HOT_AT[id]}°</span><span class="arr">→</span><span>${sw(HOT_TO[id])}${nm(HOT_TO[id])}</span></div>`);
+    }
+    if (COLD_TO[id] !== 0) {
+      rows.push(`<div class="rx"><span>≤ ${COLD_AT[id]}°</span><span class="arr">→</span><span>${sw(COLD_TO[id])}${nm(COLD_TO[id])}</span></div>`);
+    }
+    const flags: string[] = [];
+    if (IGNITES_AT[id] < 32767) flags.push(`ignites ≥ ${IGNITES_AT[id]}°`);
+    else if (FLAMMABLE[id] > 0) flags.push("flammable");
+    if (EXPLODE_R[id] > 0) flags.push(`blast r${EXPLODE_R[id]}`);
+    if (flags.length) rows.push(`<div class="rx flags">${flags.join(" · ")}</div>`);
+    if (rows.length === 0) { card.hidden = true; return; }
+    card.innerHTML = `<div class="rhead">${sw(id)}${ELEMENTS[id].name}</div>` + rows.join("");
+    card.hidden = false;
   }
 
   /** add a palette button for a freshly registered custom element */

@@ -205,6 +205,38 @@ dialog .rxdel {
   line-height: 1;
 }
 
+/* ---- reagent datasheet card ---- */
+#reagent {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: 270px;
+  background: color-mix(in srgb, var(--chassis) 90%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  pointer-events: none; /* never blocks the pen */
+}
+#reagent .rhead {
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+#reagent .rx { display: flex; gap: 6px; align-items: baseline; color: var(--dim); }
+#reagent .rx .arr { opacity: 0.6; }
+#reagent .rx.flags { margin-top: 3px; font-style: italic; opacity: 0.85; }
+#reagent .rsw {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: baseline;
+}
+
 /* ---- status readout ---- */
 footer {
   grid-area: status;

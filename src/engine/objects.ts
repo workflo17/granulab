@@ -141,9 +141,12 @@ export class ObjectSystem {
 
   update(): void {
     const w = this.world;
-    // soapy whipped off by wind becomes real bubbles
+    // soapy whipped off by wind becomes real bubbles — capped so a geyser
+    // can't starve the shared object budget (balls/boxes/wheels)
     const q = w.bubbleQueue;
-    for (let k = 0; k < q.length; k++) {
+    let nb = 0;
+    for (const o of this.list) if (o.kind === "bubble") nb++;
+    for (let k = 0; k < q.length && nb < 24; k++, nb++) {
       this.spawn("bubble", q[k] % w.W, (q[k] / w.W) | 0);
     }
     q.length = 0;

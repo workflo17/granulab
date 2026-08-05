@@ -139,6 +139,14 @@ const ui = new Ui(root, {
     if (code && !(await loadSceneCode(code))) alert("Not a valid Granulab scene code.");
   },
   onCreateElement: createCustomElement,
+  onDemo: (name: string) => {
+    world.clear();
+    player.remove();
+    objects.clear();
+    fighters.length = 0;
+    if (name === "sandbox") demoScene();
+    else if (name === "chem") chemScene();
+  },
 });
 
 function createCustomElement(spec: CustomSpec): number | null {
@@ -487,10 +495,102 @@ function demoScene(): void {
   };
   settle();
 }
+// #chem: the chemistry lab bench — every reaction loop running live, unattended
+function chemScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  R("Wall", 30, 690, 1250, 700); // the bench
+
+  // 1) electrolysis cells: a clone pulser sparks a submerged wire — pulses are
+  //    transient so the reaction beats the boil (sustained sparks just make steam)
+  const cell = (x0: number, x1: number, liquid: string) => {
+    R("Wall", x0, 600, x0 + 2, 690);
+    R("Wall", x1 - 2, 600, x1, 690);
+    R("Metal", x0 + 4, 618, x0 + 4, 686); // dry riser
+    R("Metal", x0 + 4, 686, x1 - 5, 686); // submerged run
+    R(liquid, x0 + 5, 648, x1 - 3, 685);
+    world.paint(x0 + 6, 618, byName("Clone"));
+    world.paint(x0 + 7, 618, byName("Spark")); // primer: clone memorizes spark
+  };
+  cell(40, 118, "Water"); // bubbles hydrogen
+  cell(128, 206, "Seawater"); // pools chlorine
+
+  // 2) gunpowder mill: saltpeter raining onto a charcoal shelf
+  R("Wall", 230, 640, 350, 642);
+  R("Charcoal", 240, 628, 340, 638);
+  R("Saltpeter", 262, 590, 318, 618);
+
+  // 3) thermite forge: torch -> ember bed -> thermite -> magma melts the beam
+  //    and quenches in the pool below (stone + steam)
+  R("Wall", 380, 655, 382, 690);
+  R("Wall", 538, 655, 540, 690);
+  R("Water", 383, 668, 537, 688);
+  R("Metal", 390, 640, 530, 646);
+  R("Charcoal", 400, 630, 520, 638);
+  R("Thermite", 435, 610, 485, 628);
+  R("Torch", 392, 630, 398, 638);
+
+  // 4) lime kiln: limestone sinks into the magma bath, calcines at depth, and
+  //    the lighter lime floats back up as a white crust on the melt
+  R("Wall", 560, 600, 562, 690);
+  R("Wall", 678, 600, 680, 690);
+  R("Magma", 563, 650, 677, 688);
+  R("Limestone", 580, 612, 660, 645);
+
+  // 5) fizz basin: clone-dripped acid on soda; CO2 overflows the low lip and
+  //    smothers the torches downstream
+  R("Wall", 700, 640, 702, 690);
+  R("Wall", 826, 656, 828, 690);
+  R("Soda", 703, 674, 825, 688);
+  for (let x = 730, k = 0; x <= 800; x++, k++) {
+    world.paint(x, 610, byName(k % 3 === 0 ? "Acid" : "Clone"));
+  }
+  R("Torch", 850, 682, 856, 688);
+  R("Torch", 880, 682, 886, 688);
+
+  // 6) greenhouse: vines photosynthesize the CO2 atmosphere into oxygen
+  R("Glass", 900, 600, 902, 690);
+  R("Glass", 1000, 600, 1002, 690);
+  R("Glass", 900, 598, 1002, 600);
+  R("Vine", 930, 640, 932, 688);
+  R("Vine", 950, 650, 952, 688);
+  R("Vine", 970, 636, 972, 688);
+  R("CO2", 903, 656, 999, 688);
+
+  // 7) soap geyser: a fan at the pool floor blows straight up — bubbles launch
+  //    into open sky instead of smearing into a side wall
+  R("Wall", 1020, 650, 1022, 690);
+  R("Wall", 1128, 650, 1130, 690);
+  for (let y = 678; y <= 686; y++) {
+    for (let x = 1070; x <= 1076; x++) world.paint(x, y, byName("Fan"), 192); // angle 192 = up
+  }
+  R("Soapy", 1023, 664, 1127, 688); // fills around the fan
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 300 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 300) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
+else if (location.hash.startsWith("#chem")) chemScene();
 
 window.granulab = {
   demo: demoScene,
+  chem: chemScene,
   player,
   fighters,
   objects,
