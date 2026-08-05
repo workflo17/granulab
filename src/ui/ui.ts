@@ -136,11 +136,10 @@ export class Ui {
             <label>cold at °C <input name="coldAt" type="number" placeholder="never"></label>
             <label>turns into <select name="coldTo" data-targets></select></label>
             <label>ignites at °C <input name="ignitesAt" type="number" placeholder="never"></label>
-            <label>reacts with <select name="rwith" data-targets></select></label>
-            <label>chance /256 <input name="rprob" type="number" value="60" min="1" max="255"></label>
-            <label>self becomes <select name="rself" data-morph></select></label>
-            <label>partner becomes <select name="rother" data-morph></select></label>
           </div>
+          <div class="rxhead"><span>reactions</span><button type="button" id="addrx">+ row</button></div>
+          <div class="rxcols"><span>reacts with</span><span>self becomes</span><span>partner becomes</span><span>p/256</span><span></span></div>
+          <div id="rxrows"></div>
           <menu>
             <button value="cancel" formnovalidate>cancel</button>
             <button value="ok" class="primary">create</button>
@@ -184,7 +183,6 @@ export class Ui {
     newBtn.className = "el";
     newBtn.innerHTML = `<span class="sw" style="background:linear-gradient(45deg,#e84a9a,#7ab8c8)"></span>+ New…`;
     const dialog = root.querySelector<HTMLDialogElement>("#eldialog")!;
-    newBtn.addEventListener("click", () => dialog.showModal());
     this.customHost.appendChild(newBtn);
     this.newElBtn = newBtn;
     // transition-target dropdowns: base elements only
@@ -193,18 +191,51 @@ export class Ui {
     for (const sel of dialog.querySelectorAll<HTMLSelectElement>("select[data-targets]")) {
       sel.innerHTML = `<option value="0">—</option>` + targetOptions;
     }
-    for (const sel of dialog.querySelectorAll<HTMLSelectElement>("select[data-morph]")) {
-      sel.innerHTML = `<option value="-1">unchanged</option><option value="0">vanish</option>` + targetOptions;
-    }
-    dialog.addEventListener("close", () => {
-      if (dialog.returnValue !== "ok") return;
-      const f = new FormData(root.querySelector<HTMLFormElement>("#elform")!);
+    // reaction rows: dynamic list, each row is one REACT table entry
+    const rxRows = dialog.querySelector<HTMLElement>("#rxrows")!;
+    const morphOptions = `<option value="-1">unchanged</option><option value="0">vanish</option>` + targetOptions;
+    const addRxRow = (): void => {
+      if (rxRows.children.length >= 6) return;
+      const row = document.createElement("div");
+      row.className = "rrow";
+      row.innerHTML = `
+        <select data-rw><option value="0">—</option>${targetOptions}</select>
+        <select data-rs>${morphOptions}</select>
+        <select data-ro>${morphOptions}</select>
+        <input data-rp type="number" value="60" min="1" max="255">
+        <button type="button" class="rxdel" title="remove row">×</button>`;
+      row.querySelector(".rxdel")!.addEventListener("click", () => row.remove());
+      rxRows.appendChild(row);
+    };
+    dialog.querySelector("#addrx")!.addEventListener("click", addRxRow);
+    newBtn.addEventListener("click", () => {
+      rxRows.replaceChildren();
+      addRxRow();
+      dialog.showModal();
+    });
+    // create on submit, not on dialog "close" — embedded browsers can drop the
+    // close event entirely; submit + e.submitter is reliable everywhere
+    const elform = root.querySelector<HTMLFormElement>("#elform")!;
+    elform.addEventListener("submit", (e) => {
+      if ((e.submitter as HTMLButtonElement | null)?.value !== "ok") return;
+      const f = new FormData(elform);
       const num = (k: string): number | undefined => {
         const v = String(f.get(k) ?? "").trim();
         return v === "" ? undefined : Number(v);
       };
       const hotTo = Number(f.get("hotTo"));
       const coldTo = Number(f.get("coldTo"));
+      const reactions: NonNullable<CustomSpec["reactions"]> = [];
+      for (const row of rxRows.querySelectorAll<HTMLElement>(".rrow")) {
+        const w = Number(row.querySelector<HTMLSelectElement>("[data-rw]")!.value);
+        if (w <= 0) continue;
+        reactions.push({
+          with: w,
+          becomeSelf: Number(row.querySelector<HTMLSelectElement>("[data-rs]")!.value),
+          becomeOther: Number(row.querySelector<HTMLSelectElement>("[data-ro]")!.value),
+          p: Number(row.querySelector<HTMLInputElement>("[data-rp]")!.value) || 60,
+        });
+      }
       hooks.onCreateElement({
         name: String(f.get("name")),
         color: String(f.get("color")),
@@ -219,12 +250,7 @@ export class Ui {
         coldAt: coldTo ? num("coldAt") : undefined,
         coldTo: num("coldAt") !== undefined ? coldTo : 0,
         ignitesAt: num("ignitesAt"),
-        reactions: Number(f.get("rwith")) > 0 ? [{
-          with: Number(f.get("rwith")),
-          becomeSelf: Number(f.get("rself")),
-          becomeOther: Number(f.get("rother")),
-          p: Number(f.get("rprob")) || 60,
-        }] : undefined,
+        reactions: reactions.length ? reactions : undefined,
       });
     });
 

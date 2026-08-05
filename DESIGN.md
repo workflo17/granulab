@@ -66,9 +66,15 @@
 > reaction row. Custom elements are now full citizens: state, density, fire,
 > explosions, thermal profile, AND chemistry.
 >
-> M4 QUEUE: multiple reaction rows per element, remaining BG modes
-> (blur/shade/aura/light/toon/mesh/track), pump/bubble tools, minimap, upload
-> gallery, wheel spin visual, WASM hot loop (perf ceiling).
+> M4.3 SHIPPED: toon BG mode (7th), corner minimap (1/8-scale, 200ms), MULTIPLE
+> REACTION ROWS in the Maker (+ row / × delete, up to 6; rows reset per open).
+> Verified: 2-row element transmuted water→metal AND oil→stone in one sim.
+> GOTCHA: the embedded Claude browser NEVER fires dialog "close" events (dropped
+> task — even on a fresh dialog) — the Maker now creates on form "submit" +
+> e.submitter instead; never hang app logic off dialog close.
+>
+> M4 QUEUE: pump/bubble tools, remaining BG modes (blur/shade/aura/light/mesh/
+> track), upload gallery, wheel spin visual, WASM hot loop (perf ceiling).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
