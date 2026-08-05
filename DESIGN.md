@@ -208,8 +208,17 @@
 > - M5e BALANCE & SCALE: mass-conservation audit per row, rate tuning pass,
 >   WASM hot loop when reaction load meets the 211k-cell ceiling.
 >
-> M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/track),
-> upload gallery, wheel spin visual.
+> AMBIENT FIELD VISUALS shipped (owner ask 8/05): the invisible physics now
+> shows in the NORMAL view (modes 0-1) — wind renders as motes drifting with
+> the flow (blast shockwaves visible), hot air shimmers orange, matter above
+> ~250° glows red-hot (heated tungsten bars!), sub-zero zones frost blue and
+> rime the matter. Wind+temp textures now upload every frame in modes ≤1.
+> WHEEL SPIN visual done: rolling spokes + bright rim (angle += vx/r on
+> ground contact). QA TRAP (new): the pane throttles rAF when not displayed —
+> wall-clock waits tick NOTHING; always verify with synchronous g.tick(n).
+>
+> M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
+> track — partly obsoleted by the ambient overlays), upload gallery, WASM.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth

@@ -18,6 +18,7 @@ const MAX_OBJECTS = 64;
 export class RigidObject {
   vx = 0;
   vy = 0;
+  angle = 0; // wheels: rolling rotation, drawn as spokes
   constructor(public kind: ObjKind, public x: number, public y: number) {}
   get r(): number { return KIND_R[this.kind]; }
   get id(): number { return KIND_ID[this.kind]; }
@@ -89,9 +90,22 @@ export class ObjectSystem {
 
   private stamp(o: RigidObject): void {
     const w = this.world;
+    const wheel = o.kind === "wheel";
+    const x0 = Math.round(o.x);
+    const y0 = Math.round(o.y);
     this.cells(o, (cx, cy) => {
       if (cx >= 0 && cy >= 0 && cx < w.W && cy < w.H && w.species[cy * w.W + cx] === E.EMPTY) {
-        w.rawSet(cx, cy, o.id, 150 + ((cx * 3 + cy * 5) & 63));
+        let shade = 150 + ((cx * 3 + cy * 5) & 63);
+        if (wheel) {
+          // four rolling spokes + a bright rim so the spin reads
+          const dx = cx - x0;
+          const dy = cy - y0;
+          const rr = dx * dx + dy * dy;
+          if (rr >= (o.r - 1.5) * (o.r - 1.5)) shade = 210;
+          else if (Math.abs(Math.sin(Math.atan2(dy, dx) * 2 + o.angle)) < 0.3) shade = 96;
+          else shade = 170;
+        }
+        w.rawSet(cx, cy, o.id, shade);
       }
     });
   }
@@ -211,6 +225,7 @@ export class ObjectSystem {
             if (sy > 0) {
               // ground contact: wheels roll toward the lower ground side
               if (o.kind === "wheel") {
+                o.angle += o.vx / o.r;
                 const hl = this.groundY(o.x - 4, o.y);
                 const hr = this.groundY(o.x + 4, o.y);
                 if (hr - hl > 1) o.vx += 0.15;

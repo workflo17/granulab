@@ -107,6 +107,22 @@ void main() {
       // direction-tinted airflow: rightward warm, leftward cool, vertical green
       bg += vec3(max(w.x, 0.0) * 1.4, speed * 0.55, max(-w.x, 0.0) * 1.4 + max(-w.y, 0.0) * 0.6) * min(speed, 0.85);
     }
+    if (uMode == 0 || uMode == 1) {
+      // ambient physics made visible: motes drift with the wind, hot air
+      // shimmers orange, cold air frosts blue
+      vec2 wv = texture(uWind, cellF / uGrid).rg * 2.0 - 1.0;
+      float ws = length(wv);
+      if (ws > 0.06) {
+        vec2 dir = wv / max(ws, 1e-4);
+        float mote = hash(floor((cellF - dir * uTime * (30.0 + 120.0 * ws)) / 3.0));
+        bg += vec3(0.09, 0.11, 0.13) * step(0.82, mote) * min(ws * 1.5, 0.55);
+      }
+      float Tv = texture(uTemp, cellF / uGrid).r;
+      float heat = smoothstep(0.099, 0.30, Tv);
+      float frost = smoothstep(0.0565, 0.030, Tv);
+      bg += vec3(0.11, 0.05, 0.015) * heat * (0.55 + 0.45 * hash(vec2(cell) + floor(uTime * 14.0)));
+      bg += vec3(0.015, 0.05, 0.09) * frost;
+    }
     frag = vec4(bg, 1.0);
     return;
   }
@@ -121,6 +137,13 @@ void main() {
   } else if (id == ${E.MAGMA}u) {
     float f = hash(vec2(cell) * 0.7 + floor(uTime * 6.0));
     col = mix(col, vec3(1.0, 0.75, 0.2), f * 0.35);
+  } else if (uMode == 0 || uMode == 1) {
+    // matter wears the temperature field: red-hot glow above ~250°, frost rime
+    float Tv = texture(uTemp, cellF / uGrid).r;
+    float emis = smoothstep(0.22, 0.75, Tv);
+    float frost = smoothstep(0.0565, 0.030, Tv);
+    col += vec3(1.0, 0.32, 0.06) * emis * 0.85;
+    col = mix(col, vec3(0.72, 0.84, 1.0), frost * 0.28);
   }
   if (uMode == 2) {
     col = vec3(dot(col, vec3(0.299, 0.587, 0.114)));
@@ -285,13 +308,14 @@ export class Renderer {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, o.x0, o.y0, o.w, o.h, gl.RED_INTEGER, gl.UNSIGNED_BYTE, o.shade);
       }
     }
-    if (this.mode === 1) {
+    if (this.mode <= 1) {
+      // ambient overlays sample wind + temp in the normal view too
       fillWind(this.windBuf);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, this.texWind);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.windW, this.windH, gl.RG, gl.UNSIGNED_BYTE, this.windBuf);
     }
-    if (this.mode === 5) {
+    if (this.mode <= 1 || this.mode === 5) {
       fillTemp(this.tempBuf);
       gl.activeTexture(gl.TEXTURE3);
       gl.bindTexture(gl.TEXTURE_2D, this.texTemp);
