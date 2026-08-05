@@ -231,6 +231,14 @@
 > or loose gravel as a blunderbuss spray. Impact transfer now keeps half the
 > flyer's speed (spring-chain), which livens piles but can't fix slugs.
 >
+> PHYSICS TUNE (owner ask 8/05): explosions hit harder — debris mag 110→150
+> (+20 base), object impulse 9→16, wind burst 6→9; hand-built cannon now
+> launches 197 cells vertical (was 157). BALLS ROLL: same groundY slope
+> sensing as wheels (0.12 accel) + rotation with a marker-dot visual —
+> verified 327 cells down a 26° incline. NOTE: slope sensing spans ±4 cells,
+> so terrain flatter than that per-step reads as flat (a ball mid-step on a
+> wide staircase correctly sits still).
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays), upload gallery, WASM.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

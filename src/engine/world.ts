@@ -1634,9 +1634,9 @@ export class World {
         if (b !== B.POWDER && b !== B.LIQUID && b !== B.SUPERBALL) continue;
         if (!this.losClear(cx, cy, x, y)) continue; // walls shield the debris too
         const d = Math.sqrt(d2);
-        const mag = 110 * (1 - d / R2) + 16; // up to ~7.9 cells/tick at the core
+        const mag = 150 * (1 - d / R2) + 20; // up to ~10.6 cells/tick at the core
         this.vx8[i] = Math.max(-120, Math.min(120, ((dx / d) * mag) | 0));
-        this.vy8[i] = Math.max(-120, Math.min(120, (((dy / d) * mag) | 0) - 22)); // loft
+        this.vy8[i] = Math.max(-120, Math.min(120, (((dy / d) * mag) | 0) - 20)); // loft
         this.wake(x, y);
       }
     }
@@ -1669,7 +1669,7 @@ export class World {
         if (wx < 0 || wx >= this.WX) continue;
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
         if (d > rw) continue;
-        const s = (6 * (1 - d / rw)) / d;
+        const s = (9 * (1 - d / rw)) / d;
         const wi = wy * this.WX + wx;
         this.vx[wi] = Math.max(-8, Math.min(8, this.vx[wi] + dx * s));
         this.vy[wi] = Math.max(-8, Math.min(8, this.vy[wi] + dy * s));

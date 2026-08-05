@@ -91,6 +91,7 @@ export class ObjectSystem {
   private stamp(o: RigidObject): void {
     const w = this.world;
     const wheel = o.kind === "wheel";
+    // (balls get a rolling marker in the same pass)
     const x0 = Math.round(o.x);
     const y0 = Math.round(o.y);
     this.cells(o, (cx, cy) => {
@@ -104,6 +105,12 @@ export class ObjectSystem {
           if (rr >= (o.r - 1.5) * (o.r - 1.5)) shade = 210;
           else if (Math.abs(Math.sin(Math.atan2(dy, dx) * 2 + o.angle)) < 0.3) shade = 96;
           else shade = 170;
+        } else if (o.kind === "ball") {
+          // one dark marker dot that travels with the rotation
+          const mx = x0 + Math.cos(o.angle) * (o.r - 2.5);
+          const my = y0 + Math.sin(o.angle) * (o.r - 2.5);
+          const dd = (cx - mx) * (cx - mx) + (cy - my) * (cy - my);
+          if (dd < 2.6) shade = 92;
         }
         w.rawSet(cx, cy, o.id, shade);
       }
@@ -178,9 +185,9 @@ export class ObjectSystem {
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
         if (d > R) continue;
         if (!w.losClear(bx, by, Math.round(o.x), Math.round(o.y))) continue;
-        const imp = 9 * (1 - d / R);
+        const imp = 16 * (1 - d / R);
         o.vx += (dx / d) * imp;
-        o.vy += (dy / d) * imp - 1; // loft
+        o.vy += (dy / d) * imp - 2; // loft
       }
     }
     bq.length = 0;
@@ -243,13 +250,14 @@ export class ObjectSystem {
           if (!this.collides(o, o.x, o.y + sy)) o.y += sy;
           else {
             if (sy > 0) {
-              // ground contact: wheels roll toward the lower ground side
-              if (o.kind === "wheel") {
+              // ground contact: round things roll toward the lower side
+              if (o.kind === "wheel" || o.kind === "ball") {
                 o.angle += o.vx / o.r;
                 const hl = this.groundY(o.x - 4, o.y);
                 const hr = this.groundY(o.x + 4, o.y);
-                if (hr - hl > 1) o.vx += 0.15;
-                else if (hl - hr > 1) o.vx -= 0.15;
+                const roll = o.kind === "wheel" ? 0.15 : 0.12;
+                if (hr - hl > 1) o.vx += roll;
+                else if (hl - hr > 1) o.vx -= roll;
               }
               if (Math.abs(o.vy) < 0.6) o.vy = 0;
               else o.vy = -o.vy * REST[o.kind];
