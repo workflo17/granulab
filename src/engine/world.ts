@@ -4,7 +4,7 @@
 import {
   E, B, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
   EXPLODE_R, HOT, REACT, HAS_REACT,
-  TEMP0, PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
+  TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
 } from "./elements";
 import { Rng } from "./rng";
 
@@ -127,7 +127,7 @@ export class World {
     this.shade[i] = this.rng.byte();
     this.life[i] = aux !== undefined ? aux : LIFE0[id];
     if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
-    if (PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], 0.6); // seed the heat field
+    if (HEAT_PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], 0.6); // seed the heat field
     this.wake(x, y);
     // painting unsettles adjacent calm liquids so pools react to edits
     for (let k = 0; k < 4; k++) {
@@ -305,9 +305,9 @@ export class World {
                 const id = species[si];
                 if (!THERMAL[id]) continue;
                 // pump at most once per coarse cell so dense blocks don't overpower
-                if (PUMP[id] > 0 && sx === sx0 && sy === sy0) {
+                if (HEAT_PUMP[id] > 0 && sx === sx0 && sy === sy0) {
                   const tg = TEMP0[id];
-                  temp[i] += (tg - temp[i]) * PUMP[id];
+                  temp[i] += (tg - temp[i]) * HEAT_PUMP[id];
                 }
                 if (t >= IGNITES_AT[id] && this.rng.byte() < 60) {
                   if (id === E.FIREWORKS) this.set(si, sx, sy, E.ROCKET, LIFE0[E.ROCKET] + this.rng.int(16));
@@ -444,7 +444,7 @@ export class World {
 
   private updateCell(i: number, x: number, y: number, id: number): void {
     // mobile heat/cold sources drive the temperature field from their behavior
-    if (PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], PUMP[id]);
+    if (HEAT_PUMP[id] > 0) this.pumpHeat(x, y, TEMP0[id], HEAT_PUMP[id]);
     // contact reaction with one random neighbor (data-driven table);
     // inert elements skip the roll entirely — this is the hot loop's fast path
     if (HAS_REACT[id]) {
@@ -486,6 +486,7 @@ export class World {
       case B.LASER: this.doLaser(i, x, y); break;
       case B.THUNDER: this.doThunder(i, x, y); break;
       case B.ROCKET: this.doRocket(i, x, y); break;
+      case B.PUMP: this.doPump(i, x, y); break;
     }
   }
 
@@ -1049,6 +1050,81 @@ export class World {
     if (this.species[i - this.W] !== E.EMPTY) this.explode(x, y, 6); // nose blocked
   }
 
+  private static readonly DX4 = [1, -1, 0, 0];
+  private static readonly DY4 = [0, 0, 1, -1];
+  private static readonly OPP4 = [1, 0, 3, 2];
+  // hop preference per travel direction: straight, the two perpendiculars, back
+  private static readonly PREF4 = [
+    [0, 2, 3, 1],
+    [1, 2, 3, 0],
+    [2, 0, 1, 3],
+    [3, 0, 1, 2],
+  ];
+
+  /** pump: life packs carried species (bits 0-5) + travel direction (bits 6-7).
+   *  Adjacent liquids/gases are absorbed; the token walks the pump line with
+   *  momentum (one hop per tick) and ejects where the line ends — one clear dot
+   *  beyond the pump so it can't instantly re-enter (Dan-Ball semantics). */
+  private doPump(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    const lf = this.life[i];
+    const carried = lf & 63;
+    if (carried === 0) {
+      for (let k = 0; k < 4; k++) {
+        const nx = x + World.DX4[k];
+        const ny = y + World.DY4[k];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        const b = BEHAVIOR[species[j]];
+        if (b === B.LIQUID || b === B.GAS) {
+          this.life[i] = species[j] | (World.OPP4[k] << 6);
+          this.set(j, nx, ny, E.EMPTY, 0);
+          this.wake(x, y);
+          return;
+        }
+      }
+      return; // idle pump: its chunk may sleep
+    }
+    const pref = World.PREF4[lf >>> 6];
+    for (let p = 0; p < 4; p++) {
+      const d = pref[p];
+      const nx = x + World.DX4[d];
+      const ny = y + World.DY4[d];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx;
+      if (species[j] === E.PUMP && (this.life[j] & 63) === 0) {
+        this.life[j] = carried | (d << 6);
+        this.life[i] = 0;
+        this.clock[j] = this.stamp; // one hop per tick
+        this.wake(nx, ny);
+        this.wake(x, y);
+        return;
+      }
+    }
+    // line ends here: eject into the world, preferring the travel direction
+    for (let p = 0; p < 4; p++) {
+      const d = pref[p];
+      const dx = World.DX4[d];
+      const dy = World.DY4[d];
+      const n1x = x + dx;
+      const n1y = y + dy;
+      if (n1x < 0 || n1y < 0 || n1x >= W || n1y >= H) continue;
+      if (species[n1y * W + n1x] !== E.EMPTY) continue;
+      const n2x = n1x + dx;
+      const n2y = n1y + dy;
+      const far = n2x >= 0 && n2y >= 0 && n2x < W && n2y < H && species[n2y * W + n2x] === E.EMPTY;
+      const ex = far ? n2x : n1x;
+      const ey = far ? n2y : n1y;
+      const j = ey * W + ex;
+      this.set(j, ex, ey, carried, LIFE0[carried]);
+      this.shade[j] = this.rng.byte();
+      this.life[i] = 0;
+      this.wake(x, y);
+      return;
+    }
+    this.wake(x, y); // stuck holding fluid: stay awake until space frees up
+  }
+
   // ---- save / load -------------------------------------------------------
 
   /** RLE snapshot of species+life (shade regenerates on load) */
@@ -1109,7 +1185,7 @@ export class World {
       if (id !== E.EMPTY) this.shade[i] = this.rng.byte();
       if (id !== E.EMPTY && id !== E.WALL) this.dots++;
       if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
-      if (PUMP[id] > 0) {
+      if (HEAT_PUMP[id] > 0) {
         this.pumpHeat(i % this.W, (i / this.W) | 0, TEMP0[id], 0.6);
       }
     }

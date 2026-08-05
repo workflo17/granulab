@@ -5,14 +5,14 @@
 import { E, B, BEHAVIOR } from "./elements";
 import type { World } from "./world";
 
-export type ObjKind = "ball" | "box" | "wheel";
+export type ObjKind = "ball" | "box" | "wheel" | "bubble";
 
-const KIND_ID: Record<ObjKind, number> = { ball: E.BALL, box: E.BOX, wheel: E.WHEEL };
-const ID_KIND: Record<number, ObjKind> = { [E.BALL]: "ball", [E.BOX]: "box", [E.WHEEL]: "wheel" };
-const KIND_R: Record<ObjKind, number> = { ball: 7, box: 8, wheel: 9 };
-const REST: Record<ObjKind, number> = { ball: 0.72, box: 0.05, wheel: 0.3 };
-const FRICTION: Record<ObjKind, number> = { ball: 0.996, box: 0.86, wheel: 0.999 };
-const BUOY: Record<ObjKind, number> = { ball: 0.4, box: 0.26, wheel: 0.1 };
+const KIND_ID: Record<ObjKind, number> = { ball: E.BALL, box: E.BOX, wheel: E.WHEEL, bubble: E.BUBBLE };
+const ID_KIND: Record<number, ObjKind> = { [E.BALL]: "ball", [E.BOX]: "box", [E.WHEEL]: "wheel", [E.BUBBLE]: "bubble" };
+const KIND_R: Record<ObjKind, number> = { ball: 7, box: 8, wheel: 9, bubble: 4 };
+const REST: Record<ObjKind, number> = { ball: 0.72, box: 0.05, wheel: 0.3, bubble: 0 };
+const FRICTION: Record<ObjKind, number> = { ball: 0.996, box: 0.86, wheel: 0.999, bubble: 1 };
+const BUOY: Record<ObjKind, number> = { ball: 0.4, box: 0.26, wheel: 0.1, bubble: 0 };
 const MAX_OBJECTS = 64;
 
 export class RigidObject {
@@ -77,9 +77,12 @@ export class ObjectSystem {
     const y0 = Math.round(o.y);
     const box = o.kind === "box";
     const r2 = r * r;
+    // bubbles are a hollow ring, not a filled disc
+    const inner = o.kind === "bubble" ? (r - 1.6) * (r - 1.6) : 0;
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
-        if (box || dx * dx + dy * dy <= r2) cb(x0 + dx, y0 + dy);
+        const d2 = dx * dx + dy * dy;
+        if (box || (d2 <= r2 && d2 >= inner)) cb(x0 + dx, y0 + dy);
       }
     }
   }
@@ -143,6 +146,7 @@ export class ObjectSystem {
       for (let b = a + 1; b < this.list.length; b++) {
         const A = this.list[a];
         const B = this.list[b];
+        if (A.kind === "bubble" || B.kind === "bubble") continue; // massless
         const dx = B.x - A.x;
         const dy = B.y - A.y;
         const rr = A.r + B.r;
@@ -163,7 +167,15 @@ export class ObjectSystem {
         }
       }
     }
-    for (const o of this.list) {
+    for (let k = 0; k < this.list.length; k++) {
+      const o = this.list[k];
+      if (o.kind === "bubble") {
+        if (!this.updateBubble(o)) {
+          this.list.splice(k, 1);
+          k--;
+        }
+        continue;
+      }
       this.unstamp(o);
       o.vy += 0.22;
       // buoyancy + drag when the center sits in liquid
@@ -208,6 +220,52 @@ export class ObjectSystem {
       o.y = Math.max(o.r, Math.min(w.H - 1 - o.r, o.y));
       this.stamp(o);
     }
+  }
+
+  /** Powder-Game bubble: drifts up on buoyancy, shoved hard by wind; pops on
+   *  walls/objects/border, and its ring becomes any element dot it touches
+   *  (except fan). Returns false when the bubble is gone. */
+  private updateBubble(o: RigidObject): boolean {
+    const w = this.world;
+    this.unstamp(o);
+    for (const other of this.list) {
+      if (other === o || other.kind === "bubble") continue;
+      const dx = other.x - o.x;
+      const dy = other.y - o.y;
+      const rr = other.r + o.r;
+      if (dx * dx + dy * dy < rr * rr) return false; // popped by a solid object
+    }
+    const [wx, wy] = w.windAt(Math.round(o.x), Math.round(o.y));
+    o.vx = o.vx * 0.88 + wx * 0.45 + (w.rng.byte() - 128) / 900;
+    o.vy = o.vy * 0.88 - 0.05 + wy * 0.45;
+    o.vx = Math.max(-2.5, Math.min(2.5, o.vx));
+    o.vy = Math.max(-2.5, Math.min(2.5, o.vy));
+    o.x += o.vx;
+    o.y += o.vy;
+    if (o.x < o.r || o.y < o.r || o.x > w.W - 1 - o.r || o.y > w.H - 1 - o.r) {
+      return false; // popped on the border
+    }
+    let becomes = 0;
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      const px = Math.round(o.x + Math.cos(a) * o.r);
+      const py = Math.round(o.y + Math.sin(a) * o.r);
+      const s = w.species[py * w.W + px];
+      if (s === E.EMPTY || s === E.BUBBLE || s === E.FAN) continue;
+      if (s === E.WALL || s === E.BALL || s === E.BOX || s === E.WHEEL || s === E.STICK) {
+        return false; // popped on a solid
+      }
+      becomes = s;
+    }
+    if (becomes !== 0) {
+      // the ring turns into the touched element
+      this.cells(o, (cx, cy) => {
+        if (cx >= 0 && cy >= 0 && cx < w.W && cy < w.H) w.paint(cx, cy, becomes);
+      });
+      return false;
+    }
+    this.stamp(o);
+    return true;
   }
 
   serialize(): Uint8Array {

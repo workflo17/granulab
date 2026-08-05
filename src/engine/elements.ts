@@ -46,6 +46,8 @@ export const E = {
   BALL: 40, // rigid-object footprints — stamped/cleared by ObjectSystem each tick
   BOX: 41,
   WHEEL: 42,
+  PUMP: 43, // fluid conductor: absorbs liquids/gas, tokens walk the pump line
+  BUBBLE: 44, // ring footprint of the bubble object (ObjectSystem)
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -68,6 +70,7 @@ export const B = {
   LASER: 15, // straight ray, 3 cells/tick, passes glass, ignites on hit
   THUNDER: 16, // bolt: drops fast, blasts on impact, sparks metal
   ROCKET: 17, // lit fireworks: climbs with a fire trail, bursts
+  PUMP: 18, // absorbs adjacent fluids; tokens travel the line, eject at ends
 } as const;
 
 export interface ElementDef {
@@ -159,6 +162,8 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.BALL, name: "Ball", color: "#c25a3a", density: 255, device: true }),
   def({ id: E.BOX, name: "Box", color: "#9a7d4e", density: 255, device: true }),
   def({ id: E.WHEEL, name: "Wheel", color: "#6e7682", density: 255, device: true }),
+  def({ id: E.PUMP, name: "Pump", color: "#3f8f83", behavior: B.PUMP, density: 255, device: true }),
+  def({ id: E.BUBBLE, name: "Bubble", color: "#d8c2ec", density: 255, device: true }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -173,7 +178,7 @@ export const EXPLODE_R = new Uint8Array(N_IDS);
 export const HOT = new Uint8Array(N_IDS);
 export const MELTS = new Uint8Array(N_IDS);
 export const TEMP0 = new Int16Array(N_IDS);
-export const PUMP = new Float32Array(N_IDS);
+export const HEAT_PUMP = new Float32Array(N_IDS);
 export const HOT_AT = new Int16Array(N_IDS);
 export const HOT_TO = new Uint8Array(N_IDS);
 export const COLD_AT = new Int16Array(N_IDS);
@@ -195,7 +200,7 @@ function applyDef(el: ElementDef): void {
   HOT[el.id] = el.hot ? 1 : 0;
   MELTS[el.id] = el.melts;
   TEMP0[el.id] = el.temp0;
-  PUMP[el.id] = el.pump;
+  HEAT_PUMP[el.id] = el.pump;
   HOT_AT[el.id] = el.hotTo !== 0 ? el.hotAt : 32767;
   HOT_TO[el.id] = el.hotTo;
   COLD_AT[el.id] = el.coldTo !== 0 ? el.coldAt : -32768;

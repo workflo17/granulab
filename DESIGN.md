@@ -73,8 +73,18 @@
 > task — even on a fresh dialog) — the Maker now creates on form "submit" +
 > e.submitter instead; never hang app logic off dialog close.
 >
-> M4 QUEUE: pump/bubble tools, remaining BG modes (blur/shade/aura/light/mesh/
-> track), upload gallery, wheel spin visual, WASM hot loop (perf ceiling).
+> M4.4 SHIPPED: PUMP + BUBBLE (last two classic tools). Pump = fluid conductor
+> per Dan-Ball semantics: absorbs adjacent liquids/gas, token walks the pump
+> line with momentum (life = species | dir<<6, one hop/tick), ejects at line
+> ends one clear dot out; mass-conservation verified (water+tokens == painted).
+> Bubble = 4th rigid object: hollow ring r4, buoyant, wind-shoved to ±2.5 c/t,
+> pops on walls/objects/border, ring BECOMES any element dot it touches.
+> Heat-pump array renamed HEAT_PUMP (E.PUMP took the name). Custom element ids
+> now start at 45 (19 slots) — pre-M4.4 saves with customs at 43/44 will load
+> those cells as pump/bubble.
+>
+> M4 QUEUE: remaining BG modes (blur/shade/aura/light/mesh/track), upload
+> gallery, wheel spin visual, WASM hot loop (perf ceiling).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth

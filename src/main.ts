@@ -271,7 +271,7 @@ canvas.addEventListener("pointerdown", (e) => {
     }
     return;
   }
-  if (tool === E.BALL || tool === E.BOX || tool === E.WHEEL) {
+  if (tool === E.BALL || tool === E.BOX || tool === E.WHEEL || tool === E.BUBBLE) {
     objects.spawnId(tool, c.x, c.y);
     return;
   }
