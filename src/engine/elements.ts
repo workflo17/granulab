@@ -340,21 +340,25 @@ export const REACT = new Uint32Array(N_IDS * N_IDS);
 // proper names shown in the Lab Notebook when a reaction is first discovered
 export const REACT_COUNT = new Uint32Array(N_IDS * N_IDS);
 export const REACT_NAME: Record<number, string> = {};
+// M5d thermochemistry: heat released (+) or absorbed (-) at the reaction site,
+// pumped straight into the temperature field (canonical pair key)
+export const REACT_DT = new Int16Array(N_IDS * N_IDS);
 export const pairKey = (a: number, b: number): number =>
   a < b ? a * N_IDS + b : b * N_IDS + a;
-const react = (a: number, b: number, newA: number, newB: number, prob: number, name?: string): void => {
+const react = (a: number, b: number, newA: number, newB: number, prob: number, name?: string, dT?: number): void => {
   REACT[a * N_IDS + b] = (prob << 16) | (newA << 8) | newB;
   REACT[b * N_IDS + a] = (prob << 16) | (newB << 8) | newA; // symmetric, roles swapped
   HAS_REACT[a] = 1;
   HAS_REACT[b] = 1;
   if (name) REACT_NAME[pairKey(a, b)] = name;
+  if (dT) REACT_DT[pairKey(a, b)] = dT;
 };
 
 // HAS_REACT[id] = 1 if the element appears in any reaction — lets the hot loop
 // skip the reaction roll entirely for inert elements (big perf win).
 export const HAS_REACT = new Uint8Array(N_IDS);
 
-react(E.SALT, E.WATER, E.EMPTY, E.SEAWATER, 60, "Dissolution"); // salt dissolves
+react(E.SALT, E.WATER, E.EMPTY, E.SEAWATER, 60, "Dissolution", -2); // salt dissolves
 react(E.MAGMA, E.WATER, E.STONE, E.STEAM, 220, "Quenching"); // magma quenches
 react(E.MAGMA, E.SEAWATER, E.STONE, E.STEAM, 220, "Quenching");
 react(E.MAGMA, E.STONE, E.MAGMA, E.MAGMA, 3, "Remelting"); // magma slowly melts stone
@@ -369,28 +373,28 @@ react(E.STEAM, E.CLOUD, E.CLOUD, E.CLOUD, 120, "Cloud seeding"); // clouds grow 
 react(E.BIRD, E.WATER, E.EMPTY, E.WATER, 200); // birds drown too
 
 // ---- M4.5 chemistry set --------------------------------------------------
-react(E.LYE, E.OIL, E.SOAPY, E.SOAPY, 40, "Saponification"); // saponification: fat + lye = soap
-react(E.LYE, E.ACID, E.SALT, E.WATER, 180, "Neutralization"); // neutralization
-react(E.ACID, E.METAL, E.HYDROGEN, E.METAL, 30, "Hydrogen evolution"); // hydrogen evolution
+react(E.LYE, E.OIL, E.SOAPY, E.SOAPY, 40, "Saponification", 25); // saponification: fat + lye = soap
+react(E.LYE, E.ACID, E.SALT, E.WATER, 180, "Neutralization", 90); // neutralization
+react(E.ACID, E.METAL, E.HYDROGEN, E.METAL, 30, "Hydrogen evolution", 10); // hydrogen evolution
 react(E.WATER, E.SPARK, E.HYDROGEN, E.SPARK, 200, "Electrolysis"); // electrolysis
 react(E.SEAWATER, E.SPARK, E.CHLORINE, E.SPARK, 200, "Chlor-alkali process"); // chlor-alkali process
-react(E.SODA, E.ACID, E.CO2, E.WATER, 220, "Carbonation fizz"); // bicarbonate fizz
-react(E.FIRE, E.CO2, E.EMPTY, E.CO2, 220, "Fire suppression"); // CO2 smothers fire
+react(E.SODA, E.ACID, E.CO2, E.WATER, 220, "Carbonation fizz", -15); // bicarbonate fizz
+react(E.FIRE, E.CO2, E.EMPTY, E.CO2, 220, "Fire suppression", -20); // CO2 smothers fire
 react(E.VINE, E.CO2, E.VINE, E.OXYGEN, 25, "Photosynthesis"); // photosynthesis
-react(E.OXYGEN, E.FIRE, E.FIRE, E.FIRE, 180, "Oxygen flare"); // pure O2 feeds the flame
-react(E.FIRE, E.HYDROGEN, E.FIRE, E.STEAM, 60, "Hydrogen burn"); // combustion product is water
+react(E.OXYGEN, E.FIRE, E.FIRE, E.FIRE, 180, "Oxygen flare", 60); // pure O2 feeds the flame
+react(E.FIRE, E.HYDROGEN, E.FIRE, E.STEAM, 60, "Hydrogen burn", 100); // combustion product is water
 react(E.CHLORINE, E.VINE, E.CHLORINE, E.EMPTY, 120, "Defoliation"); // defoliant
 react(E.CHLORINE, E.ANT, E.CHLORINE, E.EMPTY, 160, "Fumigation"); // toxic to critters
 react(E.CHLORINE, E.BIRD, E.CHLORINE, E.EMPTY, 160, "Fumigation");
 react(E.CHLORINE, E.WATER, E.ACID, E.WATER, 2, "Chlorination"); // chlorine water turns acidic
 // (metal rusting lives in doMetalCool: seawater + AIR at the waterline only —
 // a table row ate submerged electrodes and tanks in seconds)
-react(E.CEMENT, E.WATER, E.STONE, E.EMPTY, 60, "Concrete set"); // cement sets, absorbing water
-react(E.HYDROGEN, E.CHLORINE, E.ACID, E.ACID, 40, "Acid synthesis"); // H2+Cl2 = acid factory
-react(E.LYE, E.CO2, E.SODA, E.EMPTY, 60, "Carbon scrubbing"); // lye scrubs CO2 into carbonate
-react(E.RUST, E.HYDROGEN, E.METAL, E.STEAM, 40, "Smelting"); // hydrogen smelts rust back
-react(E.SALT, E.SNOW, E.EMPTY, E.WATER, 30, "De-icing"); // road salt melts snow...
-react(E.SALT, E.ICE, E.EMPTY, E.WATER, 15, "De-icing"); // ...and ice
+react(E.CEMENT, E.WATER, E.STONE, E.EMPTY, 60, "Concrete set", 15); // cement sets, absorbing water
+react(E.HYDROGEN, E.CHLORINE, E.ACID, E.ACID, 40, "Acid synthesis", 80); // H2+Cl2 = acid factory
+react(E.LYE, E.CO2, E.SODA, E.EMPTY, 60, "Carbon scrubbing", 40); // lye scrubs CO2 into carbonate
+react(E.RUST, E.HYDROGEN, E.METAL, E.STEAM, 40, "Smelting", 50); // hydrogen smelts rust back
+react(E.SALT, E.SNOW, E.EMPTY, E.WATER, 30, "De-icing", -6); // road salt melts snow...
+react(E.SALT, E.ICE, E.EMPTY, E.WATER, 15, "De-icing", -6); // ...and ice
 react(E.CHLORINE, E.VIRUS, E.CHLORINE, E.EMPTY, 200, "Disinfection"); // bleach disinfects
 react(E.CHLORINE, E.SEED, E.CHLORINE, E.EMPTY, 120, "Herbicide"); // herbicide
 react(E.METAL, E.MERCURY, E.MERCURY, E.MERCURY, 1, "Amalgamation"); // slow amalgamation
@@ -398,8 +402,8 @@ react(E.METAL, E.MERCURY, E.MERCURY, E.MERCURY, 1, "Amalgamation"); // slow amal
 // ---- M5a recipe shelf ------------------------------------------------------
 react(E.SALTPETER, E.CHARCOAL, E.GUNPOWDER, E.GUNPOWDER, 50, "Gunpowder milling"); // the recipe
 react(E.SULFUR, E.GUNPOWDER, E.GUNPOWDER, E.GUNPOWDER, 20, "Powder enrichment"); // sulfur enriches
-react(E.LIME, E.WATER, E.CEMENT, E.EMPTY, 80, "Slaking"); // slaking
-react(E.LIME, E.CO2, E.LIMESTONE, E.EMPTY, 40, "Carbonation"); // carbonation closes the cycle
+react(E.LIME, E.WATER, E.CEMENT, E.EMPTY, 80, "Slaking", 120); // slaking
+react(E.LIME, E.CO2, E.LIMESTONE, E.EMPTY, 40, "Carbonation", 30); // carbonation closes the cycle
 react(E.ALUMINUM, E.RUST, E.THERMITE, E.THERMITE, 50, "Thermite mixing"); // thermite mix
-react(E.GLYCERIN, E.ACID, E.NITRO, E.NITRO, 25, "Nitration"); // nitration
+react(E.GLYCERIN, E.ACID, E.NITRO, E.NITRO, 25, "Nitration", 45); // nitration
 

@@ -167,10 +167,16 @@
 > probes in the page get a DUPLICATE module instance under Vite dev (static
 > tables match, runtime counters read zero) — verify counters through the
 > app's own UI, not import probes.
-> - M5d SOLUTIONS & THERMOCHEMISTRY: optional ΔT per REACT row (neutralization
->   heats, quenching cools — feeds the existing temp field), dissolved-state
->   concentration channel (salt in water without cells), pH field + litmus
->   element. ΔT is the cheapest high-impact slice — good first pick.
+> M5d (ΔT half) SHIPPED — THERMOCHEMISTRY: REACT_DT per-row heat, pumped into
+> the temp field at the reaction site; datasheet card shows +N°/−N° tags.
+> 17 rows tuned: slaking +120 (the pit BOILS — peak 257° with steam),
+> neutralization +90, hydrogen burn +100, acid synthesis +80, nitration +45
+> — which makes big nitration batches THERMALLY RUN AWAY past nitro's 240°
+> ignition and self-detonate (verified: 2,673-cell batch blew at t45), the
+> real nitroglycerin-plant hazard, fully emergent. Endotherms: dissolution
+> −2 (−8 froze the pool solid — self-pinning ice feedback), de-icing −6,
+> fizz −15, fire suppression −20. Still open from M5d: dissolved-state
+> concentration channel, pH field + litmus.
 > - M5e BALANCE & SCALE: mass-conservation audit per row, rate tuning pass,
 >   WASM hot loop when reaction load meets the 211k-cell ceiling.
 >

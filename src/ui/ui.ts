@@ -2,8 +2,8 @@
 // color (--accent-l / --accent-r) — the chassis stays neutral, substances carry chroma.
 
 import {
-  E, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, N_IDS, HOT_AT, HOT_TO,
-  COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R, type CustomSpec,
+  E, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, REACT_DT, N_IDS, HOT_AT, HOT_TO,
+  COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R, pairKey, type CustomSpec,
 } from "../engine/elements";
 
 export interface UiState {
@@ -371,7 +371,9 @@ export class Ui {
       } else {
         prod = "∅";
       }
-      rows.push(`<div class="rx"><span>+ ${sw(b)}${nm(b)}</span><span class="arr">→</span><span>${prod}</span></div>`);
+      const dT = REACT_DT[pairKey(id, b)];
+      const heat = dT > 0 ? ` <em class="exo">+${dT}°</em>` : dT < 0 ? ` <em class="endo">${dT}°</em>` : "";
+      rows.push(`<div class="rx"><span>+ ${sw(b)}${nm(b)}</span><span class="arr">→</span><span>${prod}${heat}</span></div>`);
     }
     if (HOT_TO[id] !== 0) {
       rows.push(`<div class="rx"><span>≥ ${HOT_AT[id]}°</span><span class="arr">→</span><span>${sw(HOT_TO[id])}${nm(HOT_TO[id])}</span></div>`);

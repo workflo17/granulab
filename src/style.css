@@ -309,3 +309,7 @@ footer {
 }
 footer b { color: var(--text); font-weight: 400; }
 footer .spacer { margin-left: auto; }
+
+/* thermochemistry tags on the reagent card */
+#reagent .exo { color: #e8935a; font-style: normal; }
+#reagent .endo { color: #6ab8e8; font-style: normal; }

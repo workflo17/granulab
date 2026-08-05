@@ -3,7 +3,7 @@
 
 import {
   E, B, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
-  EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT,
+  EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT, REACT_DT,
   TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
 } from "./elements";
 import { Rng } from "./rng";
@@ -516,10 +516,19 @@ export class World {
         if (r === 0) continue;
         if (this.rng.byte() < r >>> 16) {
           const pb = this.species[j];
-          REACT_COUNT[id < pb ? id * N_IDS + pb : pb * N_IDS + id]++;
+          const pk = id < pb ? id * N_IDS + pb : pb * N_IDS + id;
+          REACT_COUNT[pk]++;
           const gi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
           if (this.glow[gi] < 4) this.glow[gi] += 1;
           this.glowTicks = 240;
+          // thermochemistry: exo/endothermic reactions drive the heat field
+          const dT = REACT_DT[pk];
+          if (dT !== 0) {
+            const tx = x >> TSHIFT;
+            const ty = y >> TSHIFT;
+            this.temp[ty * this.TW + tx] += dT;
+            this.markThermalCoarse(tx, ty);
+          }
           const newA = (r >>> 8) & 255;
           const newB = r & 255;
           this.set(i, x, y, newA, LIFE0[newA]);
