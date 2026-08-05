@@ -4,7 +4,7 @@ import { Player, Fighter } from "./engine/player";
 import { ObjectSystem } from "./engine/objects";
 import { Renderer } from "./render/renderer";
 import { Ui, TOOL_PLAYER, TOOL_FIGHTER } from "./ui/ui";
-import { E, ELEMENTS, registerElement, type CustomSpec } from "./engine/elements";
+import { E, ELEMENTS, PALETTE, registerElement, type CustomSpec } from "./engine/elements";
 
 const GRID_W = 1280;
 const GRID_H = 720;
@@ -161,6 +161,43 @@ renderer = new Renderer(canvas, GRID_W, GRID_H);
 for (const id of customIds) ui.addElementButton(id); // persisted customs
 const bgHash = location.hash.match(/bg=(\d)/); // shot harness can pick a BG mode
 if (bgHash) renderer.mode = parseInt(bgHash[1]);
+
+// ---- minimap: 1/8-scale overview in the corner ---------------------------
+const MINI_W = GRID_W / 8;
+const MINI_H = GRID_H / 8;
+const mini = document.createElement("canvas");
+mini.id = "minimap";
+mini.width = MINI_W;
+mini.height = MINI_H;
+canvas.parentElement!.appendChild(mini);
+const miniCtx = mini.getContext("2d")!;
+const miniImg = miniCtx.createImageData(MINI_W, MINI_H);
+let miniTimer = 0;
+
+function drawMinimap(): void {
+  const d = miniImg.data;
+  const sp = world.species;
+  for (let my = 0; my < MINI_H; my++) {
+    const rowBase = my * 8 * GRID_W;
+    for (let mx = 0; mx < MINI_W; mx++) {
+      // sample the 8x8 block: first non-empty of 4 spread probes
+      let id = sp[rowBase + mx * 8];
+      if (id === 0) id = sp[rowBase + 4 * GRID_W + mx * 8 + 4];
+      if (id === 0) id = sp[rowBase + 2 * GRID_W + mx * 8 + 6];
+      if (id === 0) id = sp[rowBase + 6 * GRID_W + mx * 8 + 2];
+      const o = (my * MINI_W + mx) * 4;
+      if (id === 0) {
+        d[o] = 11; d[o + 1] = 13; d[o + 2] = 16;
+      } else {
+        d[o] = PALETTE[id * 3] * 255;
+        d[o + 1] = PALETTE[id * 3 + 1] * 255;
+        d[o + 2] = PALETTE[id * 3 + 2] * 255;
+      }
+      d[o + 3] = 255;
+    }
+  }
+  miniCtx.putImageData(miniImg, 0, 0);
+}
 
 // ---- canvas sizing -------------------------------------------------------
 function resize(): void {
@@ -373,6 +410,11 @@ function frame(now: number): void {
       .then(() => console.log("[granulab-shot] saved " + name));
   }
 
+  miniTimer += dt;
+  if (miniTimer > 200) {
+    miniTimer = 0;
+    drawMinimap();
+  }
   statTimer += dt;
   if (statTimer > 250) {
     statTimer = 0;
@@ -454,6 +496,7 @@ window.granulab = {
   objects,
   spawnFighter: (x: number, y: number) => { const f = new Fighter(); f.place(x, y); fighters.push(f); return f; },
   createElement: createCustomElement,
+  drawMinimap,
   code: sceneCode,
   loadCode: loadSceneCode,
   keys,
