@@ -28,6 +28,19 @@ export interface UiHooks {
   onPasteCode(): void;
   onCreateElement(spec: CustomSpec): void;
   onDemo(name: string): void;
+  onGalleryOpen(): void;
+  onGalleryUpload(name: string, author: string): void;
+  onGalleryLoad(scene: GalleryScene): void;
+}
+
+/** one gallery listing entry, as served by /api/gallery */
+export interface GalleryScene {
+  id: string;
+  name: string;
+  author: string;
+  created: number;
+  size: number;
+  url: string;
 }
 
 /** pseudo-tool: click the canvas to (re)place the stickman */
@@ -119,6 +132,7 @@ export class Ui {
           <button id="import" title="Open a .grn scene file">import</button>
           <button id="copycode" title="Copy the scene as a shareable code">code</button>
           <button id="pastecode" title="Paste a scene code">paste</button>
+          <button id="gallery" title="Community scene gallery — upload and browse">gallery</button>
           <button id="nblog" title="Lab notebook — every reaction you've made happen">log</button>
         </div>
         <div class="wells">
@@ -160,6 +174,21 @@ export class Ui {
           <menu>
             <button value="cancel" formnovalidate>cancel</button>
             <button value="ok" class="primary">create</button>
+          </menu>
+        </form>
+      </dialog>
+      <dialog id="gallerydialog">
+        <form method="dialog" id="galleryform">
+          <h3>Scene gallery</h3>
+          <div class="gal-upload">
+            <input id="galname" name="gname" maxlength="40" placeholder="scene name" required>
+            <input id="galauthor" name="gauthor" maxlength="24" placeholder="by (optional)">
+            <button value="upload" class="primary">upload current scene</button>
+          </div>
+          <div class="gal-status" id="galstatus" aria-live="polite" hidden></div>
+          <div id="gallist"><div class="gal-empty">loading…</div></div>
+          <menu>
+            <button value="close" formnovalidate>close</button>
           </menu>
         </form>
       </dialog>
@@ -336,6 +365,24 @@ export class Ui {
       }
     });
     root.querySelector("#nbclose")!.addEventListener("click", () => { this.notebook.hidden = true; });
+    // scene gallery: act on submit + e.submitter, never on dialog "close"
+    // (embedded browsers can drop the close event entirely)
+    this.galDialog = root.querySelector<HTMLDialogElement>("#gallerydialog")!;
+    this.galList = root.querySelector<HTMLElement>("#gallist")!;
+    this.galStatus = root.querySelector<HTMLElement>("#galstatus")!;
+    this.galName = root.querySelector<HTMLInputElement>("#galname")!;
+    this.galAuthor = root.querySelector<HTMLInputElement>("#galauthor")!;
+    root.querySelector("#gallery")!.addEventListener("click", () => {
+      this.galStatus.hidden = true;
+      this.galList.replaceChildren(this.galNote("loading…"));
+      this.galDialog.showModal();
+      hooks.onGalleryOpen();
+    });
+    root.querySelector<HTMLFormElement>("#galleryform")!.addEventListener("submit", (e) => {
+      if ((e.submitter as HTMLButtonElement | null)?.value !== "upload") return; // close button proceeds
+      e.preventDefault(); // upload keeps the dialog open
+      hooks.onGalleryUpload(this.galName.value.trim(), this.galAuthor.value.trim());
+    });
     this.penInput.addEventListener("input", () => this.setPen(parseInt(this.penInput.value)));
 
     this.bind("L", E.POWDER);
@@ -475,6 +522,67 @@ export class Ui {
       entry.last = c;
       entry.rate.textContent = perSec > 0.5 ? `${perSec.toFixed(0)}/s` : "";
     }
+  }
+
+  // ---- scene gallery -----------------------------------------------------
+  private galDialog!: HTMLDialogElement;
+  private galList!: HTMLElement;
+  private galStatus!: HTMLElement;
+  private galName!: HTMLInputElement;
+  private galAuthor!: HTMLInputElement;
+
+  private galNote(text: string): HTMLElement {
+    const d = document.createElement("div");
+    d.className = "gal-empty";
+    d.textContent = text;
+    return d;
+  }
+
+  /** default author for the upload form (persisted by main.ts) */
+  setGalleryAuthor(author: string): void {
+    this.galAuthor.value = author;
+  }
+
+  setGalleryStatus(msg: string, isError = false): void {
+    this.galStatus.hidden = false;
+    this.galStatus.textContent = msg;
+    this.galStatus.classList.toggle("err", isError);
+  }
+
+  /** render the gallery listing; null = fetch failed. Community strings go in
+   *  via textContent only — never innerHTML. */
+  setGalleryScenes(scenes: GalleryScene[] | null): void {
+    if (scenes === null) {
+      this.galList.replaceChildren(this.galNote("gallery unreachable — try again later"));
+      return;
+    }
+    if (scenes.length === 0) {
+      this.galList.replaceChildren(this.galNote("no scenes yet — upload the first one"));
+      return;
+    }
+    const rows = scenes.map((s) => {
+      const row = document.createElement("div");
+      row.className = "gal-row";
+      const name = document.createElement("span");
+      name.className = "gal-name";
+      name.textContent = s.name;
+      name.title = s.name;
+      const meta = document.createElement("span");
+      meta.className = "gal-meta";
+      const when = new Date(s.created).toISOString().slice(0, 10);
+      meta.textContent = `${s.author ? s.author + " · " : ""}${when} · ${(s.size / 1024).toFixed(1)}k`;
+      const load = document.createElement("button");
+      load.type = "button";
+      load.textContent = "load";
+      load.title = "Load this scene";
+      load.addEventListener("click", () => {
+        this.galDialog.close();
+        this.hooks.onGalleryLoad(s);
+      });
+      row.append(name, meta, load);
+      return row;
+    });
+    this.galList.replaceChildren(...rows);
   }
 
   setPen(n: number): void {

@@ -205,6 +205,39 @@ dialog .rxdel {
   line-height: 1;
 }
 
+/* ---- scene gallery dialog ---- */
+#gallerydialog { width: 440px; }
+.gal-upload { display: flex; gap: 6px; margin-bottom: 10px; }
+.gal-upload input { flex: 1; min-width: 0; }
+.gal-upload #galauthor { flex: 0 0 100px; }
+.gal-upload button { white-space: nowrap; }
+.gal-status { margin-bottom: 8px; font-size: 11px; color: var(--dim); }
+.gal-status.err { color: #e8705a; }
+#gallist {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: var(--well);
+}
+.gal-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--hairline);
+}
+.gal-row:last-child { border-bottom: none; }
+.gal-name {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gal-meta { color: var(--dim); font-size: 10px; margin-left: auto; white-space: nowrap; }
+.gal-row button { padding: 3px 8px; font-size: 11px; flex: none; }
+.gal-empty { padding: 12px 10px; color: var(--dim); font-style: italic; }
+
 /* ---- reagent datasheet card ---- */
 #reagent {
   position: absolute;

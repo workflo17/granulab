@@ -5,7 +5,8 @@
       "name": "granulab",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 4870
+      "port": 4870,
+      "autoPort": true
     }
   ]
 }

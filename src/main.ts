@@ -75,11 +75,11 @@ function loadAll(buf: Uint8Array): boolean {
 
 // share codes: deflate + base64, no backend needed
 async function deflateBuf(buf: Uint8Array): Promise<Uint8Array> {
-  const s = new Blob([buf]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const s = new Blob([buf as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new CompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
 async function inflateBuf(buf: Uint8Array): Promise<Uint8Array> {
-  const s = new Blob([buf]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  const s = new Blob([buf as Uint8Array<ArrayBuffer>]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
 const CODE_PREFIX = "GLAB1.";
@@ -118,7 +118,7 @@ const ui = new Ui(root, {
     if (b64) loadAll(fromB64(b64));
   },
   onExport: () => {
-    const blob = new Blob([saveAll()], { type: "application/octet-stream" });
+    const blob = new Blob([saveAll() as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "granulab-scene.grn";
@@ -139,6 +139,9 @@ const ui = new Ui(root, {
     if (code && !(await loadSceneCode(code))) alert("Not a valid Granulab scene code.");
   },
   onCreateElement: createCustomElement,
+  onGalleryOpen: () => { void refreshGallery(); },
+  onGalleryUpload: (name: string, author: string) => { void uploadToGallery(name, author); },
+  onGalleryLoad: (scene) => { void loadFromGallery(scene.url); },
   onDemo: (name: string) => {
     world.clear();
     player.remove();
@@ -150,6 +153,55 @@ const ui = new Ui(root, {
     else if (name === "doom") doomScene();
   },
 });
+
+// ---- scene gallery (backend: /api/gallery — Vercel Blob in prod, a
+// filesystem twin under the Vite dev server; same routes and shapes) --------
+const AUTHOR_KEY = "granulab-author";
+
+async function refreshGallery(): Promise<void> {
+  try {
+    const r = await fetch("/api/gallery");
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    ui.setGalleryScenes(j.scenes ?? []);
+  } catch {
+    ui.setGalleryScenes(null);
+  }
+}
+
+async function uploadToGallery(name: string, author: string): Promise<boolean> {
+  localStorage.setItem(AUTHOR_KEY, author);
+  ui.setGalleryStatus("uploading…");
+  try {
+    const code = await sceneCode();
+    const r = await fetch("/api/gallery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, author, code }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+    ui.setGalleryStatus("uploaded ✓ — it's live in the list");
+    void refreshGallery();
+    return true;
+  } catch (err) {
+    ui.setGalleryStatus(`upload failed: ${(err as Error).message}`, true);
+    return false;
+  }
+}
+
+async function loadFromGallery(url: string): Promise<boolean> {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    if (!(await loadSceneCode(String(j.code ?? "")))) throw new Error("bad code");
+    return true;
+  } catch {
+    alert("Could not load that scene.");
+    return false;
+  }
+}
 
 function createCustomElement(spec: CustomSpec): number | null {
   const id = registerElement(spec);
@@ -168,6 +220,7 @@ function createCustomElement(spec: CustomSpec): number | null {
 
 const canvas = document.getElementById("dish") as HTMLCanvasElement;
 renderer = new Renderer(canvas, GRID_W, GRID_H);
+ui.setGalleryAuthor(localStorage.getItem(AUTHOR_KEY) ?? "");
 for (const id of customIds) ui.addElementButton(id); // persisted customs
 const bgHash = location.hash.match(/bg=(\d)/); // shot harness can pick a BG mode
 if (bgHash) renderer.mode = parseInt(bgHash[1]);
@@ -829,6 +882,9 @@ window.granulab = {
   drawMinimap,
   code: sceneCode,
   loadCode: loadSceneCode,
+  galleryList: () => fetch("/api/gallery").then((r) => r.json()),
+  galleryUpload: uploadToGallery,
+  galleryLoad: loadFromGallery,
   keys,
   save: () => toB64(saveAll()),
   restore: (b64: string) => loadAll(fromB64(b64)),

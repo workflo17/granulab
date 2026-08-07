@@ -275,8 +275,27 @@
 > jitter, never sim-side); ambient heat glow doubled. Burning towns smudge
 > the sky, magazines feel like magazines.
 >
+> UPLOAD GALLERY shipped 8/07 (the community loop): "gallery" transport
+> button → dialog (upload the current scene with name/author, browse, one-
+> click load; author persists to granulab-author). Backend: /api/gallery
+> Vercel serverless fn over VERCEL BLOB (store granulab-gallery /
+> store_S4DknqyzyERwtANx, connected to the project — BLOB_READ_WRITE_TOKEN
+> in all envs, provisioned via the REST API with the CLI token). Design:
+> name/author are base64url-encoded INTO THE BLOB PATHNAME
+> (scenes/<ts36>.<b64u name>.<b64u author>.json) so GET is one list() call
+> with zero per-blob fetches; clients fetch the public blob URL directly on
+> load. Vite dev twin (galleryDev plugin) mirrors the exact routes/shapes
+> over tools/gallery-store/ — the gallery QAs fully on the dev server.
+> Community strings render via textContent only (never innerHTML — XSS);
+> upload acts on submit + e.submitter and keeps the dialog open (M4.3
+> close-event rule). QA: exact 36,772-dot upload→clear→load round-trip,
+> both programmatic and through real button clicks; traversal/method/
+> validation probes 404/405/400. ALSO: dev server honors PORT env now
+> (launch.json autoPort — worktree sessions get a free port; bare
+> `npm run dev` still 4870), TS 5.9 generic-Uint8Array Blob casts fixed.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays), upload gallery, WASM.
+> track — partly obsoleted by the ambient overlays), WASM.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
