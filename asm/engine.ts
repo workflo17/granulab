@@ -1,11 +1,14 @@
-// AssemblyScript port of src/engine/world.ts — STAGE 1 (movement scene).
+// AssemblyScript port of src/engine/world.ts — STAGE 1 (movement) +
+// STAGE 2 (thermal transitions).
 //
 // PARITY DOCTRINE: this file is ported by REACHABILITY, not by feature. Every
-// code path the stage-1 scene (walls + powders + sand + water pool + oil layer
-// + possible sand+water "Mudding" reaction, uniform ambient temperature, no
-// fans/fire/devices) can reach is ported EXACTLY — including rng draws whose
-// results go unused. Every branch the scene cannot reach traps loudly via
-// abort() so accidental entry fails fast instead of silently diverging.
+// code path the oracle scenes can reach is ported EXACTLY — including rng
+// draws whose results go unused. Stage 1: movement (powder/liquid, contact
+// reactions, settle hysteresis, chunk gating). Stage 2: the temperature field
+// (pumpHeat, stepTemp diffusion + hot/cold phase pass), gas movement (steam),
+// and magma's hotContact4 scan. Fire/ignition (ignitesAt, flammables),
+// devices, and everything else still traps loudly via abort() so accidental
+// entry fails fast instead of silently diverging.
 //
 // Structure and function names mirror world.ts one-to-one so future stages
 // diff cleanly. Registry tables (BEHAVIOR, DENSITY, REACT, ...) are COPIED
@@ -37,7 +40,9 @@ const N_IDS: i32 = 128;
 // element ids referenced by ported control flow (values mirror elements.ts E)
 const E_EMPTY: i32 = 0;
 const E_WALL: i32 = 1;
+const E_WATER: i32 = 3;
 const E_FIRE: i32 = 5;
+const E_STEAM: i32 = 7;
 const E_SEED: i32 = 8;
 const E_ACID: i32 = 11;
 const E_MAGMA: i32 = 15;
@@ -175,6 +180,14 @@ let heatPumpP: usize = 0; // f32
 let reactP: usize = 0; // u32 [N_IDS * N_IDS]
 let reactCountP: usize = 0; // u32 [N_IDS * N_IDS]
 let reactDtP: usize = 0; // i16 [N_IDS * N_IDS]
+// stage 2: temperature registry tables
+let temp0P: usize = 0; // i16
+let hotAtP: usize = 0; // i16 (32767 = no hot transition)
+let hotToP: usize = 0; // u8
+let coldAtP: usize = 0; // i16 (-32768 = no cold transition)
+let coldToP: usize = 0; // u8
+let ignitesAtP: usize = 0; // i16 (32767 = never; reaching it traps in stage 2)
+let thermalP: usize = 0; // u8
 
 // ---- raw memory accessors --------------------------------------------------
 
@@ -236,6 +249,20 @@ let reactDtP: usize = 0; // i16 [N_IDS * N_IDS]
 @inline function REACT(k: i32): u32 { return load<u32>(reactP + (<usize>k << 2)); }
 // @ts-ignore: decorator
 @inline function REACT_DT(k: i32): i32 { return <i32>load<i16>(reactDtP + (<usize>k << 1)); }
+// @ts-ignore: decorator
+@inline function TEMP0(id: i32): i32 { return <i32>load<i16>(temp0P + (<usize>id << 1)); }
+// @ts-ignore: decorator
+@inline function HOT_AT(id: i32): i32 { return <i32>load<i16>(hotAtP + (<usize>id << 1)); }
+// @ts-ignore: decorator
+@inline function HOT_TO(id: i32): i32 { return u8At(hotToP, id); }
+// @ts-ignore: decorator
+@inline function COLD_AT(id: i32): i32 { return <i32>load<i16>(coldAtP + (<usize>id << 1)); }
+// @ts-ignore: decorator
+@inline function COLD_TO(id: i32): i32 { return u8At(coldToP, id); }
+// @ts-ignore: decorator
+@inline function IGNITES_AT(id: i32): i32 { return <i32>load<i16>(ignitesAtP + (<usize>id << 1)); }
+// @ts-ignore: decorator
+@inline function THERMAL(id: i32): i32 { return u8At(thermalP, id); }
 
 // ---- init ------------------------------------------------------------------
 
@@ -287,6 +314,13 @@ export function init(w: i32, h: i32, seed: u32): void {
   reactP = allocZ((N_IDS * N_IDS) << 2);
   reactCountP = allocZ((N_IDS * N_IDS) << 2);
   reactDtP = allocZ((N_IDS * N_IDS) << 1);
+  temp0P = allocZ(N_IDS << 1);
+  hotAtP = allocZ(N_IDS << 1);
+  hotToP = allocZ(N_IDS);
+  coldAtP = allocZ(N_IDS << 1);
+  coldToP = allocZ(N_IDS);
+  ignitesAtP = allocZ(N_IDS << 1);
+  thermalP = allocZ(N_IDS);
   rngSF = <f64>seed; // constructor does `seed >>> 0` — loader passes u32
   rngDraws = 0;
   frame = 0;
@@ -316,6 +350,13 @@ export function hystPtr(): usize { return hystP; }
 export function heatPumpPtr(): usize { return heatPumpP; }
 export function reactPtr(): usize { return reactP; }
 export function reactDtPtr(): usize { return reactDtP; }
+export function temp0Ptr(): usize { return temp0P; }
+export function hotAtPtr(): usize { return hotAtP; }
+export function hotToPtr(): usize { return hotToP; }
+export function coldAtPtr(): usize { return coldAtP; }
+export function coldToPtr(): usize { return coldToP; }
+export function ignitesAtPtr(): usize { return ignitesAtP; }
+export function thermalPtr(): usize { return thermalP; }
 export function getFrame(): i32 { return frame; }
 export function getDots(): i32 { return dots; }
 
@@ -431,7 +472,7 @@ export function paint(x: i32, y: i32, id: i32, aux: i32): void {
   if (id === E_FAN) {
     abort("paint: FAN not ported (stage 1)"); // fans list + wind beams unported
   }
-  if (HEAT_PUMP(id) > 0) pumpHeat(x, y, 0, 0.6); // traps: no heat-pump elements
+  if (HEAT_PUMP(id) > 0) pumpHeat(x, y, <f64>TEMP0(id), 0.6); // seed the heat field
   wake(x, y);
   // painting unsettles adjacent calm liquids so pools react to edits
   for (let k = 0; k < 4; k++) {
@@ -506,16 +547,19 @@ function markThermalCoarse(tx: i32, ty: i32): void {
   if ((ty & 15) === 15 && cy < chunksY - 1) u8Set(thermalNextP, (cy + 1) * cw + cx, 1);
 }
 
-/** drive the heat field at a sim cell toward `target` with strength k —
- *  unreachable in stage 1 (no heat-pump elements, no lasers) */
+/** drive the heat field at a sim cell toward `target` with strength k */
 function pumpHeat(x: i32, y: i32, target: f64, k: f64): void {
-  abort("pumpHeat: not ported (stage 1: uniform ambient temperature)");
+  const tx = x >> TSHIFT;
+  const ty = y >> TSHIFT;
+  const ti = ty * TWg + tx;
+  // TS: this.temp[ti] += (target - this.temp[ti]) * k — f32 load, f64 math,
+  // f32 store
+  const cur = f32At(tempP, ti);
+  f32Set(tempP, ti, cur + (target - cur) * k);
+  markThermalCoarse(tx, ty);
 }
 
 function stepTemp(): void {
-  // chunk-gate swap runs every tick exactly like TS; with a uniform-ambient
-  // scene no thermal chunk is ever marked, so the per-chunk body is
-  // unreachable — entering it means the scene violated stage-1 assumptions
   const swapP = thermalCurP;
   thermalCurP = thermalNextP;
   thermalNextP = swapP;
@@ -524,7 +568,69 @@ function stepTemp(): void {
   for (let cy = 0; cy < chunksY; cy++) {
     for (let cx = 0; cx < chunksX; cx++) {
       if (!u8At(cur, cy * chunksX + cx)) continue;
-      abort("stepTemp: active thermal chunk — diffusion/phase pass not ported (stage 1)");
+      const tx0 = cx << 4;
+      const ty0 = cy << 4;
+      const tx1 = min(tx0 + 16, TWg);
+      const ty1 = min(ty0 + 16, THg);
+      for (let ty = ty0; ty < ty1; ty++) {
+        const row = ty * TWg;
+        for (let tx = tx0; tx < tx1; tx++) {
+          const i = row + tx;
+          // diffuse (in-place, clamped neighbors) + drift toward ambient.
+          // t stays an f64 local (TS computes in doubles); only the store to
+          // the Float32Array rounds — later comparisons use the UNROUNDED t.
+          const l = tx > 0 ? f32At(tempP, i - 1) : AMBIENT;
+          const r = tx < TWg - 1 ? f32At(tempP, i + 1) : AMBIENT;
+          const u = ty > 0 ? f32At(tempP, i - TWg) : AMBIENT;
+          const d = ty < THg - 1 ? f32At(tempP, i + TWg) : AMBIENT;
+          let t = f32At(tempP, i) * 0.72 + (l + r + u + d) * 0.07;
+          t += (AMBIENT - t) * 0.004;
+          f32Set(tempP, i, t);
+          if (t > AMBIENT + 2 || t < AMBIENT - 2) markThermalCoarse(tx, ty);
+          else continue; // thermally boring cell: skip the phase scan
+          // phase pass over this coarse cell's 2x2 sim cells
+          const sx0 = tx << TSHIFT;
+          const sy0 = ty << TSHIFT;
+          for (let sy = sy0; sy < sy0 + 2; sy++) {
+            const sRow = sy * W;
+            for (let sx = sx0; sx < sx0 + 2; sx++) {
+              const si = sRow + sx;
+              const id = species(si);
+              if (!THERMAL(id)) continue;
+              // pump at most once per coarse cell so dense blocks don't overpower
+              if (HEAT_PUMP(id) > 0 && sx === sx0 && sy === sy0) {
+                const tg = <f64>TEMP0(id);
+                const curT = f32At(tempP, i); // post-diffusion f32, not t
+                f32Set(tempP, i, curT + (tg - curT) * HEAT_PUMP(id));
+              }
+              if (t >= <f64>IGNITES_AT(id)) {
+                // stage 2 excludes fire: TS would roll byte()<60 and ignite/
+                // explode — no scene element has ignitesAt, so trap loudly
+                abort("stepTemp: ignition branch not ported (stage 2 excludes fire)");
+              }
+              if (t >= <f64>HOT_AT(id)) {
+                const p = min(220.0, (t - <f64>HOT_AT(id)) * 6.0);
+                dbgLog(11, sx, sy);
+                if (<f64>rngByte() < p) {
+                  const to = HOT_TO(id);
+                  set(si, sx, sy, to, LIFE0(to));
+                  dbgLog(12, sx, sy);
+                  shadeSet(si, rngByte());
+                }
+              } else if (t <= <f64>COLD_AT(id)) {
+                const p = min(180.0, (<f64>COLD_AT(id) - t) * 3.0);
+                dbgLog(13, sx, sy);
+                if (<f64>rngByte() < p) {
+                  const to = COLD_TO(id);
+                  set(si, sx, sy, to, LIFE0(to));
+                  dbgLog(14, sx, sy);
+                  shadeSet(si, rngByte());
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -635,7 +741,7 @@ function updateCell(i: i32, x: i32, y: i32, id: i32): void {
     return;
   }
   // mobile heat/cold sources drive the temperature field from their behavior
-  if (HEAT_PUMP(id) > 0) pumpHeat(x, y, 0, HEAT_PUMP(id)); // traps (stage 1)
+  if (HEAT_PUMP(id) > 0) pumpHeat(x, y, <f64>TEMP0(id), HEAT_PUMP(id));
   // contact reaction (data-driven table): scan the 4-neighborhood for the
   // first reactive partner, starting at a random side so symmetric contacts
   // stay unbiased. Ported in full — the rk draw happens for every HAS_REACT
@@ -782,7 +888,7 @@ function doLiquid(i: i32, x: i32, y: i32, id: i32): void {
   if (id === E_SOAPY && trySoapBubble(i, x, y)) return; // traps (no soapy)
   if (tryWindPush(i, x, y, 0.08)) return;
   if (id === E_ACID && doCorrode(i, x, y)) return; // traps (no acid)
-  if (id === E_MAGMA) hotContact4(x, y); // traps (no magma)
+  if (id === E_MAGMA) hotContact4(x, y); // stage 2: scan runs, ignition traps
   if (y + 1 < H) {
     const below = i + W;
     if (sinksInto(id, below)) {
@@ -841,12 +947,69 @@ function doLiquid(i: i32, x: i32, y: i32, id: i32): void {
 }
 
 function doGas(i: i32, x: i32, y: i32, id: i32): void {
-  abort("doGas: not ported (stage 1 — no gases spawn)");
+  if (LIFE0(id) > 0) {
+    if (life(i) === 0) {
+      // TS: `id === E.STEAM && byte() < 77` — byte drawn only for steam
+      let toWater = false;
+      if (id === E_STEAM) {
+        dbgLog(6, x, y);
+        toWater = rngByte() < 77;
+      }
+      if (toWater) {
+        set(i, x, y, E_WATER, 0);
+        dbgLog(7, x, y);
+        shadeSet(i, rngByte());
+      } else {
+        set(i, x, y, E_EMPTY, 0);
+      }
+      return;
+    }
+    lifeSet(i, life(i) - 1);
+    wake(x, y);
+  }
+  if (tryWindPush(i, x, y, 0.35)) return;
+  if (y - 1 >= 0) {
+    dbgLog(8, x, y);
+    if (rngByte() < 200) {
+      const up = i - W;
+      dbgLog(9, x, y);
+      const dx = rngInt(3) - 1;
+      const nx = x + dx;
+      if (nx >= 0 && nx < W && species(up + dx) === E_EMPTY) {
+        swap(i, up + dx, x, y, nx, y - 1);
+        return;
+      }
+      if (species(up) === E_EMPTY) {
+        swap(i, up, x, y, x, y - 1);
+        return;
+      }
+    }
+  }
+  dbgLog(10, x, y);
+  const dir = rngBool() ? 1 : -1;
+  const nx = x + dir;
+  if (nx >= 0 && nx < W && species(i + dir) === E_EMPTY) {
+    swap(i, i + dir, x, y, nx, y);
+  }
 }
 
-/** ignite/melt scan over 4 neighbors — shared by magma, torch, spark */
+/** ignite/melt scan over 4 neighbors — shared by magma, torch, spark.
+ *  Stage 2: the scan itself runs (magma is in the scene) but a flammable
+ *  neighbor means fire, which is out of scope — trap before TS would draw. */
 function hotContact4(x: i32, y: i32): void {
-  abort("hotContact4: not ported (stage 1)");
+  for (let k = 0; k < 4; k++) {
+    const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+    const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    const j = ny * W + nx;
+    const o = species(j);
+    const fl = FLAMMABLE(o);
+    if (fl > 0) {
+      abort("hotContact4: ignition branch not ported (stage 2 excludes fire)");
+    }
+  }
 }
 
 function doFire(i: i32, x: i32, y: i32): void {

@@ -10,6 +10,7 @@
 import {
   E, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
   EXPLODE_R, REACT, REACT_DT, HAS_REACT, CONDUCTS, HEAT_PUMP,
+  TEMP0, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
 } from "./elements";
 
 // mirrors the module-level HYST table in world.ts (settle-hysteresis liquids)
@@ -54,6 +55,13 @@ interface EngineExports {
   heatPumpPtr(): number;
   reactPtr(): number;
   reactDtPtr(): number;
+  temp0Ptr(): number;
+  hotAtPtr(): number;
+  hotToPtr(): number;
+  coldAtPtr(): number;
+  coldToPtr(): number;
+  ignitesAtPtr(): number;
+  thermalPtr(): number;
 }
 
 /** decode an AssemblyScript string (UTF-16, byte length at ptr-4) for abort() */
@@ -119,6 +127,15 @@ export class WasmWorld {
     new Float32Array(buf).set(HEAT_PUMP, this.ex.heatPumpPtr() >>> 2);
     new Uint32Array(buf).set(REACT, this.ex.reactPtr() >>> 2);
     new Int16Array(buf).set(REACT_DT, this.ex.reactDtPtr() >>> 1);
+    // stage 2: temperature registry
+    const i16 = new Int16Array(buf);
+    i16.set(TEMP0, this.ex.temp0Ptr() >>> 1);
+    i16.set(HOT_AT, this.ex.hotAtPtr() >>> 1);
+    i16.set(COLD_AT, this.ex.coldAtPtr() >>> 1);
+    i16.set(IGNITES_AT, this.ex.ignitesAtPtr() >>> 1);
+    u8.set(HOT_TO, this.ex.hotToPtr());
+    u8.set(COLD_TO, this.ex.coldToPtr());
+    u8.set(THERMAL, this.ex.thermalPtr());
   }
 
   /** (re)build the typed-array views; safe to call if memory ever grew */

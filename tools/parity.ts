@@ -1,14 +1,15 @@
 // Bit-exact parity harness: TS engine (src/engine/world.ts) vs WASM engine
-// (asm/engine.ts via src/engine/world-wasm.ts) on the stage-1 movement scene.
+// (asm/engine.ts via src/engine/world-wasm.ts) on the stage-1 movement scene
+// and the stage-2 thermal zoo.
 //
-// Builds the SAME scene through both engines, runs 500 ticks, and every 50
-// ticks compares (a) the FNV-1a hash over species+life (same hash as
+// Builds the SAME scenes through both engines, runs 500 ticks each, and every
+// 50 ticks compares (a) the FNV-1a hash over species+life (same hash as
 // tools/bench.ts) and (b) cumulative rng draw counts. On first divergence it
 // replays both engines from scratch to the last good checkpoint and steps
 // tick-by-tick to find the first differing cell (tick, x, y, ts, wasm).
 //
-// After a full pass it re-runs bench.ts's 211k churn scene through both
-// engines with timing, comparing hashes at each phase boundary.
+// After a full pass it re-runs bench.ts's 211k churn scene and the thermal
+// zoo through both engines with timing, comparing hashes per phase.
 //
 // Run:  npm run parity
 // (or)  npx asc --config asconfig.json --target release
@@ -81,6 +82,39 @@ function buildStage1(paint: PaintFn): void {
   rect(paint, "Sand", 350, 300, 420, 360);
 }
 
+/** stage-2 thermal zoo: hot AND cold transitions with no reaction row needed
+ *  to drive them. A walled magma tank boils a water pool through a thin lid
+ *  (water->steam, steam rises/condenses/rains); a walled ice reservoir
+ *  freezes a water pool through a 1-cell wall (water->ice, no water-ice
+ *  contact at build time); a snow pile melts at its edges (snow->water) and
+ *  meltwater can refreeze; a stone pile exercises the THERMAL=0 fast path;
+ *  a free steam puff exercises doGas + condensation from tick 1.
+ *  NOTE: transitions CREATE contact (frozen ice inside water, cooled stone
+ *  inside magma), so Ice creep / Remelting rows can fire later — the generic
+ *  stage-1 reaction machinery handles those bit-exactly. */
+function buildThermal(paint: PaintFn): void {
+  rect(paint, "Wall", 20, 700, 1260, 712); // floor
+  rect(paint, "Wall", 20, 300, 32, 700); // left
+  rect(paint, "Wall", 1248, 300, 1260, 700); // right
+  // boiler: magma tank with a water pool on its lid (heat passes, matter doesn't)
+  rect(paint, "Wall", 60, 556, 64, 699); // tank left wall
+  rect(paint, "Wall", 196, 556, 200, 699); // tank right wall
+  rect(paint, "Wall", 65, 618, 195, 619); // thin lid (one coarse temp row)
+  rect(paint, "Magma", 65, 620, 195, 699); // magma below the lid
+  rect(paint, "Water", 65, 560, 195, 617); // water above the lid -> boils
+  // freezer: ice reservoir a 1-cell wall away from a water pool
+  rect(paint, "Wall", 825, 596, 829, 699); // pool left wall
+  rect(paint, "Water", 830, 600, 899, 699); // pool: freezes near the cold wall
+  rect(paint, "Wall", 900, 556, 900, 699); // 1-cell separator
+  rect(paint, "Ice", 901, 560, 1000, 699); // ice block pumps cold through it
+  rect(paint, "Wall", 1001, 556, 1005, 699); // reservoir right wall
+  // snow pile: edges melt (snow->water), meltwater can refreeze nearby
+  rect(paint, "Snow", 500, 640, 620, 699);
+  // inert stone pile (THERMAL=0 fast path) + a steam puff for doGas
+  rect(paint, "Stone", 300, 660, 380, 699);
+  rect(paint, "Steam", 400, 400, 460, 430);
+}
+
 /** bench.ts churn scene: 211k cells of alternating seawater/oil bands */
 function buildChurn(paint: PaintFn): void {
   rect(paint, "Wall", 20, 700, 1260, 712);
@@ -133,12 +167,17 @@ function firstDiff(ts: EngineLike, wasm: EngineLike): CellDiff | null {
 /** forensic pass: replay to tick-1, then run the divergent tick with TS rng
  *  draws stack-tagged by call site and WASM per-site counters — the site whose
  *  tallies differ is the mis-ported draw */
-async function forensic(tick: number, tx: number, ty: number): Promise<void> {
+async function forensic(
+  build: (p: PaintFn) => void,
+  tick: number,
+  tx: number,
+  ty: number,
+): Promise<void> {
   console.log(`\nforensic: re-running tick ${tick} with draw-site attribution...`);
   const { world: ts } = makeTs();
   const wasm = await makeWasm();
-  buildStage1((x, y, id, aux) => ts.paint(x, y, id, aux));
-  buildStage1((x, y, id, aux) => wasm.paint(x, y, id, aux));
+  build((x, y, id, aux) => ts.paint(x, y, id, aux));
+  build((x, y, id, aux) => wasm.paint(x, y, id, aux));
   for (let t = 0; t < tick - 1; t++) {
     ts.step();
     wasm.step();
@@ -154,7 +193,7 @@ async function forensic(tick: number, tx: number, ty: number): Promise<void> {
   const curCell = { x: -1, y: -1 };
   const proto = World.prototype as unknown as Record<string, (...a: number[]) => unknown>;
   const patched: Array<[string, (...a: number[]) => unknown]> = [];
-  for (const fn of ["updateCell", "doPowder", "doLiquid"]) {
+  for (const fn of ["updateCell", "doPowder", "doLiquid", "doGas"]) {
     const origFn = proto[fn];
     patched.push([fn, origFn]);
     proto[fn] = function (this: World, i: number, x: number, y: number, ...rest: number[]) {
@@ -197,48 +236,41 @@ async function forensic(tick: number, tx: number, ty: number): Promise<void> {
   rng.next = orig;
   for (const [fn, origFn] of patched) proto[fn] = origFn;
 
-  // map ts tags to the wasm site enum: within each function, draw sites appear
-  // in ascending source (=bundle) line order matching the enum order
-  const labels = ["reactInt4", "reactByte", "powder90", "powderDir", "liquidDir", "liquidDisp"];
-  const fnSites: Record<string, number[]> = {
-    updateCell: [0, 1],
-    doPowder: [2, 3],
-    doLiquid: [4, 5],
-  };
-  const linesByFn = new Map<string, number[]>();
-  for (const tag of tsSeq) {
-    const [fn, line] = tag.split(":");
-    const arr = linesByFn.get(fn) ?? [];
-    const n = Number(line);
-    if (!arr.includes(n)) {
-      arr.push(n);
-      linesByFn.set(fn, arr);
-    }
-  }
-  const tagToSite = new Map<string, number>();
-  for (const [fn, lines] of linesByFn) {
-    lines.sort((a, b) => a - b);
-    const sites = fnSites[fn] ?? [];
-    lines.forEach((ln, k) => tagToSite.set(`${fn}:${ln}`, sites[k] ?? -1));
-  }
+  // map wasm site codes to the TS function that owns the draw; compare at
+  // function-group level (per-line mapping breaks when not every site in a
+  // function fires during the tick), plus cell identity where TS tracks it
+  const labels = [
+    "reactInt4", "reactByte", "powder90", "powderDir", "liquidDir", "liquidDisp",
+    "gasDeath77", "gasDeathShade", "gasRise200", "gasRiseInt3", "gasDir",
+    "tempHotRoll", "tempHotShade", "tempColdRoll", "tempColdShade",
+  ];
+  const siteFn = (code: number): string =>
+    code <= 1 ? "updateCell" : code <= 3 ? "doPowder" : code <= 5 ? "doLiquid" :
+    code <= 10 ? "doGas" : "stepTemp";
   const tally = new Map<string, number>();
   for (const tag of tsSeq) tally.set(tag, (tally.get(tag) ?? 0) + 1);
   for (const [tag, n] of [...tally.entries()].sort()) {
-    const site = tagToSite.get(tag) ?? -1;
-    console.log(`  ts   ${tag.padEnd(20)} ${String(n).padStart(7)}  -> ${labels[site] ?? "?"}`);
+    console.log(`  ts   ${tag.padEnd(20)} ${String(n).padStart(7)}`);
   }
-  const wsites = wasm.dbgSites();
-  wsites.forEach((n, k) => console.log(`  wasm ${labels[k].padEnd(20)} ${String(n).padStart(7)}`));
+  const wseq = wasm.dbgSeq();
+  const wTally = new Map<string, number>();
+  for (let i = 0; i < wseq.length; i++) {
+    const lb = labels[wseq[i] >>> 28];
+    wTally.set(lb, (wTally.get(lb) ?? 0) + 1);
+  }
+  for (const [lb, n] of [...wTally.entries()].sort()) {
+    console.log(`  wasm ${lb.padEnd(20)} ${String(n).padStart(7)}`);
+  }
   console.log(`  totals: ts=${tsSeq.length} wasm=${wasm.rngDraws - w0}`);
 
-  // align the two draw sequences and report the first differing site OR cell
-  const wseq = wasm.dbgSeq();
+  // align the two draw sequences and report the first differing function/cell
   const nAlign = Math.min(tsSeq.length, wseq.length);
   let misAt = -1;
   for (let i = 0; i < nAlign; i++) {
-    const tsSite = tagToSite.get(tsSeq[i]) ?? -1;
-    const wSite = wseq[i] >>> 28;
-    if (tsSite !== wSite || tsCells[i] !== (wseq[i] & 0x0fffffff)) {
+    const tsFn = tsSeq[i].split(":")[0];
+    const wFn = siteFn(wseq[i] >>> 28);
+    const cellsComparable = wFn !== "stepTemp" && tsFn !== "stepTemp";
+    if (tsFn !== wFn || (cellsComparable && tsCells[i] !== (wseq[i] & 0x0fffffff))) {
       misAt = i;
       break;
     }
@@ -272,7 +304,7 @@ async function forensic(tick: number, tx: number, ty: number): Promise<void> {
     }
   }
   if (misAt >= 0) {
-    console.log(`  first draw mismatch (site or cell) at draw #${misAt}:`);
+    console.log(`  first draw mismatch (function or cell) at draw #${misAt}:`);
     for (let i = Math.max(0, misAt - 10); i < Math.min(nAlign, misAt + 10); i++) {
       const w = wseq[i];
       const wx = w & 0x3fff;
@@ -281,7 +313,7 @@ async function forensic(tick: number, tx: number, ty: number): Promise<void> {
       const tyy = tsCells[i] >>> 14;
       const mark = i === misAt ? " <-- MISMATCH" : "";
       console.log(
-        `    #${i}  ts=${labels[tagToSite.get(tsSeq[i]) ?? -1] ?? tsSeq[i]} @ (${tx},${tyy})  wasm=${labels[w >>> 28]} @ (${wx},${wy})${mark}`,
+        `    #${i}  ts=${tsSeq[i]} @ (${tx},${tyy})  wasm=${labels[w >>> 28]} @ (${wx},${wy})${mark}`,
       );
     }
     const mw = wseq[misAt];
@@ -290,7 +322,7 @@ async function forensic(tick: number, tx: number, ty: number): Promise<void> {
     console.log(`  mismatch cell neighborhood (pre-tick, engines identical):`);
     // note: these arrays are POST-tick now; re-derive pre-tick via a fresh replay
     const { world: pre } = makeTs();
-    buildStage1((x, y, id, aux) => pre.paint(x, y, id, aux));
+    build((x, y, id, aux) => pre.paint(x, y, id, aux));
     for (let t = 0; t < tick - 1; t++) pre.step();
     dumpNeighborhood("pre species", pre.species, mx, my, 6);
     dumpNeighborhood("pre life   ", pre.life, mx, my, 6);
@@ -323,12 +355,16 @@ function dumpNeighborhood(label: string, arr: Uint8Array, cx: number, cy: number
 
 /** replay both engines from scratch to lastGood, then hunt tick-by-tick,
  *  comparing species/life/shade/clock, rng draw counts, and chunk activity */
-async function hunt(lastGood: number, failTick: number): Promise<void> {
+async function hunt(
+  build: (p: PaintFn) => void,
+  lastGood: number,
+  failTick: number,
+): Promise<void> {
   console.log(`\nhunting first divergent cell between ticks ${lastGood} and ${failTick}...`);
   const { world: ts, draws: tsDraws } = makeTs();
   const wasm = await makeWasm();
-  buildStage1((x, y, id, aux) => ts.paint(x, y, id, aux));
-  buildStage1((x, y, id, aux) => wasm.paint(x, y, id, aux));
+  build((x, y, id, aux) => ts.paint(x, y, id, aux));
+  build((x, y, id, aux) => wasm.paint(x, y, id, aux));
   const d0 = firstDiff(ts, wasm);
   if (d0) {
     console.log(`  DIVERGED AT BUILD (tick 0): ${d0.array}[${d0.x},${d0.y}] ts=${d0.ts} wasm=${d0.wasm}`);
@@ -382,7 +418,7 @@ async function hunt(lastGood: number, failTick: number): Promise<void> {
         dumpNeighborhood("ts  ", ts.species, d.x, d.y);
         dumpNeighborhood("wasm", wasm.species, d.x, d.y);
       }
-      await forensic(t + 1, d ? d.x : 0, d ? d.y : 0);
+      await forensic(build, t + 1, d ? d.x : 0, d ? d.y : 0);
       return;
     }
   }
@@ -391,12 +427,12 @@ async function hunt(lastGood: number, failTick: number): Promise<void> {
 
 // ---- main ------------------------------------------------------------------
 
-async function parityRun(): Promise<boolean> {
-  console.log(`parity: stage-1 scene ${W}x${H} seed=0x${SEED.toString(16)} ticks=${TICKS}`);
+async function parityRun(label: string, build: (p: PaintFn) => void): Promise<boolean> {
+  console.log(`parity: ${label} scene ${W}x${H} seed=0x${SEED.toString(16)} ticks=${TICKS}`);
   const { world: ts, draws: tsDraws } = makeTs();
   const wasm = await makeWasm();
-  buildStage1((x, y, id, aux) => ts.paint(x, y, id, aux));
-  buildStage1((x, y, id, aux) => wasm.paint(x, y, id, aux));
+  build((x, y, id, aux) => ts.paint(x, y, id, aux));
+  build((x, y, id, aux) => wasm.paint(x, y, id, aux));
 
   const hb0 = fnv(ts.species, ts.life);
   const hw0 = fnv(wasm.species, wasm.life);
@@ -405,7 +441,7 @@ async function parityRun(): Promise<boolean> {
     `build     hash ts=${hb0} wasm=${hw0}  draws ts=${tsDraws()} wasm=${wasm.rngDraws}  dots ts=${ts.dots} wasm=${wasm.dots}  ${buildOk ? "PASS" : "FAIL"}`,
   );
   if (!buildOk) {
-    await hunt(0, 0);
+    await hunt(build, 0, 0);
     return false;
   }
 
@@ -427,13 +463,13 @@ async function parityRun(): Promise<boolean> {
       `tick ${String(tick).padStart(4)}  hash ts=${ht} wasm=${hw}  draws ts=${dt} wasm=${dw}  ${ok ? "PASS" : "FAIL"}`,
     );
     if (!ok) {
-      await hunt(lastGood, tick);
+      await hunt(build, lastGood, tick);
       return false;
     }
     lastGood = tick;
     pass++;
   }
-  console.log(`parity: ${pass}/${checkpoints} checkpoints PASS`);
+  console.log(`parity: ${label}: ${pass}/${checkpoints} checkpoints PASS`);
   return true;
 }
 
@@ -466,12 +502,44 @@ async function churnBench(): Promise<void> {
   phase("settled 900-1100", 200);
 }
 
-// --bench-only: skip the (instrumented) parity run — the rng draw-count
+async function thermalBench(): Promise<void> {
+  console.log(`\nthermal bench (stage-2 zoo) — TS vs WASM, same phases:`);
+  const ts = new World(W, H, SEED);
+  const wasm = await makeWasm();
+  buildThermal((x, y, id, aux) => ts.paint(x, y, id, aux));
+  buildThermal((x, y, id, aux) => wasm.paint(x, y, id, aux));
+  console.log(`  painted: ts dots=${ts.dots} wasm dots=${wasm.dots}`);
+
+  const phase = (label: string, ticks: number): void => {
+    let t0 = performance.now();
+    for (let i = 0; i < ticks; i++) ts.step();
+    const tsMs = (performance.now() - t0) / ticks;
+    t0 = performance.now();
+    for (let i = 0; i < ticks; i++) wasm.step();
+    const wasmMs = (performance.now() - t0) / ticks;
+    const ht = fnv(ts.species, ts.life);
+    const hw = fnv(wasm.species, wasm.life);
+    console.log(
+      `  ${label.padEnd(18)} ts ${tsMs.toFixed(2).padStart(6)} ms/tick   wasm ${wasmMs.toFixed(2).padStart(6)} ms/tick  (${(tsMs / wasmMs).toFixed(2)}x)  hash ts=${ht} wasm=${hw}  ${ht === hw ? "PASS" : "FAIL"}`,
+    );
+  };
+  phase("thermal 0-100", 100);
+  phase("thermal 100-300", 200);
+  phase("thermal 300-500", 200);
+}
+
+// --bench-only: skip the (instrumented) parity runs — the rng draw-count
 // wrapper deopts V8's inline caches process-wide and inflates TS timings
 if (process.argv.includes("--bench-only")) {
   await churnBench();
+  await thermalBench();
 } else {
-  const ok = await parityRun();
-  if (ok) await churnBench();
-  else process.exitCode = 1;
+  const ok1 = await parityRun("stage-1 movement", buildStage1);
+  const ok2 = ok1 && (await parityRun("stage-2 thermal", buildThermal));
+  if (ok1 && ok2) {
+    await churnBench();
+    await thermalBench();
+  } else {
+    process.exitCode = 1;
+  }
 }
