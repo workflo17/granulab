@@ -29,6 +29,7 @@ uniform vec2 uPan;
 uniform float uZoom;
 uniform float uTime;
 uniform int uMode; // 0 none, 1 air, 2 gray, 3 dark, 4 silhouette, 5 thermography
+uniform float uFlash; // blast flash 0..1
 in vec2 vUv;
 out vec4 frag;
 
@@ -120,9 +121,10 @@ void main() {
       float Tv = texture(uTemp, cellF / uGrid).r;
       float heat = smoothstep(0.099, 0.30, Tv);
       float frost = smoothstep(0.0565, 0.030, Tv);
-      bg += vec3(0.11, 0.05, 0.015) * heat * (0.55 + 0.45 * hash(vec2(cell) + floor(uTime * 14.0)));
+      bg += vec3(0.22, 0.10, 0.03) * heat * (0.55 + 0.45 * hash(vec2(cell) + floor(uTime * 14.0)));
       bg += vec3(0.015, 0.05, 0.09) * frost;
     }
+    bg += vec3(1.0, 0.82, 0.55) * uFlash * 0.45;
     frag = vec4(bg, 1.0);
     return;
   }
@@ -154,6 +156,7 @@ void main() {
   } else if (uMode == 6) {
     col = floor(col * 5.0 + 0.5) / 5.0; // toon: posterized bands
   }
+  col += vec3(1.0, 0.82, 0.55) * uFlash * 0.6;
   frag = vec4(col, 1.0);
 }`;
 
@@ -219,7 +222,7 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uPh", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode"]) {
+    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uPh", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode", "uFlash"]) {
       this.uni[name] = gl.getUniformLocation(prog, name);
     }
     gl.uniform3fv(this.uni.uPalette, PALETTE);
@@ -287,6 +290,7 @@ export class Renderer {
     fillTemp: (buf: Uint8Array) => void,
     fillGlow: (buf: Uint8Array) => void,
     timeSec: number,
+    fxPower = 0,
     overlays?: Array<{ x0: number; y0: number; w: number; h: number; species: Uint8Array; shade: Uint8Array }>,
   ): void {
     const gl = this.gl;
@@ -328,7 +332,12 @@ export class Renderer {
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.windW, this.windH, gl.RED, gl.UNSIGNED_BYTE, this.glowBuf);
     }
     gl.uniform2f(this.uni.uCanvas, canvas.width, canvas.height);
-    gl.uniform2f(this.uni.uPan, this.pan.x, this.pan.y);
+    // blast feedback: white-hot flash and a decaying screen shake
+    const shake = Math.min(13, fxPower * 0.32);
+    const sx = shake > 0.3 ? (Math.random() * 2 - 1) * shake : 0;
+    const sy = shake > 0.3 ? (Math.random() * 2 - 1) * shake : 0;
+    gl.uniform1f(this.uni.uFlash, Math.min(1, fxPower / 34));
+    gl.uniform2f(this.uni.uPan, this.pan.x + sx, this.pan.y + sy);
     gl.uniform1f(this.uni.uZoom, this.zoom);
     gl.uniform1f(this.uni.uTime, timeSec);
     gl.uniform1i(this.uni.uMode, this.mode);

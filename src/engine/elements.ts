@@ -85,6 +85,7 @@ export const E = {
   GOLD: 75, // noble: nothing corrodes it — only mercury takes it
   TUNGSTEN: 76, // conducts and shrugs off magma: lava-proof wiring
   VERDIGRIS: 77, // green copper patina; roasts back to copper
+  SMOKE: 78, // fires billow it; drifts with the wind, fades out
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -249,6 +250,7 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.GOLD, name: "Gold", color: "#e8c34a", behavior: B.METAL, density: 255, conducts: 10, group: "METALS" }),
   def({ id: E.TUNGSTEN, name: "Tungsten", color: "#4a5058", behavior: B.METAL, density: 255, conducts: 16, group: "METALS" }),
   def({ id: E.VERDIGRIS, name: "Verdigris", color: "#5aa88a", behavior: B.POWDER, density: 57, group: "METALS" }),
+  def({ id: E.SMOKE, name: "Smoke", color: "#33363c", behavior: B.GAS, density: 1, disperse: 3, life0: 140 }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).

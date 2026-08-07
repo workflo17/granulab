@@ -268,6 +268,13 @@
 > fire cores (mangled, not vaporized). QA: verify against a stale-guard
 > fetch — three phantom failures this session were stale Vite pages.
 >
+> DRAMA PASS shipped (owner ask 8/06): SMOKE element (id 78) — every fire
+> billows drifting, wind-blown smoke (7/256 per fire cell per tick, life
+> 140); big blasts now FLASH the screen white-hot and SHAKE the view
+> (world.fxPower = blast R, 0.88 decay -> uFlash uniform + render-side pan
+> jitter, never sim-side); ambient heat glow doubled. Burning towns smudge
+> the sky, magazines feel like magazines.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays), upload gallery, WASM.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

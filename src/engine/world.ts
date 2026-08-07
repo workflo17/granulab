@@ -70,6 +70,8 @@ export class World {
   /** blasts this tick as (cx, cy, r) triplets — ObjectSystem turns them into
    *  impulses on balls/boxes/wheels (a cannonball on a charge must launch) */
   readonly blastQueue: number[] = [];
+  /** decaying blast magnitude for render feedback (flash + screen shake) */
+  fxPower = 0;
 
   constructor(w: number, h: number, seed = 0xc0ffee) {
     this.W = w;
@@ -448,6 +450,8 @@ export class World {
 
     this.stepWind();
     this.stepTemp();
+    if (this.fxPower > 0.3) this.fxPower *= 0.88;
+    else this.fxPower = 0;
     if (this.glowTicks > 0) {
       this.glowTicks--;
       const g = this.glow;
@@ -1018,7 +1022,13 @@ export class World {
       const nx = x + dx;
       if (nx >= 0 && nx < W && species[i - W + dx] === E.EMPTY) {
         this.swap(i, i - W + dx, x, y, nx, y - 1);
+        return;
       }
+    }
+    // billow smoke: burning things smudge the sky
+    if (y - 1 >= 0 && this.rng.byte() < 7 && species[i - W] === E.EMPTY) {
+      this.set(i - W, x, y - 1, E.SMOKE, LIFE0[E.SMOKE]);
+      this.shade[i - W] = this.rng.byte();
     }
   }
 
@@ -1637,6 +1647,7 @@ export class World {
     // scales the blast radius (sqrt law), up to a screen-shaking cap
     const charge = this.coalesceCharge(cx, cy);
     if (charge > 0) r = Math.min(46, r + Math.floor(Math.sqrt(charge) * 0.9));
+    if (r > this.fxPower) this.fxPower = r;
     if (this.blastQueue.length < 96) this.blastQueue.push(cx, cy, r);
     const r2 = r * r;
     for (let dy = -r; dy <= r; dy++) {

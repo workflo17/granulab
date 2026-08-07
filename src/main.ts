@@ -404,7 +404,7 @@ function frame(now: number): void {
     (buf) => world.fillWindTex(buf),
     (buf) => world.fillTempTex(buf),
     (buf) => world.fillGlowTex(buf),
-    now / 1000, overlays,
+    now / 1000, world.fxPower, overlays,
   );
   if (!selfChecked && world.frame > 30) {
     selfChecked = true;
