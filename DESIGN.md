@@ -253,6 +253,21 @@
 > Fire is hot air now (debris flies through). Mortar plume 7→132 cells,
 > scatter 236. Object impulse 20, obj cap 12 c/t, debris to ±126 (7.9 c/t).
 >
+> DOOMSDAY DEMO shipped (#doom / demo picker): erupting volcano (1-wide clone
+> pillar vent: primer pool on one face, open air on the other — 2-wide
+> pillars split into primed-but-blocked + open-but-unprimed; pool-buried
+> clones are smothered), heated lava channel in the mountain (thin flows
+> freeze on cold slopes), wooden town w/ oil house + wax house + tar lanes,
+> gold monument (survives 100%), buried 1,300-cell magazine on a slab-carved
+> fuse (magazine boom ~t475), det-line #2 from the pit to a nitro vat via a
+> tub-floor wick (chain boom ~t675), lake, fortress cannon shelling left.
+> HARD-WON FUSE RULES: (1) wall paint OVERWRITES fuse — slab first, carve,
+> then fuse; (2) an open-air fire RISES away before lighting a downward
+> fuse — box the igniter in wall; (3) fire painted onto a fuse ignites in
+> place = the only deterministic ignition. Metals now ~82% survive blast
+> fire cores (mangled, not vaporized). QA: verify against a stale-guard
+> fetch — three phantom failures this session were stale Vite pages.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays), upload gallery, WASM.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

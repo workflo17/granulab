@@ -1650,9 +1650,10 @@ export class World {
         const o = this.species[i];
         if (o === E.WALL) continue;
         if (!this.losClear(cx, cy, x, y)) continue; // shielded by walls
-        // heavy rubble mostly survives the fireball and becomes ejecta instead
-        const dense = BEHAVIOR[o] === B.POWDER && DENSITY[o] >= 70;
-        if (this.rng.byte() < (dense ? 50 : 200)) {
+        // heavy rubble and solid metal mostly survive the fireball — blasts
+        // mangle metal, they don't vaporize it (gold statues outlive sieges)
+        const tough = (BEHAVIOR[o] === B.POWDER && DENSITY[o] >= 70) || BEHAVIOR[o] === B.METAL;
+        if (this.rng.byte() < (tough ? 45 : 200)) {
           this.set(i, x, y, E.FIRE, 10 + this.rng.int(30));
           this.shade[i] = this.rng.byte();
         }

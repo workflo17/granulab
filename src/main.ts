@@ -147,6 +147,7 @@ const ui = new Ui(root, {
     if (name === "sandbox") demoScene();
     else if (name === "chem") chemScene();
     else if (name === "range") rangeScene();
+    else if (name === "doom") doomScene();
   },
 });
 
@@ -675,14 +676,151 @@ function rangeScene(): void {
   settle();
 }
 
+// #doom: the disaster reel — an erupting volcano, a doomed wooden town, a
+// buried magazine on a long fuse, a nitro chain, and a fortress shelling
+// through the smoke. Everything self-runs on physics and one torch.
+function doomScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+
+  // THE GROUND SLAB first, then CARVE the fuse trench through it (wall paint
+  // overwrites everything — embedding means slab, carve, then fuse)
+  R("Wall", 30, 690, 1250, 700);
+  const carve = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, E.EMPTY);
+  };
+  carve(342, 694, 575, 694); // the long run under the town
+  carve(575, 688, 575, 693); // riser into the magazine
+  carve(342, 686, 342, 693); // riser to the torch at the volcano's foot
+  carve(600, 694, 694, 694); // det-line #2: magazine pit -> under the vat
+  carve(600, 690, 600, 693);
+  carve(694, 690, 694, 693);
+  R("Fuse", 342, 694, 575, 694);
+  R("Fuse", 575, 688, 575, 693);
+  R("Fuse", 342, 682, 342, 693);
+  R("Fuse", 600, 694, 694, 694); // det-line #2 begins inside the pit
+  R("Fuse", 600, 689, 600, 693);
+  R("Fuse", 694, 661, 694, 693); // riser up between the vat legs
+  R("Torch", 338, 684, 340, 688); // set dressing — ignition is direct:
+  // the igniter must be BOXED: open-air fire rises away from a downward fuse
+  // before it can light it, so sleeve the top of the riser in wall
+  R("Wall", 341, 680, 343, 680);
+  R("Wall", 341, 681, 341, 689);
+  R("Wall", 343, 681, 343, 689);
+  world.paint(342, 681, byName("Fire")); // trapped: can only burn downward
+
+  // VOLCANO: wall-core slopes (lava-proof bed) dressed in stone, crater bowl
+  // with clone-magma emitters; the right lip is lower so the flow aims at town
+  for (let s = 0; s < 130; s++) {
+    R("Wall", 170 - s, 264 + s * 3.28 | 0, 173 - s, (266 + s * 3.28) | 0); // left flank
+    R("Wall", 197 + s * 1.3 | 0, 264 + s * 3.28 | 0, (200 + s * 1.3) | 0, (266 + s * 3.28) | 0); // right flank
+  }
+  R("Wall", 168, 250, 171, 264); // left lip (taller)
+  R("Wall", 196, 258, 199, 264); // right lip (lower -> overflow right)
+  // a heated channel inside the mountain keeps the flow molten all the way
+  // down (cold slopes freeze a thin lava stream before it gets anywhere)
+  for (let s = 6; s <= 124; s += 8) {
+    const hx = ((197 + s * 1.3) | 0) - 6;
+    const hy = ((264 + s * 3.28) | 0) + 1;
+    R("Heater", hx, hy, hx + 2, hy + 2);
+  }
+  carve(348, 696, 388, 697); // warm approach under the ground slab
+  R("Heater", 348, 696, 388, 697);
+  R("Wall", 171, 276, 196, 278); // crater floor
+  // the vent: a ONE-wide clone pillar — primer pool against its left face,
+  // open air on its right, so every clone both primes AND has room to emit
+  // (2-wide pillars split into a primed-but-blocked column and an open-but-
+  // unprimed one; pool-buried clones are smothered entirely)
+  R("Clone", 180, 266, 180, 275);
+  R("Magma", 172, 266, 179, 275); // pool primes the full pillar height
+  R("Stone", 120, 400, 168, 420); // loose scree the flow will remobilize
+  R("Stone", 205, 380, 260, 400);
+
+  // THE TOWN: five wooden houses (3-thick shells, door gaps), oil in #2,
+  // the powder magazine under #3, wax stock in #4, tar lanes between all
+  const house = (x0: number) => {
+    R("Wood", x0, 640, x0 + 2, 689);
+    R("Wood", x0 + 47, 640, x0 + 49, 668); // right wall stops high = door gap
+    R("Wood", x0, 636, x0 + 49, 639); // roof
+  };
+  house(390); house(470); house(550); house(630); house(710);
+  R("Oil", 475, 680, 515, 688); // house 2: oil on the floor
+  R("Wall", 546, 660, 548, 690); // magazine pit under house 3
+  R("Wall", 602, 660, 604, 690);
+  R("Wall", 549, 660, 573, 662); // pit roof, gap at 574-576 for the fuse
+  R("Wall", 577, 660, 601, 662);
+  R("Gunpowder", 549, 664, 601, 688); // ~1,300 cells: the big one
+  R("Wax", 635, 664, 675, 688); // house 4: wax stock (melts, floods, burns)
+  R("Tar", 442, 686, 468, 689);
+  R("Tar", 522, 686, 548, 689);
+  R("Tar", 605, 686, 628, 689);
+  R("Tar", 682, 686, 708, 689);
+  R("Gold", 526, 660, 540, 689); // the monument that outlives the siege
+
+  // NITRO VAT on legs between houses 4 and 5 — heat from the burning town
+  // sets it off (radiant ignition), chaining the second mega-boom
+  R("Wall", 682, 640, 684, 690);
+  R("Wall", 706, 640, 708, 690);
+  R("Wall", 684, 658, 693, 660); // tub floor, with a fuse gap at 694-695
+  R("Wall", 696, 658, 706, 660);
+  R("Fuse", 694, 642, 694, 660); // wick through the gap, into the charge
+  R("Nitro", 685, 642, 705, 657);
+
+  // THE LAKE: quenches whatever reaches it
+  R("Wall", 810, 655, 812, 690);
+  R("Wall", 948, 655, 950, 690);
+  R("Water", 813, 660, 947, 688);
+
+  // THE FORTRESS: stone keep, cannon battery on top raining stones LEFT
+  R("Stone", 1090, 380, 1130, 688);
+  R("Wall", 1085, 370, 1135, 378); // battlement cap the stones rest on
+  R("Wall", 1050, 358, 1135, 360); // gun deck
+  R("Wall", 1054, 300, 1056, 338); // hopper left wall (clears the barrel)
+  R("Wall", 1079, 300, 1081, 356); // hopper right wall
+  for (let y = 340; y <= 348; y++) for (let x = 1058; x <= 1066; x++) {
+    world.paint(x, y, byName("Cannon"), 128); // aimed LEFT
+  }
+  R("Stone", 1067, 310, 1078, 356); // breech feed + supply column
+  world.paint(1061, 339, byName("Clone")); // trigger on the barrel top
+  world.paint(1062, 339, byName("Spark")); // primer
+
+  // sky, life, witness
+  R("Cloud", 840, 62, 990, 74);
+  for (const [bx, by] of [[600, 200], [700, 260], [820, 180], [500, 300]]) {
+    world.paint(bx, by, byName("Bird"), 1);
+  }
+  R("Ant", 860, 684, 900, 688);
+  player.place(880, 680);
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 40 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 40) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
 else if (location.hash.startsWith("#range")) rangeScene();
+else if (location.hash.startsWith("#doom")) doomScene();
 
 window.granulab = {
   demo: demoScene,
   chem: chemScene,
   range: rangeScene,
+  doom: doomScene,
   player,
   fighters,
   objects,

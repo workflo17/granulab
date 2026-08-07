@@ -106,6 +106,7 @@ export class Ui {
             <option value="sandbox">demo: sandbox</option>
             <option value="chem">demo: chem lab</option>
             <option value="range">demo: weapons range</option>
+            <option value="doom">demo: doomsday</option>
           </select>
           <select id="penmode" title="Pen mode">
             <option value="free" selected>pen: free</option>
