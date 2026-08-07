@@ -120,6 +120,7 @@ export class Ui {
             <option value="chem">demo: chem lab</option>
             <option value="range">demo: weapons range</option>
             <option value="doom">demo: doomsday</option>
+            <option value="alchemy">demo: alchemy</option>
           </select>
           <select id="penmode" title="Pen mode">
             <option value="free" selected>pen: free</option>

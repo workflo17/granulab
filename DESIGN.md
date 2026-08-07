@@ -349,6 +349,19 @@
 > devices/blasts/ballistics — each widens the oracle scene set; then wire
 > world-wasm.ts behind a feature flag in main.ts.
 >
+> #ALCHEMY DEMO shipped 8/07 (demo picker "alchemy"): nine self-running M5g
+> stations — sodium dripper popping its own H2 over the pool, elephant-
+> toothpaste cylinder (4,250 O2), carbide lamp with a permanent acetylene
+> flame, rocket-candy mill (938 grains — NO stove near the mill, a heat
+> plate ignites the product as it forms), brewery+greenhouse carbon loop
+> (2,047 alcohol 1:1 CO2), never-mix cabinet with a chlorine→lye→bleach
+> recovery chute, magnesium pyre whose skirt reaches the splash zone
+> (steam strips it to magnesia+H2 while it burns), phosphorus vault (dry
+> shelf flashes off a warm pipe, the 585-cell underwater sample sleeps),
+> SO2 fan-lofted into a cloud raining acid on vines. QA LESSON (cost a
+> server restart): Vite's dev transform STRIPS COMMENTS — stale-guard
+> fetches must grep for CODE literals, never comment text.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays), WASM stages 2-4.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

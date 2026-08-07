@@ -151,6 +151,7 @@ const ui = new Ui(root, {
     else if (name === "chem") chemScene();
     else if (name === "range") rangeScene();
     else if (name === "doom") doomScene();
+    else if (name === "alchemy") alchemyScene();
   },
 });
 
@@ -867,16 +868,139 @@ function doomScene(): void {
   settle();
 }
 
+// #alchemy: the M5g showcase — nine self-running chemistry stations
+function alchemyScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  R("Wall", 30, 690, 1250, 700); // the bench
+
+  // 1) SODIUM DROP: 1-wide clone pillar (primer on its left face, open right)
+  // drips alkali metal into the pool — floats, skitters, pops its own hydrogen
+  R("Wall", 40, 600, 42, 690);
+  R("Wall", 168, 600, 170, 690);
+  R("Water", 43, 640, 167, 688);
+  R("Clone", 100, 560, 100, 566);
+  R("Sodium", 99, 560, 99, 566); // primer column against the left face
+  R("Wall", 98, 558, 101, 559); // rain hat keeps the primer seated
+  R("Wall", 98, 560, 98, 567);
+
+  // 2) ELEPHANT TOOTHPASTE: glass cylinder, rust catalyst bed, peroxide
+  // charge, soap cap — O2 erupts through the pink
+  R("Glass", 200, 540, 202, 690);
+  R("Glass", 288, 540, 290, 690);
+  R("Rust", 203, 680, 287, 688);
+  R("Peroxide", 203, 630, 287, 679);
+  R("Soapy", 203, 610, 287, 629);
+
+  // 3) CARBIDE LAMP: clone drips carbide into water; acetylene rises the
+  // chimney into an embedded torch = permanent flame jet
+  R("Wall", 320, 600, 322, 690);
+  R("Wall", 438, 600, 440, 690);
+  R("Water", 323, 650, 437, 688);
+  R("Clone", 380, 610, 380, 614);
+  R("Carbide", 379, 610, 379, 614); // primer face
+  R("Wall", 378, 608, 381, 609);
+  R("Wall", 378, 610, 378, 615);
+  R("Wall", 360, 598, 376, 600); // chimney throat, gap at 377-384
+  R("Wall", 385, 598, 400, 600);
+  R("Torch", 382, 590, 386, 596); // the lamp flame, above the gas gap
+
+  // 4) ROCKET CANDY MILL: sugar/saltpeter layers milling to gunpowder;
+  // heater shelf caramel-chars the overspill into charcoal (more fuel)
+  R("Wall", 460, 660, 570, 662);
+  for (let i = 0; i < 5; i++) R(i % 2 ? "Sugar" : "Saltpeter", 470, 630 + i * 6, 560, 635 + i * 6);
+  // no stove here: any heat plate ignites the product as it mills (found the
+  // hard way — 940 grains of rocket candy went up before t900)
+
+  // 5) BREWERY + GREENHOUSE: yeast/sugar vat ferments; CO2 rises through the
+  // neck into a glass conservatory where vines fix it back to oxygen
+  R("Wall", 590, 620, 592, 690);
+  R("Wall", 708, 620, 710, 690);
+  for (let i = 0; i < 6; i++) R(i % 2 ? "Sugar" : "Yeast", 593, 652 + i * 6, 707, 657 + i * 6);
+  R("Glass", 590, 560, 592, 620);
+  R("Glass", 708, 560, 710, 620);
+  R("Glass", 590, 558, 710, 560);
+  R("Vine", 620, 600, 622, 618);
+  R("Vine", 660, 606, 662, 618);
+  R("Wall", 593, 618, 640, 620); // vat lid with a CO2 gap at 641-659
+  R("Wall", 660, 618, 707, 620);
+
+  // 6) NEVER-MIX CABINET: clone drips acid into the bleach tray; chlorine
+  // runs down the chute into a lye bed and turns back into bleach
+  R("Wall", 730, 600, 732, 690);
+  R("Wall", 858, 600, 860, 690);
+  R("Wall", 733, 640, 810, 642); // upper tray, open lip at the right
+  R("Bleach", 733, 620, 805, 638);
+  R("Clone", 760, 604, 760, 608);
+  R("Acid", 759, 604, 759, 608); // primer face
+  R("Wall", 758, 602, 761, 603);
+  R("Wall", 758, 604, 758, 609);
+  R("Lye", 733, 680, 857, 688); // scrubber bed on the cabinet floor
+
+  // 7) MAGNESIUM PYRE over a water pool: embers boil it, steam strips the
+  // metal into magnesia + hydrogen — never hose a magnesium fire
+  R("Wall", 880, 620, 882, 690);
+  R("Wall", 998, 620, 1000, 690);
+  R("Water", 883, 660, 997, 688);
+  R("Wall", 900, 652, 980, 654); // grate just over the waterline
+  R("Magnesium", 906, 636, 974, 650); // big pile: skirt cells reach the splash zone
+  R("Magnesium", 890, 656, 902, 668); // and a spur slumping into the pool itself
+  R("Torch", 908, 644, 912, 650); // embedded at bed level — contact ignition
+
+  // 8) PHOSPHORUS VAULT: white P safe under water beside the pyre's warmth;
+  // the dry shelf sample flashes on its own
+  R("Glass", 1010, 630, 1012, 690);
+  R("Glass", 1078, 630, 1080, 690);
+  R("Phosphorus", 1013, 680, 1077, 688);
+  R("Water", 1013, 640, 1077, 679);
+  R("Wall", 1010, 620, 1080, 622); // dry shelf above the tank
+  R("Phosphorus", 1030, 612, 1060, 618);
+  R("Heater", 1064, 612, 1067, 618); // a warm pipe: pyrophoric P flashes, tank P sleeps
+
+  // 9) ACID RAIN: embedded torch keeps the sulfur bed smoldering; the fan
+  // column lofts SO2 into the cloud, which rains acid on the vine terrace
+  R("Wall", 1100, 660, 1240, 662);
+  R("Sulfur", 1130, 640, 1210, 658);
+  R("Torch", 1122, 650, 1128, 658);
+  for (let y = 630; y <= 638; y++) {
+    for (let x = 1216, e = 0; x <= 1222; x++, e++) world.paint(x, y, byName("Fan"), 192); // blow up
+  }
+  R("Cloud", 1140, 540, 1230, 552);
+  R("Vine", 1150, 680, 1152, 688);
+  R("Vine", 1180, 674, 1182, 688);
+  R("Vine", 1210, 678, 1212, 688);
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 120 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 120) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
 else if (location.hash.startsWith("#range")) rangeScene();
 else if (location.hash.startsWith("#doom")) doomScene();
+else if (location.hash.startsWith("#alchemy")) alchemyScene();
 
 window.granulab = {
   demo: demoScene,
   chem: chemScene,
   range: rangeScene,
   doom: doomScene,
+  alchemy: alchemyScene,
   player,
   fighters,
   objects,
