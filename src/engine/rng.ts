@@ -8,7 +8,9 @@ export class Rng {
   }
   /** float in [0, 1) */
   next(): number {
-    let t = (this.s += 0x6d2b79f5);
+    // state must stay u32: an unmasked `+=` accumulates in f64 and starts
+    // rounding past 2^53 (~4.9M draws), silently leaving the mulberry32 stream
+    let t = (this.s = (this.s + 0x6d2b79f5) >>> 0);
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;

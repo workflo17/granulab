@@ -362,6 +362,22 @@
 > server restart): Vite's dev transform STRIPS COMMENTS — stale-guard
 > fetches must grep for CODE literals, never comment text.
 >
+> RNG U32 FIX 8/07: Rng.s now masks every draw (`(s + 0x6d2b79f5) >>> 0`)
+> — the unbounded-f64 state above (PARITY SUBTLETY) rounded past 2^53
+> (~4.9M draws) and silently left textbook mulberry32. asm/engine.ts
+> dropped its ToUint32-on-f64 emulation for pure u32 in the SAME change;
+> parity re-ran 10/10 BIT-EXACT on BOTH oracle scenes after rebasing onto
+> stage 2 (movement 51.8M draws, thermal 13.8M — each crosses the 2^53
+> boundary between ticks 100-150 and stays green). ORACLE IMPACT: churn
+> bench hashes
+> UNCHANGED (e009494c / a884374c — churn never reaches 4.9M draws); zoo
+> hashes re-baselined 08d3646e→87d46d8a, 40700818→1523c51e; stage-1
+> checkpoint hashes from tick 150 on are new. Share codes/saves
+> unaffected (GRN1 snapshots grid bytes, no rng state) — but seed-based
+> REPLAY determinism breaks for long scenes: any recording made pre-fix
+> diverges from a post-fix replay once it crosses ~4.9M draws (no replay
+> system ships yet, so this costs nothing today).
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays), WASM stages 2-4.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

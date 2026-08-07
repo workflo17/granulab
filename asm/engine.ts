@@ -76,27 +76,18 @@ const B_FILTER: i32 = 22;
 const B_LITMUS: i32 = 23;
 
 // ---- Rng (src/engine/rng.ts, mulberry32) -----------------------------------
-// PARITY-CRITICAL: in TS, `this.s += 0x6d2b79f5` accumulates in an UNBOUNDED
-// JS f64 — it is never masked to 32 bits. The i32 ops read ToUint32(s), which
-// equals pure u32 wrapping ONLY while s < 2^53 (~4.92M draws from seed
-// 0xc0ffee). Beyond that the f64 addition ROUNDS (s snaps to even spacing),
-// and the draw stream departs from textbook mulberry32. A "clean" u32-state
-// port diverges at exactly draw 4,917,861 — found the hard way at tick 136 of
-// the stage-1 scene. So the state here is f64, added like JS adds, and only
-// truncated to u32 bits where TS coerces.
+// State is a pure u32 with wrapping add — matches TS, whose next() masks with
+// `>>> 0` every draw. (Historical: TS once accumulated in an unbounded f64,
+// which rounds past 2^53 (~4.92M draws) and forced this port to emulate the
+// rounding; both engines were fixed together to textbook mulberry32.)
 
-let rngSF: f64 = 0; // JS-number state: unbounded, rounds above 2^53 like TS
+let rngS: u32 = 0;
 let rngDraws: u32 = 0; // parity instrumentation: total next() calls
-
-// @ts-ignore: decorator
-@inline function toU32(x: f64): u32 {
-  return <u32>(<u64>x); // ECMAScript ToUint32: trunc, then low 32 bits
-}
 
 function rngNext(): f64 {
   rngDraws++;
-  rngSF += 1831565813.0; // 0x6d2b79f5 as an f64 add — rounding included
-  let t: u32 = toU32(rngSF);
+  rngS += 0x6d2b79f5; // u32 wrapping add, same as TS `(s + 0x6d2b79f5) >>> 0`
+  let t: u32 = rngS;
   t = (t ^ (t >>> 15)) * (t | 1); // Math.imul == wrapping 32-bit multiply
   t ^= t + (t ^ (t >>> 7)) * (t | 61); // f64 add then ToInt32 == wrapping add
   const v = <f64>(t ^ (t >>> 14)) / 4294967296.0;
@@ -124,7 +115,7 @@ export function getRngDraws(): u32 {
 }
 
 export function getRngState(): u32 {
-  return toU32(rngSF);
+  return rngS;
 }
 
 // ---- world state (World fields as module globals + raw memory regions) ----
@@ -321,7 +312,7 @@ export function init(w: i32, h: i32, seed: u32): void {
   coldToP = allocZ(N_IDS);
   ignitesAtP = allocZ(N_IDS << 1);
   thermalP = allocZ(N_IDS);
-  rngSF = <f64>seed; // constructor does `seed >>> 0` — loader passes u32
+  rngS = seed; // constructor does `seed >>> 0` — loader passes u32
   rngDraws = 0;
   frame = 0;
   dots = 0;
