@@ -334,9 +334,23 @@
 > hazard). QA lesson re-learned: paint() fills EMPTY only — pour the pool
 > AROUND the stored reagent, not after it.
 >
+> WASM STAGE 1 LANDED 8/07: asm/engine.ts (AssemblyScript) ports the scan +
+> powder/liquid movement + always-on subsystems; tools/parity.ts gate =
+> 10/10 checkpoints BIT-EXACT over 500 ticks (grid hashes AND 52.4M rng
+> draw counts), churn bench 7.6ms vs 13ms TS (1.7x). Unreached branches
+> are named traps — any scene touching fire/gas/devices aborts loudly by
+> design. NOT wired into the app yet (harness-only; game still runs TS).
+> PARITY SUBTLETY that cost a day: TS Rng.s is an UNBOUNDED f64 (`s +=`
+> never masked) — past 2^53 (draw ~4.9M) the add rounds and TS stops being
+> textbook mulberry32; the port must emulate ToUint32-on-f64, not pure u32.
+> Run: `npm run parity` (or `node tools/parity.mjs --bench-only` for
+> honest timings — in-process instrumentation inflates TS ~2x otherwise).
+> NEXT STAGES: (2) thermal transitions, (3) full react roll, (4) fire/
+> devices/blasts/ballistics — each widens the oracle scene set; then wire
+> world-wasm.ts behind a feature flag in main.ts.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays), WASM port itself
-> (stage-1 AssemblyScript parity port in progress on a side effort).
+> track — partly obsoleted by the ambient overlays), WASM stages 2-4.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
