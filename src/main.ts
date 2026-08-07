@@ -441,7 +441,10 @@ function frame(now: number): void {
   if (!ui.state.paused) {
     acc += (dt / (1000 / 60)) * ui.state.speed;
     let n = 0;
-    while (acc >= 1 && n < 8) { stepOnce(); acc--; n++; }
+    // wall-clock budget: on pathological scenes shed sim steps, not frames —
+    // the first step always runs, so worst case is one step over budget
+    const budget = performance.now() + 14;
+    while (acc >= 1 && n < 8 && performance.now() < budget) { stepOnce(); acc--; n++; }
     if (acc > 8) acc = 0; // dropped frames: don't spiral
   }
 

@@ -294,8 +294,24 @@
 > (launch.json autoPort — worktree sessions get a free port; bare
 > `npm run dev` still 4870), TS 5.9 generic-Uint8Array Blob casts fixed.
 >
+> WASM GROUNDWORK 8/07: tools/bench.ts is the headless ORACLE any engine
+> port must match — rebuilds the 211k double-pool churn (banded seawater/
+> oil, peak load for ~100 ticks) plus a behavior ZOO (fire/wood, salt
+> dissolution, ice vs magma, spark conduction, fan wind, nitro detonation),
+> times each phase and FNV-1a-hashes species+life; two runs = identical
+> hashes. PERF TRUTH v3 (node, fresh V8): peak churn ~13ms/tick, NOT 25 —
+> the 25ms reading was JIT-poisoned browser state; settled pools sleep to
+> 0.03ms. FRAME LOOP now sheds SIM STEPS, not frames: 14ms wall-clock
+> budget in the catch-up loop (first step always runs) — pathological
+> scene went 6 steps/286ms per frame → 1 step (verified synchronously;
+> a hidden pane fires zero rAF, the known trap). PORT PLAN (no cargo on
+> this box → AssemblyScript): port by RNG-REACHABILITY, not by feature —
+> every stage must consume the identical rng stream, so stage 1 = the
+> scan + movement + every always-on roll the oracle scene reaches, with
+> loud traps on unreached branches; stages widen the oracle scene set.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays), WASM.
+> track — partly obsoleted by the ambient overlays), WASM port itself.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
