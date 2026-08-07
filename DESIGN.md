@@ -310,8 +310,33 @@
 > scan + movement + every always-on roll the oracle scene reaches, with
 > loud traps on unreached branches; stages widen the oracle scene set.
 >
+> M5g SHIPPED 8/07 — REACTIVE SHELF III (owner ask "more elements, accurate
+> chemistry"; 11 elements, ids 79-89, customs from 90; 27 REACT rows, ALL
+> registry data — bench oracle hashes unchanged, proof it's additive):
+> SODIUM (density 28: FLOATS on water 30, sinks under oil 20 = real alkali
+> storage; +water→lye+H2 ΔT+70 routinely crosses H2's 480° autoignition —
+> the pool detonates its own gas, verified 451 Na → 451 lye exact);
+> MAGNESIUM (ignites 470°, 200-tick white ember = the thermite match;
+> +steam→magnesia+H2 verified 65:65 — never hose a Mg fire); MAGNESIA
+> (antacid: +acid→salt+water; needed a doCorrode exemption — the REACT row
+> must do the dissolving so acid is CONSUMED, else corrosion deletes the
+> antacid for free); PHOSPHORUS (ignitesAt 34° pyrophoric — safe under
+> water, 369/369 survive; flashes near any heat); PEROXIDE (rust/metal
+> catalyze O2 evolution, catalyst survives; +soapy = elephant toothpaste);
+> SUGAR (dissolves, chars at 190° through a real thermal gradient,
+> +saltpeter = rocket candy, +YEAST → alcohol+CO2 fermentation closing the
+> carbon cycle with photosynthesis); CARBIDE (+water→acetylene+lime, the
+> miner's lamp, feeds the lime cycle); ACETYLENE (welding flame ΔT+120,
+> 11,372-cell pocket verified); SO2 (off burning sulfur; +cloud→acid rain
+> — cloud cells become falling acid, 1,515 SO2 fully absorbed; fumigates
+> ants/birds, smogs vines); BLEACH (lye+chlorine→hypochlorite; +acid =
+> "Never mix: Cl2 release", 1,281 bleach → 1,200 chlorine, the household
+> hazard). QA lesson re-learned: paint() fills EMPTY only — pour the pool
+> AROUND the stored reagent, not after it.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays), WASM port itself.
+> track — partly obsoleted by the ambient overlays), WASM port itself
+> (stage-1 AssemblyScript parity port in progress on a side effort).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth

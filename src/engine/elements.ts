@@ -86,6 +86,18 @@ export const E = {
   TUNGSTEN: 76, // conducts and shrugs off magma: lava-proof wiring
   VERDIGRIS: 77, // green copper patina; roasts back to copper
   SMOKE: 78, // fires billow it; drifts with the wind, fades out
+  // ---- M5g reactive shelf III ----
+  SODIUM: 79, // alkali metal: floats on water and detonates its own hydrogen; store under oil
+  MAGNESIUM: 80, // ignites at 470° and burns as a long white-hot ember — the thermite match
+  MAGNESIA: 81, // MgO: refractory white powder; mildly basic (antacid)
+  PHOSPHORUS: 82, // white P: pyrophoric above 34° — store it under water
+  PEROXIDE: 83, // H2O2: rust/metal catalyze O2 evolution; + soap = elephant toothpaste
+  SUGAR: 84, // dissolves, caramel-chars at 190°; + saltpeter = rocket candy, + yeast = ferment
+  YEAST: 85, // ferments sugar into alcohol + CO2
+  CARBIDE: 86, // CaC2: + water = acetylene + lime (the miner's lamp)
+  ACETYLENE: 87, // hottest common fuel gas — the welding flame
+  SO2: 88, // choking dense gas off burning sulfur; seeds acid rain
+  BLEACH: 89, // hypochlorite: disinfects; NEVER mix with acid (chlorine release)
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -251,6 +263,19 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.TUNGSTEN, name: "Tungsten", color: "#4a5058", behavior: B.METAL, density: 255, conducts: 16, group: "METALS" }),
   def({ id: E.VERDIGRIS, name: "Verdigris", color: "#5aa88a", behavior: B.POWDER, density: 57, group: "METALS" }),
   def({ id: E.SMOKE, name: "Smoke", color: "#33363c", behavior: B.GAS, density: 1, disperse: 3, life0: 140 }),
+  // ---- M5g reactive shelf III (density 28 < water 30: sodium FLOATS on the
+  // pool it attacks, but sinks under oil 20 — real alkali-metal storage) ----
+  def({ id: E.SODIUM, name: "Sodium", color: "#d8d4c0", behavior: B.POWDER, density: 28, group: "REAGENTS" }),
+  def({ id: E.MAGNESIUM, name: "Magnesium", color: "#c4ccd8", behavior: B.POWDER, density: 58, flammable: 160, burnLife: 200, ignitesAt: 470, group: "REAGENTS" }),
+  def({ id: E.MAGNESIA, name: "Magnesia", color: "#f0eee6", behavior: B.POWDER, density: 60, ph: 10, group: "REAGENTS" }),
+  def({ id: E.PHOSPHORUS, name: "Phosphorus", color: "#e8e2a8", behavior: B.POWDER, density: 45, flammable: 255, burnLife: 60, ignitesAt: 34, group: "REAGENTS" }),
+  def({ id: E.PEROXIDE, name: "Peroxide", color: "#d4e8ea", behavior: B.LIQUID, density: 31, disperse: 4, ph: 5 }),
+  def({ id: E.SUGAR, name: "Sugar", color: "#f2f0ea", behavior: B.POWDER, density: 40, flammable: 30, burnLife: 60, hotAt: 190, hotTo: E.CHARCOAL, ignitesAt: 350, group: "REAGENTS" }),
+  def({ id: E.YEAST, name: "Yeast", color: "#d8c8a0", behavior: B.POWDER, density: 35, group: "REAGENTS" }),
+  def({ id: E.CARBIDE, name: "Carbide", color: "#686c74", behavior: B.POWDER, density: 75, group: "REAGENTS" }),
+  def({ id: E.ACETYLENE, name: "Acetylene", color: "#c8b8d8", behavior: B.GAS, density: 1, disperse: 4, flammable: 255, burnLife: 18, ignitesAt: 305 }),
+  def({ id: E.SO2, name: "SO2", color: "#a8a468", behavior: B.LIQUID, density: 4, disperse: 5 }),
+  def({ id: E.BLEACH, name: "Bleach", color: "#e6f0d8", behavior: B.LIQUID, density: 31, disperse: 4, ph: 12 }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -452,4 +477,36 @@ react(E.TAR, E.BIRD, E.TAR, E.EMPTY, 80, "Tar pit");
 react(E.MAGMA, E.COPPER, E.MAGMA, E.MAGMA, 2, "Foundry melt");
 react(E.MERCURY, E.GOLD, E.MERCURY, E.MERCURY, 2, "Gold amalgam");
 react(E.VERDIGRIS, E.FIRE, E.COPPER, E.FIRE, 20, "Patina roasting");
+
+// ---- M5g reactive shelf III -------------------------------------------------
+// 2Na + 2H2O -> 2NaOH + H2, violently exothermic; the +70° pump routinely
+// crosses hydrogen's 480° autoignition, so the pool detonates its own gas
+react(E.SODIUM, E.WATER, E.LYE, E.HYDROGEN, 200, "Alkali metal + water", 70);
+react(E.SODIUM, E.SEAWATER, E.LYE, E.HYDROGEN, 200, "Alkali metal + water", 70);
+react(E.SODIUM, E.CHLORINE, E.SALT, E.SALT, 120, "Direct chlorination", 50); // 2Na + Cl2 -> 2NaCl
+react(E.MAGNESIUM, E.STEAM, E.MAGNESIA, E.HYDROGEN, 120, "Steam on magnesium", 60); // why you never hose a Mg fire
+react(E.MAGNESIUM, E.WATER, E.MAGNESIA, E.HYDROGEN, 2, "Slow hydrolysis", 10); // cold water: barely
+react(E.MAGNESIUM, E.ACID, E.SALT, E.HYDROGEN, 120, "Acid on magnesium", 40); // Mg + 2HCl -> MgCl2 + H2
+react(E.MAGNESIA, E.ACID, E.SALT, E.WATER, 220, "Antacid", 20); // MgO neutralizes — fast, so
+// the salt+water row beats doCorrode (else the acid "eats" the antacid for free)
+// H2O2 disproportionates on catalytic surfaces (Fe2O3, metal) — catalyst survives
+react(E.PEROXIDE, E.RUST, E.OXYGEN, E.RUST, 220, "Catalytic decomposition", 30);
+react(E.PEROXIDE, E.METAL, E.OXYGEN, E.METAL, 15, "Catalytic decomposition", 30);
+react(E.PEROXIDE, E.SOAPY, E.OXYGEN, E.SOAPY, 120, "Elephant toothpaste", 15); // O2 through soap = foam
+react(E.PEROXIDE, E.VIRUS, E.WATER, E.EMPTY, 200, "Disinfection");
+react(E.SUGAR, E.WATER, E.EMPTY, E.WATER, 30, "Dissolution", -1);
+react(E.SUGAR, E.SALTPETER, E.GUNPOWDER, E.GUNPOWDER, 40, "Rocket candy"); // KNO3 + sucrose propellant
+react(E.SUGAR, E.YEAST, E.ALCOHOL, E.CO2, 8, "Fermentation", 2); // slow; feeds the carbon cycle
+react(E.CARBIDE, E.WATER, E.ACETYLENE, E.LIME, 200, "Carbide lamp", 15); // CaC2 + 2H2O -> C2H2 + Ca(OH)2
+react(E.FIRE, E.ACETYLENE, E.FIRE, E.FIRE, 220, "Welding flame", 120); // hottest common fuel gas
+react(E.SULFUR, E.FIRE, E.SO2, E.FIRE, 80, "Sulfur burn", 30); // burning sulfur chokes the room
+react(E.SO2, E.WATER, E.ACID, E.WATER, 4, "Acid rain"); // slow sulfurous acid
+react(E.SO2, E.CLOUD, E.EMPTY, E.ACID, 40, "Acid rain"); // scrubbed cloud rains acid
+react(E.SO2, E.ANT, E.SO2, E.EMPTY, 120, "Fumigation");
+react(E.SO2, E.BIRD, E.SO2, E.EMPTY, 120, "Fumigation");
+react(E.SO2, E.VINE, E.SO2, E.EMPTY, 60, "Acid smog"); // forest death
+react(E.LYE, E.CHLORINE, E.BLEACH, E.EMPTY, 60, "Hypochlorite synthesis", 15); // Cl2 + 2NaOH -> NaOCl
+react(E.BLEACH, E.ACID, E.CHLORINE, E.WATER, 180, "Never mix: Cl2 release", 10); // the household hazard
+react(E.BLEACH, E.VIRUS, E.WATER, E.EMPTY, 220, "Disinfection");
+react(E.BLEACH, E.VINE, E.BLEACH, E.EMPTY, 40, "Defoliation");
 
