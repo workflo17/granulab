@@ -1,6 +1,6 @@
 // Bit-exact parity harness: TS engine (src/engine/world.ts) vs WASM engine
-// (asm/engine.ts via src/engine/world-wasm.ts) on the stage-1 movement scene
-// and the stage-2 thermal zoo.
+// (asm/engine.ts via src/engine/world-wasm.ts) on the stage-1 movement scene,
+// the stage-2 thermal zoo, and the stage-3 reaction+fire zoo.
 //
 // Builds the SAME scenes through both engines, runs 500 ticks each, and every
 // 50 ticks compares (a) the FNV-1a hash over species+life (same hash as
@@ -115,6 +115,60 @@ function buildThermal(paint: PaintFn): void {
   rect(paint, "Steam", 400, 400, 460, 430);
 }
 
+/** stage-3 reaction+fire zoo: rows FIRE and fire BURNS. Stations: salt
+ *  dissolution into a pool; a wood block charring under painted fire; an oil
+ *  pool ignited from above; a sulfur pile burning to SO2; open magma+water
+ *  quenching contact (plus charcoal dropped on the magma to exercise
+ *  hotContact4's flammable branch); acid rained on a powder bed (doCorrode);
+ *  sodium dropped into water (lye + hydrogen, +70C per event — hydrogen
+ *  autoignites via stepTemp's ignitesAt branch). No explosives, no devices,
+ *  no metals/spark. */
+function buildFireZoo(paint: PaintFn): void {
+  rect(paint, "Wall", 20, 700, 1260, 712); // floor
+  rect(paint, "Wall", 20, 300, 32, 700); // left
+  rect(paint, "Wall", 1248, 300, 1260, 700); // right
+  // 1) dissolution: salt column dropped into a water pool
+  rect(paint, "Wall", 60, 640, 64, 699);
+  rect(paint, "Wall", 240, 640, 244, 699);
+  rect(paint, "Water", 65, 650, 239, 699);
+  rect(paint, "Salt", 120, 580, 180, 620);
+  // 2) wood pyre: fire painted in the air above and directly onto the wood
+  rect(paint, "Wood", 300, 660, 400, 699);
+  rect(paint, "Fire", 320, 640, 380, 659); // air fire settles onto the block
+  rect(paint, "Fire", 330, 660, 370, 661); // painted ONTO wood: ignites in place
+  // 3) oil pool ignited from above
+  rect(paint, "Wall", 430, 640, 434, 699);
+  rect(paint, "Wall", 580, 640, 584, 699);
+  rect(paint, "Oil", 435, 660, 579, 699);
+  rect(paint, "Fire", 490, 650, 530, 659);
+  // 4) sulfur pile burning to SO2
+  rect(paint, "Sulfur", 640, 650, 700, 699);
+  rect(paint, "Fire", 655, 644, 685, 649);
+  // 5) quenching: magma in open contact with water; charcoal dropped on the
+  // magma exercises hotContact4's flammable branch
+  rect(paint, "Wall", 760, 620, 764, 699);
+  rect(paint, "Wall", 940, 620, 944, 699);
+  rect(paint, "Water", 765, 650, 850, 699);
+  rect(paint, "Magma", 851, 640, 939, 699);
+  rect(paint, "Charcoal", 900, 628, 939, 636);
+  // 6) acid rained onto a powder bed (doCorrode)
+  rect(paint, "Powder", 1000, 660, 1080, 699);
+  rect(paint, "Acid", 1020, 600, 1060, 620);
+  // 7) sodium dropped into water: lye + hydrogen, then H2 autoignition
+  rect(paint, "Wall", 1120, 640, 1124, 699);
+  rect(paint, "Wall", 1230, 640, 1234, 699);
+  rect(paint, "Water", 1125, 655, 1229, 699);
+  rect(paint, "Sodium", 1160, 600, 1190, 615);
+  // 8) oil pan over a walled magma tank: no contact path exists, so the oil
+  // can ONLY ignite via stepTemp's ignitesAt branch (field crosses 340C)
+  rect(paint, "Wall", 600, 400, 604, 470);
+  rect(paint, "Wall", 716, 400, 720, 470);
+  rect(paint, "Wall", 605, 466, 715, 470); // tank bottom
+  rect(paint, "Wall", 605, 430, 715, 431); // thin lid
+  rect(paint, "Magma", 605, 432, 715, 465);
+  rect(paint, "Oil", 605, 410, 715, 429);
+}
+
 /** bench.ts churn scene: 211k cells of alternating seawater/oil bands */
 function buildChurn(paint: PaintFn): void {
   rect(paint, "Wall", 20, 700, 1260, 712);
@@ -193,13 +247,18 @@ async function forensic(
   const curCell = { x: -1, y: -1 };
   const proto = World.prototype as unknown as Record<string, (...a: number[]) => unknown>;
   const patched: Array<[string, (...a: number[]) => unknown]> = [];
-  for (const fn of ["updateCell", "doPowder", "doLiquid", "doGas"]) {
+  // [method, index of the x argument] — hotContact4 is (x, y), the rest (i, x, y)
+  const patchDefs: Array<[string, number]> = [
+    ["updateCell", 1], ["doPowder", 1], ["doLiquid", 1], ["doGas", 1],
+    ["doFire", 1], ["doCorrode", 1], ["hotContact4", 0],
+  ];
+  for (const [fn, xi] of patchDefs) {
     const origFn = proto[fn];
     patched.push([fn, origFn]);
-    proto[fn] = function (this: World, i: number, x: number, y: number, ...rest: number[]) {
-      curCell.x = x;
-      curCell.y = y;
-      return origFn.call(this, i, x, y, ...rest);
+    proto[fn] = function (this: World, ...args: number[]) {
+      curCell.x = args[xi];
+      curCell.y = args[xi + 1];
+      return origFn.apply(this, args);
     };
   }
   const PROBE_X = 273;
@@ -221,7 +280,7 @@ async function forensic(
       }
     }
     tsSeq.push(tag);
-    tsCells.push((curCell.y << 14) | curCell.x);
+    tsCells.push((curCell.y << 12) | curCell.x);
     probe.push(ts.species[probeIdx]);
     const v = orig();
     tsVals.push(v);
@@ -243,10 +302,14 @@ async function forensic(
     "reactInt4", "reactByte", "powder90", "powderDir", "liquidDir", "liquidDisp",
     "gasDeath77", "gasDeathShade", "gasRise200", "gasRiseInt3", "gasDir",
     "tempHotRoll", "tempHotShade", "tempColdRoll", "tempColdShade",
+    "fireExt77", "fireSpread", "fireShade", "fireRise150", "fireRiseInt3",
+    "fireSmoke7", "fireSmokeShade", "hot4Roll", "hot4Shade",
+    "corrodeInt4", "corrodeByte", "igniteRoll",
   ];
   const siteFn = (code: number): string =>
     code <= 1 ? "updateCell" : code <= 3 ? "doPowder" : code <= 5 ? "doLiquid" :
-    code <= 10 ? "doGas" : "stepTemp";
+    code <= 10 ? "doGas" : code <= 14 ? "stepTemp" : code <= 21 ? "doFire" :
+    code <= 23 ? "hotContact4" : code <= 25 ? "doCorrode" : "stepTemp";
   const tally = new Map<string, number>();
   for (const tag of tsSeq) tally.set(tag, (tally.get(tag) ?? 0) + 1);
   for (const [tag, n] of [...tally.entries()].sort()) {
@@ -255,7 +318,7 @@ async function forensic(
   const wseq = wasm.dbgSeq();
   const wTally = new Map<string, number>();
   for (let i = 0; i < wseq.length; i++) {
-    const lb = labels[wseq[i] >>> 28];
+    const lb = labels[wseq[i] >>> 24];
     wTally.set(lb, (wTally.get(lb) ?? 0) + 1);
   }
   for (const [lb, n] of [...wTally.entries()].sort()) {
@@ -268,9 +331,9 @@ async function forensic(
   let misAt = -1;
   for (let i = 0; i < nAlign; i++) {
     const tsFn = tsSeq[i].split(":")[0];
-    const wFn = siteFn(wseq[i] >>> 28);
+    const wFn = siteFn(wseq[i] >>> 24);
     const cellsComparable = wFn !== "stepTemp" && tsFn !== "stepTemp";
-    if (tsFn !== wFn || (cellsComparable && tsCells[i] !== (wseq[i] & 0x0fffffff))) {
+    if (tsFn !== wFn || (cellsComparable && tsCells[i] !== (wseq[i] & 0x00ffffff))) {
       misAt = i;
       break;
     }
@@ -294,10 +357,10 @@ async function forensic(
   // when did the probed cell change value in TS (between which draws)?
   for (let k = 1; k < probe.length; k++) {
     if (probe[k] !== probe[k - 1]) {
-      const tx = tsCells[k - 1] & 0x3fff;
-      const tyy = tsCells[k - 1] >>> 14;
-      const tx2 = tsCells[k] & 0x3fff;
-      const ty2 = tsCells[k] >>> 14;
+      const tx = tsCells[k - 1] & 0xfff;
+      const tyy = tsCells[k - 1] >>> 12;
+      const tx2 = tsCells[k] & 0xfff;
+      const ty2 = tsCells[k] >>> 12;
       console.log(
         `  ts probe (${PROBE_X},${PROBE_Y}): ${probe[k - 1]} -> ${probe[k]} between draw #${k - 1} (${tsSeq[k - 1]} @ ${tx},${tyy}) and #${k} (${tsSeq[k]} @ ${tx2},${ty2})`,
       );
@@ -307,18 +370,18 @@ async function forensic(
     console.log(`  first draw mismatch (function or cell) at draw #${misAt}:`);
     for (let i = Math.max(0, misAt - 10); i < Math.min(nAlign, misAt + 10); i++) {
       const w = wseq[i];
-      const wx = w & 0x3fff;
-      const wy = (w >>> 14) & 0x3fff;
-      const tx = tsCells[i] & 0x3fff;
-      const tyy = tsCells[i] >>> 14;
+      const wx = w & 0xfff;
+      const wy = (w >>> 12) & 0xfff;
+      const tx = tsCells[i] & 0xfff;
+      const tyy = tsCells[i] >>> 12;
       const mark = i === misAt ? " <-- MISMATCH" : "";
       console.log(
-        `    #${i}  ts=${tsSeq[i]} @ (${tx},${tyy})  wasm=${labels[w >>> 28]} @ (${wx},${wy})${mark}`,
+        `    #${i}  ts=${tsSeq[i]} @ (${tx},${tyy})  wasm=${labels[w >>> 24]} @ (${wx},${wy})${mark}`,
       );
     }
     const mw = wseq[misAt];
-    const mx = mw & 0x3fff;
-    const my = (mw >>> 14) & 0x3fff;
+    const mx = mw & 0xfff;
+    const my = (mw >>> 12) & 0xfff;
     console.log(`  mismatch cell neighborhood (pre-tick, engines identical):`);
     // note: these arrays are POST-tick now; re-derive pre-tick via a fresh replay
     const { world: pre } = makeTs();
@@ -502,12 +565,15 @@ async function churnBench(): Promise<void> {
   phase("settled 900-1100", 200);
 }
 
-async function thermalBench(): Promise<void> {
-  console.log(`\nthermal bench (stage-2 zoo) — TS vs WASM, same phases:`);
+async function sceneBench(
+  name: string,
+  build: (p: PaintFn) => void,
+): Promise<void> {
+  console.log(`\n${name} bench — TS vs WASM, same phases:`);
   const ts = new World(W, H, SEED);
   const wasm = await makeWasm();
-  buildThermal((x, y, id, aux) => ts.paint(x, y, id, aux));
-  buildThermal((x, y, id, aux) => wasm.paint(x, y, id, aux));
+  build((x, y, id, aux) => ts.paint(x, y, id, aux));
+  build((x, y, id, aux) => wasm.paint(x, y, id, aux));
   console.log(`  painted: ts dots=${ts.dots} wasm dots=${wasm.dots}`);
 
   const phase = (label: string, ticks: number): void => {
@@ -523,22 +589,25 @@ async function thermalBench(): Promise<void> {
       `  ${label.padEnd(18)} ts ${tsMs.toFixed(2).padStart(6)} ms/tick   wasm ${wasmMs.toFixed(2).padStart(6)} ms/tick  (${(tsMs / wasmMs).toFixed(2)}x)  hash ts=${ht} wasm=${hw}  ${ht === hw ? "PASS" : "FAIL"}`,
     );
   };
-  phase("thermal 0-100", 100);
-  phase("thermal 100-300", 200);
-  phase("thermal 300-500", 200);
+  phase(`${name} 0-100`, 100);
+  phase(`${name} 100-300`, 200);
+  phase(`${name} 300-500`, 200);
 }
 
 // --bench-only: skip the (instrumented) parity runs — the rng draw-count
 // wrapper deopts V8's inline caches process-wide and inflates TS timings
 if (process.argv.includes("--bench-only")) {
   await churnBench();
-  await thermalBench();
+  await sceneBench("thermal", buildThermal);
+  await sceneBench("firezoo", buildFireZoo);
 } else {
   const ok1 = await parityRun("stage-1 movement", buildStage1);
   const ok2 = ok1 && (await parityRun("stage-2 thermal", buildThermal));
-  if (ok1 && ok2) {
+  const ok3 = ok2 && (await parityRun("stage-3 fire zoo", buildFireZoo));
+  if (ok1 && ok2 && ok3) {
     await churnBench();
-    await thermalBench();
+    await sceneBench("thermal", buildThermal);
+    await sceneBench("firezoo", buildFireZoo);
   } else {
     process.exitCode = 1;
   }

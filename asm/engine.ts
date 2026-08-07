@@ -6,9 +6,11 @@
 // draws whose results go unused. Stage 1: movement (powder/liquid, contact
 // reactions, settle hysteresis, chunk gating). Stage 2: the temperature field
 // (pumpHeat, stepTemp diffusion + hot/cold phase pass), gas movement (steam),
-// and magma's hotContact4 scan. Fire/ignition (ignitesAt, flammables),
-// devices, and everything else still traps loudly via abort() so accidental
-// entry fails fast instead of silently diverging.
+// and magma's hotContact4 scan. Stage 3: fire (doFire incl. smoke billow),
+// the flammable/ignition pathways (hotContact4's flammable branch, stepTemp's
+// ignitesAt branch), and acid corrosion (doCorrode). Explosions (EXPLODE_R),
+// devices, conduction/spark, and ballistics still trap loudly via abort() so
+// accidental entry fails fast instead of silently diverging.
 //
 // Structure and function names mirror world.ts one-to-one so future stages
 // diff cleanly. Registry tables (BEHAVIOR, DENSITY, REACT, ...) are COPIED
@@ -45,10 +47,21 @@ const E_FIRE: i32 = 5;
 const E_STEAM: i32 = 7;
 const E_SEED: i32 = 8;
 const E_ACID: i32 = 11;
+const E_SALT: i32 = 13;
+const E_SEAWATER: i32 = 14;
 const E_MAGMA: i32 = 15;
 const E_SPARK: i32 = 26;
 const E_FAN: i32 = 28;
+const E_FIREWORKS: i32 = 37;
 const E_SOAPY: i32 = 45;
+const E_CHLORINE: i32 = 48;
+const E_CO2: i32 = 50;
+const E_LITMUS: i32 = 69;
+const E_COPPER: i32 = 74;
+const E_GOLD: i32 = 75;
+const E_TUNGSTEN: i32 = 76;
+const E_SMOKE: i32 = 78;
+const E_MAGNESIA: i32 = 81;
 
 // behavior codes (mirror elements.ts B)
 const B_POWDER: i32 = 1;
@@ -227,6 +240,8 @@ let thermalP: usize = 0; // u8
 // @ts-ignore: decorator
 @inline function LIFE0(id: i32): i32 { return u8At(life0P, id); }
 // @ts-ignore: decorator
+@inline function BURNLIFE(id: i32): i32 { return u8At(burnlifeP, id); }
+// @ts-ignore: decorator
 @inline function EXPLODE_R(id: i32): i32 { return u8At(explodeRP, id); }
 // @ts-ignore: decorator
 @inline function HAS_REACT(id: i32): i32 { return u8At(hasReactP, id); }
@@ -383,7 +398,8 @@ export function dbgSite(k: i32): i32 {
   return cntLiquidDisp;
 }
 
-// draw-sequence log: packs site(4b) | y(14b) | x(14b) per rng draw
+// draw-sequence log: packs site(8b) | y(12b) | x(12b) per rng draw
+// (stage 3 outgrew 4-bit site codes; grids up to 4096x4096 still fit)
 let dbgSeqP: usize = 0;
 let dbgSeqLen_: i32 = 0;
 let dbgSeqOn: bool = false;
@@ -408,7 +424,7 @@ export function dbgValPtr(): usize { return dbgValP; }
 // @ts-ignore: decorator
 @inline function dbgLog(site: i32, x: i32, y: i32): void {
   if (!dbgSeqOn || dbgSeqLen_ >= DBG_SEQ_CAP) return;
-  store<u32>(dbgSeqP + (<usize>dbgSeqLen_ << 2), <u32>((site << 28) | (y << 14) | x));
+  store<u32>(dbgSeqP + (<usize>dbgSeqLen_ << 2), <u32>((site << 24) | (y << 12) | x));
   dbgSeqLen_++;
 }
 
@@ -595,9 +611,17 @@ function stepTemp(): void {
                 f32Set(tempP, i, curT + (tg - curT) * HEAT_PUMP(id));
               }
               if (t >= <f64>IGNITES_AT(id)) {
-                // stage 2 excludes fire: TS would roll byte()<60 and ignite/
-                // explode — no scene element has ignitesAt, so trap loudly
-                abort("stepTemp: ignition branch not ported (stage 2 excludes fire)");
+                dbgLog(26, sx, sy);
+                if (rngByte() < 60) {
+                  if (id === E_FIREWORKS) {
+                    abort("stepTemp: FIREWORKS->ROCKET not ported (stage 4: devices)");
+                  } else if (EXPLODE_R(id) > 0) {
+                    explode(sx, sy, EXPLODE_R(id)); // traps (stage 4: explosions)
+                  } else {
+                    set(si, sx, sy, E_FIRE, BURNLIFE(id));
+                  }
+                  continue;
+                }
               }
               if (t >= <f64>HOT_AT(id)) {
                 const p = min(220.0, (t - <f64>HOT_AT(id)) * 6.0);
@@ -878,8 +902,8 @@ function doLiquid(i: i32, x: i32, y: i32, id: i32): void {
   const hyst = HYST(id);
   if (id === E_SOAPY && trySoapBubble(i, x, y)) return; // traps (no soapy)
   if (tryWindPush(i, x, y, 0.08)) return;
-  if (id === E_ACID && doCorrode(i, x, y)) return; // traps (no acid)
-  if (id === E_MAGMA) hotContact4(x, y); // stage 2: scan runs, ignition traps
+  if (id === E_ACID && doCorrode(i, x, y)) return;
+  if (id === E_MAGMA) hotContact4(x, y);
   if (y + 1 < H) {
     const below = i + W;
     if (sinksInto(id, below)) {
@@ -984,9 +1008,7 @@ function doGas(i: i32, x: i32, y: i32, id: i32): void {
   }
 }
 
-/** ignite/melt scan over 4 neighbors — shared by magma, torch, spark.
- *  Stage 2: the scan itself runs (magma is in the scene) but a flammable
- *  neighbor means fire, which is out of scope — trap before TS would draw. */
+/** ignite/melt scan over 4 neighbors — shared by magma, torch, spark */
 function hotContact4(x: i32, y: i32): void {
   for (let k = 0; k < 4; k++) {
     const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
@@ -998,13 +1020,83 @@ function hotContact4(x: i32, y: i32): void {
     const o = species(j);
     const fl = FLAMMABLE(o);
     if (fl > 0) {
-      abort("hotContact4: ignition branch not ported (stage 2 excludes fire)");
+      dbgLog(22, x, y);
+      if (rngByte() < fl) {
+        if (o === E_FIREWORKS) {
+          abort("hotContact4: FIREWORKS->ROCKET not ported (stage 4: devices)");
+        } else if (EXPLODE_R(o) > 0) {
+          explode(nx, ny, EXPLODE_R(o)); // traps (stage 4: explosions)
+        } else {
+          set(j, nx, ny, E_FIRE, BURNLIFE(o));
+          dbgLog(23, x, y);
+          shadeSet(j, rngByte());
+        }
+      }
     }
   }
 }
 
 function doFire(i: i32, x: i32, y: i32): void {
-  abort("doFire: not ported (stage 1)");
+  if (life(i) === 0) {
+    set(i, x, y, E_EMPTY, 0);
+    return;
+  }
+  lifeSet(i, life(i) - 1);
+  wake(x, y);
+  for (let dy = -1; dy <= 1; dy++) {
+    const ny = y + dy;
+    if (ny < 0 || ny >= H) continue;
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = x + dx;
+      if (nx < 0 || nx >= W) continue;
+      const j = ny * W + nx;
+      const o = species(j);
+      if (o === E_WATER || o === E_SEAWATER) {
+        dbgLog(15, x, y);
+        if (rngByte() < 77) set(j, nx, ny, E_STEAM, LIFE0(E_STEAM));
+        set(i, x, y, E_EMPTY, 0);
+        return;
+      }
+      const fl = FLAMMABLE(o);
+      if (fl > 0) {
+        dbgLog(16, x, y);
+        if (rngByte() < fl) {
+          if (o === E_FIREWORKS) {
+            abort("doFire: FIREWORKS->ROCKET not ported (stage 4: devices)");
+          } else if (EXPLODE_R(o) > 0) {
+            explode(nx, ny, EXPLODE_R(o)); // traps (stage 4: explosions)
+          } else {
+            set(j, nx, ny, E_FIRE, BURNLIFE(o));
+            dbgLog(17, x, y);
+            shadeSet(j, rngByte());
+          }
+        }
+      }
+    }
+  }
+  if (tryWindPush(i, x, y, 0.3)) return;
+  if (y - 1 >= 0) {
+    dbgLog(18, x, y);
+    if (rngByte() < 150) {
+      dbgLog(19, x, y);
+      const dx = rngInt(3) - 1;
+      const nx = x + dx;
+      if (nx >= 0 && nx < W && species(i - W + dx) === E_EMPTY) {
+        swap(i, i - W + dx, x, y, nx, y - 1);
+        return;
+      }
+    }
+  }
+  // billow smoke: burning things smudge the sky
+  if (y - 1 >= 0) {
+    dbgLog(20, x, y);
+    if (rngByte() < 7 && species(i - W) === E_EMPTY) {
+      set(i - W, x, y - 1, E_SMOKE, LIFE0(E_SMOKE));
+      dbgLog(21, x, y);
+      shadeSet(i - W, rngByte());
+    }
+  }
 }
 
 function doVine(i: i32, x: i32, y: i32): void {
@@ -1037,7 +1129,37 @@ function trySprout(i: i32, x: i32, y: i32): bool {
 }
 
 function doCorrode(i: i32, x: i32, y: i32): bool {
-  abort("doCorrode: not ported (stage 1)");
+  if (life(i) === 0) {
+    set(i, x, y, E_EMPTY, 0);
+    return true;
+  }
+  dbgLog(24, x, y);
+  const k = rngInt(4);
+  const dx = k === 0 ? 1 : k === 1 ? -1 : 0;
+  const dy = k === 2 ? 1 : k === 3 ? -1 : 0;
+  const nx = x + dx;
+  const ny = y + dy;
+  if (nx < 0 || ny < 0 || nx >= W || ny >= H) return false;
+  const j = ny * W + nx;
+  const o = species(j);
+  // the water family is corrosion-proof so neutralization products survive,
+  // and gases bubble through acid unharmed (CO2/chlorine are liquid-encoded)
+  if (o === E_WATER || o === E_SEAWATER || o === E_SALT) return false;
+  if (BEHAVIOR(o) === B_GAS || o === E_CO2 || o === E_CHLORINE) return false;
+  if (o === E_LITMUS) return false; // the instrument survives to show pH 1
+  if (o === E_GOLD || o === E_COPPER || o === E_TUNGSTEN) return false; // noble
+  // MgO dissolving in acid IS the antacid reaction — let the REACT row do it
+  // (salt + water, acid consumed) instead of corrosion deleting the powder
+  if (o === E_MAGNESIA) return false;
+  if (o !== E_EMPTY && o !== E_WALL && o !== E_ACID && o !== E_FIRE) {
+    dbgLog(25, x, y);
+    if (rngByte() < 60) {
+      set(j, nx, ny, E_EMPTY, 0);
+      lifeSet(i, life(i) - 1);
+      wake(x, y);
+      return true;
+    }
+  }
   return false;
 }
 
