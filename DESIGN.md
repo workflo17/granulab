@@ -378,8 +378,21 @@
 > diverges from a post-fix replay once it crosses ~4.9M draws (no replay
 > system ships yet, so this costs nothing today).
 >
+> WASM STAGES 2-4 LANDED 8/07-08: asm/engine.ts now covers ALL of
+> world.step — thermal (stage 2), fire + firing reactions + corrosion
+> (stage 3), explosions/ballistics/devices/conduction/critters (stage 4).
+> Gate: FOUR oracle scenes, each 10/10 checkpoints bit-exact on grid
+> hashes AND rng draw counts AND (stage 4) blastQueue/bubbleQueue
+> contents + fxPower. Zero abort() traps remain. Perf: churn 12.5→7.0,
+> thermal/fire/device zoos ~2x. Fan angles use LOADER-COMPUTED cos/sin
+> tables (host Math, bit-for-bit with V8). NOT PORTED (host-side, outside
+> the tick loop): rawSet/serialize/clear/fill*Tex — needed for the real
+> game loop. REMAINING: wire world-wasm.ts into main.ts behind a feature
+> flag (ObjectSystem stamping via rawSet, per-tick queue draining,
+> QA parity toggle), then ship.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays), WASM stages 2-4.
+> track — partly obsoleted by the ambient overlays), WASM app wiring.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth

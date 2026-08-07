@@ -169,6 +169,124 @@ function buildFireZoo(paint: PaintFn): void {
   rect(paint, "Oil", 605, 410, 715, 429);
 }
 
+/** stage-4 devices+weapons zoo — the final coverage pass. Fixture laws from
+ *  DESIGN.md: boxed igniters, wire-before-liquid, 1-wide top-lit fireworks
+ *  tubes, clone+spark primers, hopper-fed cannon (rangeScene-proven
+ *  geometry). Every remaining engine subsystem fires: explosions+coalesce,
+ *  ballistic debris, cannon, conduction through a magma bath, fan wind +
+ *  saltation + soap bubbles, pump line, fireworks/rockets, detector+valve,
+ *  laser through glass, thunder onto metal and stone, waterline corrosion,
+ *  torch, heater, and a critter box (ant/virus/bird/superball/cloud/seed/
+ *  filter/litmus). */
+function buildDeviceZoo(paint: PaintFn): void {
+  rect(paint, "Wall", 30, 690, 1250, 700); // the range floor
+  // 1) gunpowder charge, fire-adjacent igniter, boxed for LOS confinement
+  rect(paint, "Wall", 60, 640, 62, 689);
+  rect(paint, "Wall", 118, 640, 120, 689);
+  rect(paint, "Gunpowder", 63, 668, 117, 689);
+  rect(paint, "Fire", 80, 664, 90, 667);
+  // 2) sentry cannon: perch, hopper, cannon block aimed east, clone+spark
+  rect(paint, "Wall", 166, 477, 234, 479);
+  rect(paint, "Wall", 166, 434, 168, 477);
+  rect(paint, "Wall", 184, 434, 186, 466);
+  rect(paint, "Sand", 169, 438, 183, 476);
+  for (let y = 468; y <= 476; y++) for (let x = 188; x <= 196; x++) paint(x, y, byName("Cannon"), 0);
+  paint(192, 467, byName("Clone"));
+  paint(193, 467, byName("Spark"));
+  rect(paint, "Stone", 280, 664, 300, 689); // berm downrange
+  // 3) spark pulse: copper -> tungsten U through a magma bath -> copper
+  rect(paint, "Wall", 360, 664, 362, 689);
+  rect(paint, "Wall", 438, 664, 440, 689);
+  rect(paint, "Copper", 320, 650, 399, 650); // wire before liquid
+  rect(paint, "Tungsten", 400, 650, 400, 685);
+  rect(paint, "Tungsten", 401, 685, 409, 685);
+  rect(paint, "Tungsten", 410, 650, 410, 685);
+  rect(paint, "Copper", 411, 650, 470, 650);
+  rect(paint, "Magma", 363, 672, 437, 689); // fills around the tungsten U
+  paint(318, 650, byName("Clone")); // pulser: clone memorizes the primer spark
+  paint(319, 650, byName("Spark")); // primer (touches clone AND wire)
+  // 4) fan column blowing east over a soapy pool (bubbles + wind push);
+  //    a sand blob falls through the beam for powder saltation
+  rect(paint, "Wall", 500, 640, 502, 689); // mast
+  for (let y = 676; y <= 686; y++) paint(503, y, byName("Fan"), 0);
+  rect(paint, "Soapy", 504, 682, 590, 689);
+  rect(paint, "Wall", 592, 668, 594, 689);
+  rect(paint, "Sand", 520, 600, 540, 610);
+  // 5) pump line (painted before the water) lifting a tank over a wall
+  rect(paint, "Pump", 660, 640, 660, 688);
+  rect(paint, "Pump", 661, 640, 690, 640);
+  rect(paint, "Pump", 690, 641, 690, 660);
+  rect(paint, "Wall", 640, 660, 642, 689);
+  rect(paint, "Wall", 678, 660, 680, 689);
+  rect(paint, "Water", 643, 668, 677, 689); // fills around the pump column
+  rect(paint, "Heater", 712, 684, 716, 689); // boils some of the ejected pool
+  // 6) fireworks battery: 1-wide TOP-LIT column in a wall tube
+  rect(paint, "Wall", 754, 640, 755, 689);
+  rect(paint, "Wall", 757, 640, 758, 689);
+  rect(paint, "Fireworks", 756, 650, 756, 689);
+  paint(756, 649, byName("Fire")); // light from above
+  // 7) detector+valve: sand tube gated by a valve over a detector slab; a
+  //    cloud rains water that pools against the slab (primes it), the slab's
+  //    sparks fill the gap row under the valve and open it
+  rect(paint, "Cloud", 800, 620, 824, 624);
+  rect(paint, "Wall", 810, 630, 811, 677);
+  rect(paint, "Wall", 813, 630, 814, 677);
+  rect(paint, "Sand", 812, 640, 812, 676);
+  paint(812, 677, byName("Valve"));
+  rect(paint, "Detector", 810, 679, 814, 680); // gap row y=678 for the sparks
+  // 8) laser through glass into wood; thunder onto metal and stone;
+  //    waterline corrosion (iron -> rust, copper -> verdigris)
+  rect(paint, "Glass", 900, 620, 920, 622);
+  rect(paint, "Wood", 895, 660, 925, 689);
+  for (let x = 905; x <= 910; x++) paint(x, 600, byName("Laser"), 64); // aimed down
+  // waterline corrosion tank: metal+copper combs standing in seawater (many
+  // waterline cells); a sealed unprimed clone in the same chunk keeps the
+  // chunk awake forever (zero draws) so doMetalCool keeps rolling
+  rect(paint, "Wall", 930, 676, 932, 689);
+  // stub tops sit flush AT the waterline (y=684): air above, sea beside —
+  // a column that pokes through the surface never has both on one cell
+  rect(paint, "Metal", 934, 684, 934, 689);
+  rect(paint, "Metal", 936, 684, 936, 689);
+  rect(paint, "Metal", 938, 684, 938, 689);
+  rect(paint, "Metal", 940, 684, 940, 689);
+  rect(paint, "Metal", 942, 684, 942, 689);
+  rect(paint, "Copper", 946, 684, 946, 689);
+  rect(paint, "Copper", 948, 684, 948, 689);
+  rect(paint, "Copper", 950, 684, 950, 689);
+  rect(paint, "Copper", 952, 684, 952, 689);
+  rect(paint, "Copper", 954, 684, 954, 689);
+  rect(paint, "Seawater", 933, 684, 959, 689); // fills the gaps between stubs
+  rect(paint, "Wall", 960, 676, 962, 689);
+  // the chunk-waker: wall ring with an unprimed clone sealed inside
+  rect(paint, "Wall", 944, 673, 948, 673);
+  rect(paint, "Wall", 944, 677, 948, 677);
+  rect(paint, "Wall", 944, 674, 944, 676);
+  rect(paint, "Wall", 948, 674, 948, 676);
+  paint(946, 675, byName("Clone"));
+  // thunder onto a metal pad (sparks it) and onto stone (blasts it)
+  rect(paint, "Metal", 976, 686, 996, 689);
+  paint(986, 400, byName("Thunder"));
+  rect(paint, "Torch", 1000, 684, 1004, 689);
+  rect(paint, "Stone", 1008, 684, 1016, 689);
+  paint(1012, 400, byName("Thunder"));
+  // 9) critter box: ants, virus, birds, superballs, cloud rain, seeds,
+  //    filter mesh over gas, litmus into an acid dish
+  rect(paint, "Wall", 1020, 560, 1022, 689);
+  rect(paint, "Wall", 1230, 560, 1232, 689);
+  rect(paint, "Powder", 1030, 670, 1090, 689);
+  rect(paint, "Ant", 1045, 660, 1055, 664);
+  rect(paint, "Virus", 1080, 640, 1084, 643);
+  rect(paint, "Bird", 1120, 600, 1123, 602);
+  rect(paint, "Superball", 1140, 580, 1144, 583);
+  rect(paint, "Cloud", 1150, 565, 1200, 572);
+  rect(paint, "Seed", 1160, 640, 1165, 644);
+  rect(paint, "Filter", 1100, 650, 1110, 650);
+  rect(paint, "Gas", 1102, 655, 1108, 660);
+  rect(paint, "Litmus", 1210, 640, 1216, 646);
+  rect(paint, "Wall", 1200, 676, 1202, 689);
+  rect(paint, "Acid", 1203, 682, 1226, 689);
+}
+
 /** bench.ts churn scene: 211k cells of alternating seawater/oil bands */
 function buildChurn(paint: PaintFn): void {
   rect(paint, "Wall", 20, 700, 1260, 712);
@@ -204,6 +322,20 @@ interface CellDiff {
   wasm: number;
 }
 
+function arrEq(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** drain both engines' entity queues — the harness stands in for ObjectSystem
+ *  (caps engage identically in both engines between drains) */
+function drainQueues(ts: World, wasm: WasmWorld): void {
+  ts.blastQueue.length = 0;
+  ts.bubbleQueue.length = 0;
+  wasm.drainQueues();
+}
+
 function firstDiff(ts: EngineLike, wasm: EngineLike): CellDiff | null {
   for (let i = 0; i < ts.species.length; i++) {
     if (ts.species[i] !== wasm.species[i]) {
@@ -232,9 +364,11 @@ async function forensic(
   const wasm = await makeWasm();
   build((x, y, id, aux) => ts.paint(x, y, id, aux));
   build((x, y, id, aux) => wasm.paint(x, y, id, aux));
+  drainQueues(ts, wasm);
   for (let t = 0; t < tick - 1; t++) {
     ts.step();
     wasm.step();
+    if ((t + 1) % CHECK_EVERY === 0) drainQueues(ts, wasm); // main-run schedule
   }
   // pre-tick state around the divergent cell (both engines identical here)
   dumpNeighborhood("pre species", ts.species, tx, ty, 5);
@@ -247,10 +381,16 @@ async function forensic(
   const curCell = { x: -1, y: -1 };
   const proto = World.prototype as unknown as Record<string, (...a: number[]) => unknown>;
   const patched: Array<[string, (...a: number[]) => unknown]> = [];
-  // [method, index of the x argument] — hotContact4 is (x, y), the rest (i, x, y)
+  // [method, index of the x argument] — hotContact4/explode are (x|cx, y|cy, ..),
+  // the rest (i, x, y, ..)
   const patchDefs: Array<[string, number]> = [
     ["updateCell", 1], ["doPowder", 1], ["doLiquid", 1], ["doGas", 1],
     ["doFire", 1], ["doCorrode", 1], ["hotContact4", 0],
+    ["doSpark", 1], ["doClone", 1], ["doEmitter", 1], ["doAnt", 1],
+    ["doVirus", 1], ["doBird", 1], ["doCloud", 1], ["doSuperball", 1],
+    ["doVine", 1], ["doRocket", 1], ["doPump", 1], ["doDetector", 1],
+    ["doLaser", 1], ["doMetalCool", 1], ["trySoapBubble", 1],
+    ["tryWindPush", 1], ["explode", 0],
   ];
   for (const [fn, xi] of patchDefs) {
     const origFn = proto[fn];
@@ -272,7 +412,9 @@ async function forensic(
     const stack = new Error().stack ?? "";
     let tag = "?";
     for (const ln of stack.split("\n")) {
-      const m = ln.match(/(updateCell|doPowder|doLiquid|doGas|tryWindPush|paint|stepTemp|doFire|hotContact4)/);
+      const m = ln.match(
+        /(updateCell|doPowder|doLiquid|doGas|tryWindPush|paint|stepTemp|doFire|hotContact4|doCorrode|doSpark|doClone|doEmitter|doAnt|doVirus|doBird|doCloud|doSuperball|doVine|doRocket|doPump|doDetector|doValve|doCannon|doLaser|doThunder|doFilter|doLitmus|doMetalCool|trySoapBubble|explode)/,
+      );
       if (m) {
         const lm = ln.match(/:(\d+):(\d+)\)?\s*$/);
         tag = `${m[1]}:${lm ? lm[1] : "?"}`;
@@ -305,11 +447,20 @@ async function forensic(
     "fireExt77", "fireSpread", "fireShade", "fireRise150", "fireRiseInt3",
     "fireSmoke7", "fireSmokeShade", "hot4Roll", "hot4Shade",
     "corrodeInt4", "corrodeByte", "igniteRoll",
+    "spark", "clone", "emitter", "ant", "virus", "bird", "cloud", "superball",
+    "vine", "rocket", "pump", "detector", "laser", "metalCool", "explode",
+    "windPush", "soapBubble",
+  ];
+  const siteFnNames = [
+    "doSpark", "doClone", "doEmitter", "doAnt", "doVirus", "doBird", "doCloud",
+    "doSuperball", "doVine", "doRocket", "doPump", "doDetector", "doLaser",
+    "doMetalCool", "explode", "tryWindPush", "trySoapBubble",
   ];
   const siteFn = (code: number): string =>
     code <= 1 ? "updateCell" : code <= 3 ? "doPowder" : code <= 5 ? "doLiquid" :
     code <= 10 ? "doGas" : code <= 14 ? "stepTemp" : code <= 21 ? "doFire" :
-    code <= 23 ? "hotContact4" : code <= 25 ? "doCorrode" : "stepTemp";
+    code <= 23 ? "hotContact4" : code <= 25 ? "doCorrode" : code === 26 ? "stepTemp" :
+    siteFnNames[code - 27] ?? "?";
   const tally = new Map<string, number>();
   for (const tag of tsSeq) tally.set(tag, (tally.get(tag) ?? 0) + 1);
   for (const [tag, n] of [...tally.entries()].sort()) {
@@ -386,7 +537,15 @@ async function forensic(
     // note: these arrays are POST-tick now; re-derive pre-tick via a fresh replay
     const { world: pre } = makeTs();
     build((x, y, id, aux) => pre.paint(x, y, id, aux));
-    for (let t = 0; t < tick - 1; t++) pre.step();
+    pre.blastQueue.length = 0;
+    pre.bubbleQueue.length = 0;
+    for (let t = 0; t < tick - 1; t++) {
+      pre.step();
+      if ((t + 1) % CHECK_EVERY === 0) {
+        pre.blastQueue.length = 0;
+        pre.bubbleQueue.length = 0;
+      }
+    }
     dumpNeighborhood("pre species", pre.species, mx, my, 6);
     dumpNeighborhood("pre life   ", pre.life, mx, my, 6);
     dumpNeighborhood("pre clock  ", pre.clock, mx, my, 6);
@@ -433,10 +592,23 @@ async function hunt(
     console.log(`  DIVERGED AT BUILD (tick 0): ${d0.array}[${d0.x},${d0.y}] ts=${d0.ts} wasm=${d0.wasm}`);
     return;
   }
+  drainQueues(ts, wasm);
   for (let t = 0; t < failTick; t++) {
     ts.step();
     wasm.step();
+    const atCheckpoint = (t + 1) % CHECK_EVERY === 0;
+    const qDiverged =
+      !arrEq(ts.blastQueue, wasm.blastQueue()) || !arrEq(ts.bubbleQueue, wasm.bubbleQueue());
+    const fxDiverged = ts.fxPower !== wasm.fxPower;
+    if (atCheckpoint) drainQueues(ts, wasm); // main-run schedule
     if (t + 1 <= lastGood) continue; // fast-forward through the known-good span
+    if (qDiverged || fxDiverged) {
+      console.log(
+        `  FIRST DIVERGENCE tick=${t + 1}: ${qDiverged ? "queues" : ""}${fxDiverged ? " fxPower" : ""} (ts fx=${ts.fxPower} wasm fx=${wasm.fxPower})`,
+      );
+      await forensic(build, t + 1, 0, 0);
+      return;
+    }
     const d = firstDiff(ts, wasm);
     const dDraws = tsDraws() - wasm.rngDraws;
     const dChunks = ts.activeChunkCount() - wasm.activeChunkCount();
@@ -499,10 +671,14 @@ async function parityRun(label: string, build: (p: PaintFn) => void): Promise<bo
 
   const hb0 = fnv(ts.species, ts.life);
   const hw0 = fnv(wasm.species, wasm.life);
-  const buildOk = hb0 === hw0 && tsDraws() === wasm.rngDraws && ts.dots === wasm.dots;
+  const buildOk =
+    hb0 === hw0 && tsDraws() === wasm.rngDraws && ts.dots === wasm.dots &&
+    arrEq(ts.blastQueue, wasm.blastQueue()) && arrEq(ts.bubbleQueue, wasm.bubbleQueue()) &&
+    ts.fxPower === wasm.fxPower;
   console.log(
     `build     hash ts=${hb0} wasm=${hw0}  draws ts=${tsDraws()} wasm=${wasm.rngDraws}  dots ts=${ts.dots} wasm=${wasm.dots}  ${buildOk ? "PASS" : "FAIL"}`,
   );
+  drainQueues(ts, wasm);
   if (!buildOk) {
     await hunt(build, 0, 0);
     return false;
@@ -521,14 +697,25 @@ async function parityRun(label: string, build: (p: PaintFn) => void): Promise<bo
     const hw = fnv(wasm.species, wasm.life);
     const dt = tsDraws();
     const dw = wasm.rngDraws;
-    const ok = ht === hw && dt === dw;
+    const wq = wasm.blastQueue();
+    const wu = wasm.bubbleQueue();
+    const qOk = arrEq(ts.blastQueue, wq) && arrEq(ts.bubbleQueue, wu);
+    const fxOk = ts.fxPower === wasm.fxPower;
+    const ok = ht === hw && dt === dw && qOk && fxOk;
     console.log(
-      `tick ${String(tick).padStart(4)}  hash ts=${ht} wasm=${hw}  draws ts=${dt} wasm=${dw}  ${ok ? "PASS" : "FAIL"}`,
+      `tick ${String(tick).padStart(4)}  hash ts=${ht} wasm=${hw}  draws ts=${dt} wasm=${dw}  ` +
+        `blastQ ${ts.blastQueue.length}/${wq.length} bubbleQ ${ts.bubbleQueue.length}/${wu.length} ` +
+        `fx ${ts.fxPower.toFixed(3)}/${wasm.fxPower.toFixed(3)}  ${ok ? "PASS" : "FAIL"}`,
     );
     if (!ok) {
+      if (!qOk) {
+        console.log(`  blastQ  ts=[${ts.blastQueue.join(",")}] wasm=[${wq.join(",")}]`);
+        console.log(`  bubbleQ ts=[${ts.bubbleQueue.join(",")}] wasm=[${wu.join(",")}]`);
+      }
       await hunt(build, lastGood, tick);
       return false;
     }
+    drainQueues(ts, wasm); // stand-in for ObjectSystem, keeps caps in lockstep
     lastGood = tick;
     pass++;
   }
@@ -600,14 +787,17 @@ if (process.argv.includes("--bench-only")) {
   await churnBench();
   await sceneBench("thermal", buildThermal);
   await sceneBench("firezoo", buildFireZoo);
+  await sceneBench("devzoo", buildDeviceZoo);
 } else {
   const ok1 = await parityRun("stage-1 movement", buildStage1);
   const ok2 = ok1 && (await parityRun("stage-2 thermal", buildThermal));
   const ok3 = ok2 && (await parityRun("stage-3 fire zoo", buildFireZoo));
-  if (ok1 && ok2 && ok3) {
+  const ok4 = ok3 && (await parityRun("stage-4 device zoo", buildDeviceZoo));
+  if (ok1 && ok2 && ok3 && ok4) {
     await churnBench();
     await sceneBench("thermal", buildThermal);
     await sceneBench("firezoo", buildFireZoo);
+    await sceneBench("devzoo", buildDeviceZoo);
   } else {
     process.exitCode = 1;
   }

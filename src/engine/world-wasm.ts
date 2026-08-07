@@ -11,6 +11,7 @@ import {
   E, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
   EXPLODE_R, REACT, REACT_DT, HAS_REACT, CONDUCTS, HEAT_PUMP,
   TEMP0, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
+  PH, CONDUCT_IDX, CONDUCTOR_IDS,
 } from "./elements";
 
 // mirrors the module-level HYST table in world.ts (settle-hysteresis liquids)
@@ -62,6 +63,17 @@ interface EngineExports {
   coldToPtr(): number;
   ignitesAtPtr(): number;
   thermalPtr(): number;
+  phPtr(): number;
+  conductIdxPtr(): number;
+  conductorIdsPtr(): number;
+  cosTabPtr(): number;
+  sinTabPtr(): number;
+  getFxPower(): number;
+  blastQueuePtr(): number;
+  blastQueueLen(): number;
+  bubbleQueuePtr(): number;
+  bubbleQueueLen(): number;
+  drainQueues(): void;
 }
 
 /** decode an AssemblyScript string (UTF-16, byte length at ptr-4) for abort() */
@@ -136,6 +148,19 @@ export class WasmWorld {
     u8.set(HOT_TO, this.ex.hotToPtr());
     u8.set(COLD_TO, this.ex.coldToPtr());
     u8.set(THERMAL, this.ex.thermalPtr());
+    // stage 4: conduction + litmus registry
+    u8.set(PH, this.ex.phPtr());
+    u8.set(CONDUCT_IDX, this.ex.conductIdxPtr());
+    u8.set(Uint8Array.from(CONDUCTOR_IDS), this.ex.conductorIdsPtr());
+    // fan trig tables: 256 quantized angles, computed HERE with the host's
+    // Math.cos/sin so WASM fan beams match the TS engine bit-for-bit
+    const cos = new Float64Array(buf, this.ex.cosTabPtr(), 256);
+    const sin = new Float64Array(buf, this.ex.sinTabPtr(), 256);
+    for (let k = 0; k < 256; k++) {
+      const ang = (k / 256) * Math.PI * 2; // exact expression from stepWind
+      cos[k] = Math.cos(ang);
+      sin[k] = Math.sin(ang);
+    }
   }
 
   /** (re)build the typed-array views; safe to call if memory ever grew */
@@ -175,6 +200,28 @@ export class WasmWorld {
   /** total rng next() calls since init — parity instrumentation */
   get rngDraws(): number {
     return this.ex.getRngDraws() >>> 0;
+  }
+
+  /** decaying blast magnitude for render feedback (flash + screen shake) */
+  get fxPower(): number {
+    return this.ex.getFxPower();
+  }
+
+  /** blasts this tick as (cx, cy, r) triplets — mirrors World.blastQueue */
+  blastQueue(): number[] {
+    const len = this.ex.blastQueueLen();
+    return Array.from(new Int32Array(this.ex.memory.buffer, this.ex.blastQueuePtr(), len));
+  }
+
+  /** soapy cells whipped off by wind — mirrors World.bubbleQueue */
+  bubbleQueue(): number[] {
+    const len = this.ex.bubbleQueueLen();
+    return Array.from(new Int32Array(this.ex.memory.buffer, this.ex.bubbleQueuePtr(), len));
+  }
+
+  /** the harness stands in for ObjectSystem: drain after comparing */
+  drainQueues(): void {
+    this.ex.drainQueues();
   }
 
   get rngState(): number {
