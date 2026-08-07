@@ -4,3 +4,5 @@ dist/
 .vercel
 tools/gallery-store/
 tools/bench.mjs
+tools/parity.mjs
+asm/build/

@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "asm:build": "asc --config asconfig.json --target release",
+    "parity": "npm run asm:build && npx esbuild tools/parity.ts --bundle --format=esm --platform=node --outfile=tools/parity.mjs && node tools/parity.mjs"
   },
   "devDependencies": {
+    "assemblyscript": "^0.28.20",
     "typescript": "^5.5.4",
     "vite": "^5.4.8"
   },

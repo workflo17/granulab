@@ -1,0 +1,22 @@
+{
+  "entries": ["asm/engine.ts"],
+  "targets": {
+    "release": {
+      "outFile": "asm/build/engine.wasm",
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "converge": false,
+      "noAssert": true
+    },
+    "debug": {
+      "outFile": "asm/build/engine.debug.wasm",
+      "sourceMap": true,
+      "debug": true
+    }
+  },
+  "options": {
+    "runtime": "stub",
+    "initialMemory": 160,
+    "exportRuntime": false
+  }
+}
