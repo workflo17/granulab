@@ -25,7 +25,7 @@ for (const s of customSpecs) {
 // ~2x faster in the hot phases; TS remains the default until it has soaked.
 const engineChoice =
   new URLSearchParams(location.search).get("engine") ??
-  localStorage.getItem("granulab-engine") ?? "ts";
+  localStorage.getItem("granulab-engine") ?? "wasm"; // default flipped 8/08 post-soak
 let engineActive = "ts";
 async function makeWorld(): Promise<World> {
   if (engineChoice === "wasm") {

@@ -409,9 +409,13 @@
 > bit-exact; cross-mode replays with critters differ). Dev after pulling
 > engine changes: npm run asm:build once.
 >
+> ENGINE DEFAULT FLIPPED TO WASM 8/08 (owner "flip it"): makeWorld now
+> defaults to the WASM engine; ?engine=ts (or localStorage
+> granulab-engine=ts) forces the TS engine, and any WASM boot failure
+> still auto-falls back to TS with a console warn.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays); consider flipping
-> the engine default to WASM after soak.
+> track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
