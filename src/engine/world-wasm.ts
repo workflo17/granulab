@@ -1,11 +1,21 @@
-// WASM engine loader — instantiates asm/engine.ts (built to asm/build/engine.wasm)
-// and exposes the subset of World's surface the stage-1 parity harness needs:
-// { ready, species/shade/life views, paint(x,y,id,aux?), step(), frame, dots }.
+// WASM engine adapter — instantiates asm/engine.ts (built to asm/build/
+// engine.wasm) and exposes a DROP-IN replacement for World: the full surface
+// the app touches (main.ts / objects.ts / player.ts / renderer.ts): W, H,
+// species/shade/life views, step, paint, clear, serialize/deserialize (.grn
+// byte-format compatible), fillWindTex/fillTempTex/fillGlowTex, fxPower,
+// frame, dots, activeChunkCount, rng, blastQueue/bubbleQueue (real JS arrays
+// that ObjectSystem drains with .length = 0), losClear, rawSet, windAt.
 //
 // Registry tables (flat typed arrays from elements.ts) are COPIED into WASM
 // memory here at init — the AS module never re-derives them. The module
 // preallocates everything in init() so memory never grows afterwards; views
 // are still re-derived defensively if the backing buffer ever detaches.
+//
+// QUEUE SEMANTICS: the JS arrays are the authority. Before each step()/paint()
+// the adapter syncs their lengths into WASM so the engine's caps (96 blast
+// entries / 32 bubbles) see accumulated, undrained length exactly like TS;
+// after the call it appends only the NEW entries. `.length = 0` drains work
+// exactly as on World.
 
 import {
   E, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
@@ -13,6 +23,10 @@ import {
   TEMP0, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
   PH, CONDUCT_IDX, CONDUCTOR_IDS,
 } from "./elements";
+import { Rng } from "./rng";
+
+const WSHIFT = 2; // wind cell = 4x4 sim cells (mirrors world.ts)
+const TSHIFT = 1; // temperature cell = 2x2 sim cells
 
 // mirrors the module-level HYST table in world.ts (settle-hysteresis liquids)
 const HYST = new Uint8Array(N_IDS);
@@ -74,6 +88,15 @@ interface EngineExports {
   bubbleQueuePtr(): number;
   bubbleQueueLen(): number;
   drainQueues(): void;
+  syncQueueLens(blastLen: number, bubbleLen: number): void;
+  windVxPtr(): number;
+  windVyPtr(): number;
+  glowPtr(): number;
+  tempPtr(): number;
+  rawSet(x: number, y: number, id: number, shade: number): void;
+  losClear(x0: number, y0: number, x1: number, y1: number): number;
+  clearAll(): void;
+  postLoad(): void;
 }
 
 /** decode an AssemblyScript string (UTF-16, byte length at ptr-4) for abort() */
@@ -86,13 +109,32 @@ function asString(mem: WebAssembly.Memory | null, ptr: number): string {
 export class WasmWorld {
   readonly W: number;
   readonly H: number;
+  readonly WX: number;
+  readonly WY: number;
+  readonly TW: number;
+  readonly TH: number;
   /** resolves once the module is instantiated, tables copied, views built */
   readonly ready: Promise<void>;
+
+  /** host-side rng for player/objects (World exposes its sim rng for these).
+   *  NOTE: this stream is SEPARATE from the WASM engine's internal sim rng —
+   *  gameplay-fine, but cross-mode (TS vs WASM) replays of object/player
+   *  behavior will differ. The sim itself is bit-exact either way. */
+  readonly rng: Rng;
+
+  /** blasts as (cx, cy, r) triplets; ObjectSystem drains with .length = 0 */
+  readonly blastQueue: number[] = [];
+  /** soapy cells whipped into bubbles; ObjectSystem drains with .length = 0 */
+  readonly bubbleQueue: number[] = [];
 
   species!: Uint8Array;
   shade!: Uint8Array;
   life!: Uint8Array;
   clock!: Uint8Array;
+  private windVx!: Float32Array;
+  private windVy!: Float32Array;
+  private glowV!: Float32Array;
+  private tempV!: Float32Array;
 
   private ex!: EngineExports;
   private mem: WebAssembly.Memory | null = null;
@@ -101,6 +143,11 @@ export class WasmWorld {
   constructor(wasmBytes: BufferSource, w: number, h: number, seed = 0xc0ffee) {
     this.W = w;
     this.H = h;
+    this.WX = w >> WSHIFT;
+    this.WY = h >> WSHIFT;
+    this.TW = w >> TSHIFT;
+    this.TH = h >> TSHIFT;
+    this.rng = new Rng(seed);
     this.ready = this.instantiate(wasmBytes, w, h, seed);
   }
 
@@ -172,6 +219,10 @@ export class WasmWorld {
     this.shade = new Uint8Array(buf, this.ex.shadePtr(), n);
     this.life = new Uint8Array(buf, this.ex.lifePtr(), n);
     this.clock = new Uint8Array(buf, this.ex.clockPtr(), n);
+    this.windVx = new Float32Array(buf, this.ex.windVxPtr(), this.WX * this.WY);
+    this.windVy = new Float32Array(buf, this.ex.windVyPtr(), this.WX * this.WY);
+    this.glowV = new Float32Array(buf, this.ex.glowPtr(), this.WX * this.WY);
+    this.tempV = new Float32Array(buf, this.ex.tempPtr(), this.TW * this.TH);
   }
 
   /** views detach if wasm memory grows (it shouldn't — fixed preallocation) */
@@ -179,14 +230,139 @@ export class WasmWorld {
     if (this.buf !== this.ex.memory.buffer) this.refreshViews();
   }
 
+  /** push JS queue lengths into WASM (cap authority) — see header */
+  private syncQueues(): void {
+    this.ex.syncQueueLens(this.blastQueue.length, this.bubbleQueue.length);
+  }
+
+  /** append entries the engine pushed beyond the pre-call lengths */
+  private collectQueues(b0: number, u0: number): void {
+    const bLen = this.ex.blastQueueLen();
+    if (bLen > b0) {
+      const v = new Int32Array(this.ex.memory.buffer, this.ex.blastQueuePtr(), bLen);
+      for (let k = b0; k < bLen; k++) this.blastQueue.push(v[k]);
+    }
+    const uLen = this.ex.bubbleQueueLen();
+    if (uLen > u0) {
+      const v = new Int32Array(this.ex.memory.buffer, this.ex.bubbleQueuePtr(), uLen);
+      for (let k = u0; k < uLen; k++) this.bubbleQueue.push(v[k]);
+    }
+  }
+
   paint(x: number, y: number, id: number, aux?: number): void {
+    this.syncQueues(); // painting fire onto an explosive can blast
+    const b0 = this.blastQueue.length;
+    const u0 = this.bubbleQueue.length;
     this.ex.paint(x, y, id, aux === undefined ? -1 : aux);
+    this.collectQueues(b0, u0);
     this.checkViews();
   }
 
   step(): void {
+    this.syncQueues();
+    const b0 = this.blastQueue.length;
+    const u0 = this.bubbleQueue.length;
     this.ex.step();
+    this.collectQueues(b0, u0);
     this.checkViews();
+  }
+
+  /** direct cell write for rigid-object footprints — bypasses paint rules */
+  rawSet(x: number, y: number, id: number, shade = 170): void {
+    this.ex.rawSet(x, y, id, shade);
+  }
+
+  /** straight line from the blast center, walls block */
+  losClear(x0: number, y0: number, x1: number, y1: number): boolean {
+    return this.ex.losClear(x0, y0, x1, y1) !== 0;
+  }
+
+  windAt(x: number, y: number): [number, number] {
+    const wi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
+    return [this.windVx[wi], this.windVy[wi]];
+  }
+
+  /** fill an RG byte buffer (128-centered) for the air-view shader */
+  fillWindTex(buf: Uint8Array): void {
+    const vx = this.windVx;
+    const vy = this.windVy;
+    for (let i = 0; i < vx.length; i++) {
+      buf[i * 2] = Math.max(0, Math.min(255, 128 + vx[i] * 14)) | 0;
+      buf[i * 2 + 1] = Math.max(0, Math.min(255, 128 + vy[i] * 14)) | 0;
+    }
+  }
+
+  /** encode temp for the thermography shader: byte = (T + 60) * 0.18 */
+  fillTempTex(buf: Uint8Array): void {
+    const t = this.tempV;
+    for (let i = 0; i < t.length; i++) {
+      buf[i] = Math.max(0, Math.min(255, (t[i] + 60) * 0.18)) | 0;
+    }
+  }
+
+  /** encode the reaction glow for the "rx" background shader */
+  fillGlowTex(buf: Uint8Array): void {
+    const g = this.glowV;
+    for (let i = 0; i < g.length; i++) {
+      buf[i] = Math.min(255, g[i] * 96) | 0;
+    }
+  }
+
+  clear(): void {
+    this.ex.clearAll();
+    this.blastQueue.length = 0; // World.clear() empties blastQueue only
+  }
+
+  /** RLE snapshot of species+life (shade regenerates on load) — byte-format
+   *  identical to World.serialize(): round-trips with existing .grn saves */
+  serialize(): Uint8Array {
+    const rle = (arr: Uint8Array): number[] => {
+      const out: number[] = [];
+      let v = arr[0];
+      let run = 1;
+      for (let i = 1; i < arr.length; i++) {
+        if (arr[i] === v && run < 65535) run++;
+        else {
+          out.push(v, run & 255, run >> 8);
+          v = arr[i];
+          run = 1;
+        }
+      }
+      out.push(v, run & 255, run >> 8);
+      return out;
+    };
+    const s = rle(this.species);
+    const l = rle(this.life);
+    const buf = new Uint8Array(12 + s.length + l.length);
+    buf.set([0x47, 0x52, 0x4e, 0x31]); // "GRN1"
+    buf[4] = this.W & 255; buf[5] = this.W >> 8;
+    buf[6] = this.H & 255; buf[7] = this.H >> 8;
+    buf[8] = s.length & 255; buf[9] = (s.length >> 8) & 255;
+    buf[10] = (s.length >> 16) & 255; buf[11] = (s.length >> 24) & 255;
+    buf.set(s, 12);
+    buf.set(l, 12 + s.length);
+    return buf;
+  }
+
+  deserialize(buf: Uint8Array): boolean {
+    if (buf[0] !== 0x47 || buf[1] !== 0x52 || buf[2] !== 0x4e || buf[3] !== 0x31) return false;
+    if ((buf[4] | (buf[5] << 8)) !== this.W || (buf[6] | (buf[7] << 8)) !== this.H) return false;
+    const sLen = buf[8] | (buf[9] << 8) | (buf[10] << 16) | (buf[11] << 24);
+    const unrle = (from: number, to: number, target: Uint8Array): void => {
+      let w = 0;
+      for (let p = from; p < to; p += 3) {
+        const v = buf[p];
+        const run = buf[p + 1] | (buf[p + 2] << 8);
+        target.fill(v, w, w + run);
+        w += run;
+      }
+    };
+    unrle(12, 12 + sLen, this.species);
+    unrle(12 + sLen, buf.length, this.life);
+    // recount dots, regen shade (consumes engine rng like TS), wake all
+    // chunks, rebuild fans, re-seed heat pumps
+    this.ex.postLoad();
+    return true;
   }
 
   get frame(): number {
@@ -205,23 +381,6 @@ export class WasmWorld {
   /** decaying blast magnitude for render feedback (flash + screen shake) */
   get fxPower(): number {
     return this.ex.getFxPower();
-  }
-
-  /** blasts this tick as (cx, cy, r) triplets — mirrors World.blastQueue */
-  blastQueue(): number[] {
-    const len = this.ex.blastQueueLen();
-    return Array.from(new Int32Array(this.ex.memory.buffer, this.ex.blastQueuePtr(), len));
-  }
-
-  /** soapy cells whipped off by wind — mirrors World.bubbleQueue */
-  bubbleQueue(): number[] {
-    const len = this.ex.bubbleQueueLen();
-    return Array.from(new Int32Array(this.ex.memory.buffer, this.ex.bubbleQueuePtr(), len));
-  }
-
-  /** the harness stands in for ObjectSystem: drain after comparing */
-  drainQueues(): void {
-    this.ex.drainQueues();
   }
 
   get rngState(): number {

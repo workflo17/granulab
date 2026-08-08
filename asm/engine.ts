@@ -453,6 +453,94 @@ export function drainQueues(): void {
   blastQLen = 0;
   bubbleQLen = 0;
 }
+
+/** the adapter's JS arrays are the queue authority (ObjectSystem drains them
+ *  with .length = 0); before each step/paint the adapter pushes the current
+ *  JS lengths back in so the caps (96/32) see accumulated, undrained length */
+export function syncQueueLens(blastLen: i32, bubbleLen: i32): void {
+  blastQLen = blastLen < 0 ? 0 : blastLen > 96 ? 96 : blastLen;
+  bubbleQLen = bubbleLen < 0 ? 0 : bubbleLen > 32 ? 32 : bubbleLen;
+}
+
+// pointers + dims for the adapter's field views (fill*Tex, windAt)
+export function windVxPtr(): usize { return windVxP; }
+export function windVyPtr(): usize { return windVyP; }
+export function glowPtr(): usize { return glowP; }
+export function tempPtr(): usize { return tempP; }
+
+/** direct cell write for rigid-object footprints — bypasses paint rules */
+export function rawSet(x: i32, y: i32, id: i32, shadeV: i32): void {
+  const i = y * W + x;
+  const old = species(i);
+  if (old === id) return;
+  if (old !== E_EMPTY && old !== E_WALL) dots--;
+  if (id !== E_EMPTY && id !== E_WALL) dots++;
+  speciesSet(i, id);
+  shadeSet(i, shadeV);
+  lifeSet(i, 0);
+  vx8Set(i, 0);
+  vy8Set(i, 0);
+  wake(x, y);
+}
+
+/** mirror of World.clear() — resets grids/fields/fans/dots; deliberately does
+ *  NOT touch frame, fxPower, wind/glow tick counters, rng, or bubbleQueue
+ *  (the TS method leaves those too; the adapter clears its JS blastQueue) */
+export function clearAll(): void {
+  const n = W * H;
+  memory.fill(speciesP, 0, <usize>n);
+  memory.fill(shadeP, 0, <usize>n);
+  memory.fill(lifeP, 0, <usize>n);
+  memory.fill(clockP, 0, <usize>n);
+  memory.fill(vx8P, 0, <usize>n);
+  memory.fill(vy8P, 0, <usize>n);
+  memory.fill(activeCurP, 1, <usize>(chunksX * chunksY));
+  memory.fill(activeNextP, 1, <usize>(chunksX * chunksY));
+  const wn = WXg * WYg;
+  for (let i = 0; i < wn; i++) {
+    f32Set(windVxP, i, 0);
+    f32Set(windVyP, i, 0);
+    f32Set(glowP, i, 0);
+  }
+  const tn = TWg * THg;
+  for (let i = 0; i < tn; i++) f32Set(tempP, i, AMBIENT);
+  memory.fill(thermalCurP, 0, <usize>(chunksX * chunksY));
+  memory.fill(thermalNextP, 0, <usize>(chunksX * chunksY));
+  fansLen = 0;
+  blastQLen = 0; // adapter also empties its JS blastQueue (World.clear does)
+  dots = 0;
+}
+
+/** mirror of the tail of World.deserialize(): the adapter unRLEs species+life
+ *  into the views, then this recounts dots, regenerates shade (CONSUMES RNG —
+ *  one byte per non-empty cell, same as TS), wakes all chunks, rebuilds the
+ *  fan list, and re-seeds heat pumps */
+export function postLoad(): void {
+  const n = W * H;
+  memory.fill(clockP, 0, <usize>n);
+  memory.fill(vx8P, 0, <usize>n);
+  memory.fill(vy8P, 0, <usize>n);
+  memory.fill(activeCurP, 1, <usize>(chunksX * chunksY));
+  memory.fill(activeNextP, 1, <usize>(chunksX * chunksY));
+  fansLen = 0;
+  dots = 0;
+  const tn = TWg * THg;
+  for (let i = 0; i < tn; i++) f32Set(tempP, i, AMBIENT);
+  memory.fill(thermalCurP, 0, <usize>(chunksX * chunksY));
+  memory.fill(thermalNextP, 0, <usize>(chunksX * chunksY));
+  for (let i = 0; i < n; i++) {
+    const id = species(i);
+    if (id !== E_EMPTY) shadeSet(i, rngByte());
+    if (id !== E_EMPTY && id !== E_WALL) dots++;
+    if (id === E_FAN && fansLen < 8192) {
+      store<i32>(fansP + (<usize>fansLen << 2), i);
+      fansLen++;
+    }
+    if (HEAT_PUMP(id) > 0) {
+      pumpHeat(i % W, i / W, <f64>TEMP0(id), 0.6);
+    }
+  }
+}
 export function getFrame(): i32 { return frame; }
 export function getDots(): i32 { return dots; }
 
@@ -1979,8 +2067,9 @@ function doPump(i: i32, x: i32, y: i32): void {
 }
 
 /** straight line from the blast center, walls block — this is what makes a
- *  wall barrel a CANNON: the pressure only travels up the open bore */
-function losClear(x0: i32, y0: i32, x1: i32, y1: i32): bool {
+ *  wall barrel a CANNON: the pressure only travels up the open bore.
+ *  Exported: ObjectSystem uses it for blast shielding via the adapter. */
+export function losClear(x0: i32, y0: i32, x1: i32, y1: i32): bool {
   const dx = x1 > x0 ? x1 - x0 : x0 - x1;
   const dy = y1 > y0 ? y1 - y0 : y0 - y1;
   const sx = x0 < x1 ? 1 : -1;

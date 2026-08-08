@@ -328,12 +328,13 @@ function arrEq(a: number[], b: number[]): boolean {
   return true;
 }
 
-/** drain both engines' entity queues — the harness stands in for ObjectSystem
- *  (caps engage identically in both engines between drains) */
+/** drain both engines' entity queues — the harness stands in for ObjectSystem,
+ *  using the exact app-side idiom (`.length = 0`) on both engines' JS arrays */
 function drainQueues(ts: World, wasm: WasmWorld): void {
   ts.blastQueue.length = 0;
   ts.bubbleQueue.length = 0;
-  wasm.drainQueues();
+  wasm.blastQueue.length = 0;
+  wasm.bubbleQueue.length = 0;
 }
 
 function firstDiff(ts: EngineLike, wasm: EngineLike): CellDiff | null {
@@ -598,7 +599,7 @@ async function hunt(
     wasm.step();
     const atCheckpoint = (t + 1) % CHECK_EVERY === 0;
     const qDiverged =
-      !arrEq(ts.blastQueue, wasm.blastQueue()) || !arrEq(ts.bubbleQueue, wasm.bubbleQueue());
+      !arrEq(ts.blastQueue, wasm.blastQueue) || !arrEq(ts.bubbleQueue, wasm.bubbleQueue);
     const fxDiverged = ts.fxPower !== wasm.fxPower;
     if (atCheckpoint) drainQueues(ts, wasm); // main-run schedule
     if (t + 1 <= lastGood) continue; // fast-forward through the known-good span
@@ -673,7 +674,7 @@ async function parityRun(label: string, build: (p: PaintFn) => void): Promise<bo
   const hw0 = fnv(wasm.species, wasm.life);
   const buildOk =
     hb0 === hw0 && tsDraws() === wasm.rngDraws && ts.dots === wasm.dots &&
-    arrEq(ts.blastQueue, wasm.blastQueue()) && arrEq(ts.bubbleQueue, wasm.bubbleQueue()) &&
+    arrEq(ts.blastQueue, wasm.blastQueue) && arrEq(ts.bubbleQueue, wasm.bubbleQueue) &&
     ts.fxPower === wasm.fxPower;
   console.log(
     `build     hash ts=${hb0} wasm=${hw0}  draws ts=${tsDraws()} wasm=${wasm.rngDraws}  dots ts=${ts.dots} wasm=${wasm.dots}  ${buildOk ? "PASS" : "FAIL"}`,
@@ -697,8 +698,8 @@ async function parityRun(label: string, build: (p: PaintFn) => void): Promise<bo
     const hw = fnv(wasm.species, wasm.life);
     const dt = tsDraws();
     const dw = wasm.rngDraws;
-    const wq = wasm.blastQueue();
-    const wu = wasm.bubbleQueue();
+    const wq = wasm.blastQueue;
+    const wu = wasm.bubbleQueue;
     const qOk = arrEq(ts.blastQueue, wq) && arrEq(ts.bubbleQueue, wu);
     const fxOk = ts.fxPower === wasm.fxPower;
     const ok = ht === hw && dt === dw && qOk && fxOk;
@@ -752,6 +753,49 @@ async function churnBench(): Promise<void> {
   phase("settled 900-1100", 200);
 }
 
+/** fifth gate: .grn serialize round-trip — a snapshot taken from a mid-run TS
+ *  World must deserialize into BOTH a fresh TS World and a fresh WasmWorld
+ *  and stay bit-exact for 100 more ticks (proves postLoad semantics + byte
+ *  format compatibility with existing saves/share codes) */
+async function roundTrip(): Promise<boolean> {
+  console.log(`\nserialize round-trip: fire zoo, 100 ticks, snapshot, +100 ticks in both engines`);
+  const src = new World(W, H, SEED);
+  buildFireZoo((x, y, id, aux) => src.paint(x, y, id, aux));
+  for (let t = 0; t < 100; t++) src.step();
+  const snap = src.serialize();
+  console.log(`  snapshot: ${snap.length} bytes (src hash ${fnv(src.species, src.life)})`);
+
+  const { world: ts, draws: tsDraws } = makeTs();
+  const wasm = await makeWasm();
+  const okTs = ts.deserialize(snap);
+  const okWasm = wasm.deserialize(snap);
+  const h0t = fnv(ts.species, ts.life);
+  const h0w = fnv(wasm.species, wasm.life);
+  const loadOk = okTs && okWasm && h0t === h0w && tsDraws() === wasm.rngDraws && ts.dots === wasm.dots;
+  console.log(
+    `  load      hash ts=${h0t} wasm=${h0w}  draws ts=${tsDraws()} wasm=${wasm.rngDraws}  dots ts=${ts.dots} wasm=${wasm.dots}  ${loadOk ? "PASS" : "FAIL"}`,
+  );
+  if (!loadOk) return false;
+  let all = true;
+  for (let c = 1; c <= 2; c++) {
+    for (let t = 0; t < 50; t++) {
+      ts.step();
+      wasm.step();
+    }
+    const ht = fnv(ts.species, ts.life);
+    const hw = fnv(wasm.species, wasm.life);
+    const ok = ht === hw && tsDraws() === wasm.rngDraws &&
+      arrEq(ts.blastQueue, wasm.blastQueue) && ts.fxPower === wasm.fxPower;
+    console.log(
+      `  +${String(c * 50).padStart(3)}      hash ts=${ht} wasm=${hw}  draws ts=${tsDraws()} wasm=${wasm.rngDraws}  ${ok ? "PASS" : "FAIL"}`,
+    );
+    drainQueues(ts, wasm);
+    all = all && ok;
+  }
+  console.log(`  round-trip: ${all ? "PASS" : "FAIL"}`);
+  return all;
+}
+
 async function sceneBench(
   name: string,
   build: (p: PaintFn) => void,
@@ -793,7 +837,8 @@ if (process.argv.includes("--bench-only")) {
   const ok2 = ok1 && (await parityRun("stage-2 thermal", buildThermal));
   const ok3 = ok2 && (await parityRun("stage-3 fire zoo", buildFireZoo));
   const ok4 = ok3 && (await parityRun("stage-4 device zoo", buildDeviceZoo));
-  if (ok1 && ok2 && ok3 && ok4) {
+  const ok5 = ok4 && (await roundTrip());
+  if (ok1 && ok2 && ok3 && ok4 && ok5) {
     await churnBench();
     await sceneBench("thermal", buildThermal);
     await sceneBench("firezoo", buildFireZoo);
