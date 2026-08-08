@@ -1,5 +1,7 @@
 import "./style.css";
 import { World } from "./engine/world";
+import { WasmWorld } from "./engine/world-wasm";
+import wasmUrl from "../asm/build/engine.wasm?url";
 import { Player, Fighter } from "./engine/player";
 import { ObjectSystem } from "./engine/objects";
 import { Renderer } from "./render/renderer";
@@ -18,7 +20,31 @@ for (const s of customSpecs) {
   if (id !== null) customIds.push(id);
 }
 
-const world = new World(GRID_W, GRID_H);
+// ---- engine select: ?engine=wasm|ts beats localStorage granulab-engine ----
+// The WASM engine is bit-exact with the TS one (tools/parity.ts, 5 gates) and
+// ~2x faster in the hot phases; TS remains the default until it has soaked.
+const engineChoice =
+  new URLSearchParams(location.search).get("engine") ??
+  localStorage.getItem("granulab-engine") ?? "ts";
+let engineActive = "ts";
+async function makeWorld(): Promise<World> {
+  if (engineChoice === "wasm") {
+    try {
+      const bytes = await (await fetch(wasmUrl)).arrayBuffer();
+      const ww = new WasmWorld(bytes, GRID_W, GRID_H);
+      await ww.ready;
+      engineActive = "wasm";
+      console.log("[granulab] WASM engine active");
+      // WasmWorld mirrors World's public surface exactly; World's private
+      // fields block nominal assignability, hence the cast
+      return ww as unknown as World;
+    } catch (err) {
+      console.warn("[granulab] WASM engine unavailable, using TS engine", err);
+    }
+  }
+  return new World(GRID_W, GRID_H);
+}
+const world = await makeWorld();
 const player = new Player();
 const objects = new ObjectSystem(world);
 const fighters: Fighter[] = [];
@@ -996,6 +1022,7 @@ else if (location.hash.startsWith("#doom")) doomScene();
 else if (location.hash.startsWith("#alchemy")) alchemyScene();
 
 window.granulab = {
+  engine: engineActive,
   demo: demoScene,
   chem: chemScene,
   range: rangeScene,

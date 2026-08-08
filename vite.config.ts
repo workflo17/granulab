@@ -101,6 +101,9 @@ function galleryDev(): Plugin {
 
 export default defineConfig({
   plugins: [shotSink(), galleryDev()],
+  // top-level await (engine boot); the app already needs CompressionStream,
+  // so es2022 doesn't narrow the supported-browser set
+  build: { target: "es2022" },
   // PORT lets the preview harness assign a free port (worktree sessions);
   // standalone `npm run dev` still lands on 4870
   server: { port: Number(process.env.PORT) || 4870, strictPort: true },

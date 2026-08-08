@@ -391,8 +391,27 @@
 > flag (ObjectSystem stamping via rawSet, per-tick queue draining,
 > QA parity toggle), then ship.
 >
+> WASM WIRED INTO THE GAME 8/08: WasmWorld adapter (drop-in World surface:
+> rawSet/losClear/queues-as-authoritative-JS-arrays/fxPower/fill*Tex/RLE
+> serialize byte-compatible with .grn + share codes/postLoad; 5th parity
+> gate = TS snapshot loads into both engines, bit-exact +100 ticks).
+> main.ts boots via top-level await: ?engine=wasm (or localStorage
+> granulab-engine=wasm) → fetch hashed .wasm asset, fall back to TS on
+> failure; granulab.engine reports which is live. Build = asm:build then
+> vite build (target es2022 for TLA — app already needs CompressionStream
+> so no browser-support change). IN-GAME A/B VERIFIED: same painted scene
+> (fire+reactions+movement), 300 ticks → identical dots 54,788 and species
+> hash c77ccdf0 on both engines; doom+alchemy run on WASM; save/load +
+> share codes round-trip; BG modes clean; in-browser churn peak ~14.5ms
+> WASM (cold) vs 24-84ms TS. DEFAULT stays TS until the flag has soaked —
+> flip by making "wasm" the fallback default in makeWorld. NOTE: objects/
+> player draw from a host-side rng stream in WASM mode (sim itself is
+> bit-exact; cross-mode replays with critters differ). Dev after pulling
+> engine changes: npm run asm:build once.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays), WASM app wiring.
+> track — partly obsoleted by the ambient overlays); consider flipping
+> the engine default to WASM after soak.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
