@@ -449,6 +449,32 @@
 > the battle you want; (5) torches never EMIT fire: SO2 needs burning
 > sulfur, roofed so collapsing ore can't bury it.
 >
+> M5i SHIPPED 8/10 — PRESSURE: quarter-res overpressure field. Trapped gas
+> + heat build it (ideal-gas-ish target, FIRE counts as hot gas — enclosed
+> burns blow rooms), it vents through openings as WIND (connectivity to
+> the zero-pressure borders, NOT local leakage), and past the breaking
+> point it SHATTERS containers: glass→thrown SHARDS, ice→snow; stone/wall
+> hold (that's what makes them pressure vessels). Rupture sweeps the
+> vessel SKIN (solid cells never pressurize themselves). Blast
+> overpressure spikes the field. Census is INCREMENTAL at the 4 species-
+> write sites (active-chunk scans miss calm pools — structurally-inactive
+> chunks, not just hysteresis); heavy gases no longer settle-sleep.
+> Gas-free scenes pay ZERO (churn bench byte-identical e009494c/a884374c);
+> zoo re-baselined ebaf9770/3f57b1b3. New: PROPANE (pooling LPG), METHANE
+> (firedamp), SHARDS + vapor-cloud/firedamp/marsh-gas/laceration rows.
+> #BOILER demo: 5 stations failing by overpressure (bursting boiler
+> geyser, tank-farm BLEVE chain t70, firedamp mine, carboy cellar,
+> dry-ice flask bomb). WASM mirrored bit-exact: SEVEN parity gates incl.
+> a pressure scene and an M5h+M5i SHELF ZOO painting every id 90-101
+> (coverage lesson: "registry data flows automatically" was assumed and
+> never gated — every new element now needs oracle coverage), press field
+> compared as raw bytes each checkpoint, plus a LATENCY gate (1200 ticks
+> w/ mid-run clear+repaint, max 5ms). QA LESSONS: in-app cross-engine
+> A/B is NOT bit-comparable (separate host rng for objects/player +
+> per-page probe history) — bit-compare via the harness only; multi-
+> second "hangs" in hidden panes are OS tab-throttling under machine
+> load (pure-JS control bursts identically) — time on a quiet machine.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

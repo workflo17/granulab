@@ -55,6 +55,8 @@ const E_ACID: i32 = 11;
 const E_SALT: i32 = 13;
 const E_SEAWATER: i32 = 14;
 const E_MAGMA: i32 = 15;
+const E_ICE: i32 = 16;
+const E_SNOW: i32 = 17;
 const E_METAL: i32 = 20;
 const E_VIRUS: i32 = 23;
 const E_ANT: i32 = 24;
@@ -82,6 +84,7 @@ const E_TUNGSTEN: i32 = 76;
 const E_VERDIGRIS: i32 = 77;
 const E_SMOKE: i32 = 78;
 const E_MAGNESIA: i32 = 81;
+const E_SHARDS: i32 = 101;
 const E_SALTPETER: i32 = 55;
 const E_LIMESTONE: i32 = 57;
 const E_LIME: i32 = 58;
@@ -203,6 +206,16 @@ let fansLen: i32 = 0; // stage 1: painting a FAN traps, so this stays 0
 let glowP: usize = 0; // Float32Array
 let glowTicks: i32 = 0;
 
+// M5i pressure field (quarter res, wind grid dims): trapped gas + heat build
+// overpressure; it vents through openings as wind, and past the breaking
+// point it SHATTERS containers. Transient — never serialized, zeroed on load.
+let pressP: usize = 0; // Float32Array [WX*WY]
+// exact per-coarse-cell gas census, maintained INCREMENTALLY at the four
+// species-write sites (set/paint/rawSet/swap)
+let pgasP: usize = 0; // Int16Array [WX*WY]
+let pressTicks: i32 = 0;
+let gasDots: i32 = 0; // world total of PRESSURIZES cells — system skips when 0
+
 // temperature field (half resolution), chunk-gated like the cell sim
 let TWg: i32 = 0;
 let THg: i32 = 0;
@@ -237,6 +250,7 @@ let coldAtP: usize = 0; // i16 (-32768 = no cold transition)
 let coldToP: usize = 0; // u8
 let ignitesAtP: usize = 0; // i16 (32767 = never)
 let thermalP: usize = 0; // u8
+let pressurizesP: usize = 0; // u8 (M5i: ids that feed the pressure field)
 // stage 4: conduction + litmus registry, fan trig tables (loader-filled from
 // JS Math.cos/sin so the 256 quantized fan angles match V8 bit-for-bit)
 let phP: usize = 0; // u8
@@ -330,6 +344,12 @@ let bubbleQLen: i32 = 0;
 // @ts-ignore: decorator
 @inline function THERMAL(id: i32): i32 { return u8At(thermalP, id); }
 // @ts-ignore: decorator
+@inline function PRESSURIZES(id: i32): i32 { return u8At(pressurizesP, id); }
+// @ts-ignore: decorator
+@inline function pgasAt(i: i32): i32 { return <i32>load<i16>(pgasP + (<usize>i << 1)); }
+// @ts-ignore: decorator
+@inline function pgasSet(i: i32, v: i32): void { store<i16>(pgasP + (<usize>i << 1), <i16>v); }
+// @ts-ignore: decorator
 @inline function PH(id: i32): i32 { return u8At(phP, id); }
 // @ts-ignore: decorator
 @inline function CONDUCT_IDX(id: i32): i32 { return u8At(conductIdxP, id); }
@@ -393,6 +413,11 @@ export function init(w: i32, h: i32, seed: u32): void {
   coldToP = allocZ(N_IDS);
   ignitesAtP = allocZ(N_IDS << 1);
   thermalP = allocZ(N_IDS);
+  pressurizesP = allocZ(N_IDS);
+  pressP = allocZ((WXg * WYg) << 2);
+  pgasP = allocZ((WXg * WYg) << 1);
+  pressTicks = 0;
+  gasDots = 0;
   phP = allocZ(N_IDS);
   conductIdxP = allocZ(N_IDS);
   conductorIdsP = allocZ(4);
@@ -440,6 +465,8 @@ export function coldAtPtr(): usize { return coldAtP; }
 export function coldToPtr(): usize { return coldToP; }
 export function ignitesAtPtr(): usize { return ignitesAtP; }
 export function thermalPtr(): usize { return thermalP; }
+export function pressurizesPtr(): usize { return pressurizesP; }
+export function pressPtr(): usize { return pressP; }
 export function phPtr(): usize { return phP; }
 export function conductIdxPtr(): usize { return conductIdxP; }
 export function conductorIdsPtr(): usize { return conductorIdsP; }
@@ -478,6 +505,14 @@ export function rawSet(x: i32, y: i32, id: i32, shadeV: i32): void {
   if (old === id) return;
   if (old !== E_EMPTY && old !== E_WALL) dots--;
   if (id !== E_EMPTY && id !== E_WALL) dots++;
+  {
+    const gd = PRESSURIZES(id) - PRESSURIZES(old);
+    if (gd !== 0) {
+      gasDots += gd;
+      const pi = (y >> WSHIFT) * WXg + (x >> WSHIFT);
+      pgasSet(pi, pgasAt(pi) + gd);
+    }
+  }
   speciesSet(i, id);
   shadeSet(i, shadeV);
   lifeSet(i, 0);
@@ -504,7 +539,11 @@ export function clearAll(): void {
     f32Set(windVxP, i, 0);
     f32Set(windVyP, i, 0);
     f32Set(glowP, i, 0);
+    f32Set(pressP, i, 0);
+    pgasSet(i, 0);
   }
+  pressTicks = 0;
+  gasDots = 0;
   const tn = TWg * THg;
   for (let i = 0; i < tn; i++) f32Set(tempP, i, AMBIENT);
   memory.fill(thermalCurP, 0, <usize>(chunksX * chunksY));
@@ -523,6 +562,12 @@ export function postLoad(): void {
   memory.fill(clockP, 0, <usize>n);
   memory.fill(vx8P, 0, <usize>n);
   memory.fill(vy8P, 0, <usize>n);
+  const wn = WXg * WYg;
+  for (let i = 0; i < wn; i++) {
+    f32Set(pressP, i, 0);
+    pgasSet(i, 0);
+  }
+  pressTicks = 0;
   memory.fill(activeCurP, 1, <usize>(chunksX * chunksY));
   memory.fill(activeNextP, 1, <usize>(chunksX * chunksY));
   fansLen = 0;
@@ -531,10 +576,16 @@ export function postLoad(): void {
   for (let i = 0; i < tn; i++) f32Set(tempP, i, AMBIENT);
   memory.fill(thermalCurP, 0, <usize>(chunksX * chunksY));
   memory.fill(thermalNextP, 0, <usize>(chunksX * chunksY));
+  gasDots = 0;
   for (let i = 0; i < n; i++) {
     const id = species(i);
     if (id !== E_EMPTY) shadeSet(i, rngByte());
     if (id !== E_EMPTY && id !== E_WALL) dots++;
+    if (PRESSURIZES(id) !== 0) {
+      gasDots++;
+      const pi = ((i / W) >> WSHIFT) * WXg + ((i % W) >> WSHIFT);
+      pgasSet(pi, pgasAt(pi) + 1);
+    }
     if (id === E_FAN && fansLen < 8192) {
       store<i32>(fansP + (<usize>fansLen << 2), i);
       fansLen++;
@@ -648,6 +699,14 @@ export function paint(x: i32, y: i32, id: i32, aux: i32): void {
   }
   if (old !== E_EMPTY && old !== E_WALL) dots--;
   if (id !== E_EMPTY && id !== E_WALL) dots++;
+  {
+    const gd = PRESSURIZES(id) - PRESSURIZES(old);
+    if (gd !== 0) {
+      gasDots += gd;
+      const pi = (y >> WSHIFT) * WXg + (x >> WSHIFT);
+      pgasSet(pi, pgasAt(pi) + gd);
+    }
+  }
   speciesSet(i, id);
   shadeSet(i, rngByte()); // paint consumes rng for shade — parity-critical
   // sparks track wire-born-ness in shade bit 0 (painted onto a conductor =
@@ -680,6 +739,14 @@ function set(i: i32, x: i32, y: i32, id: i32, lifeVal: i32): void {
   const old = species(i);
   if (old !== E_EMPTY && old !== E_WALL) dots--;
   if (id !== E_EMPTY && id !== E_WALL) dots++;
+  {
+    const gd = PRESSURIZES(id) - PRESSURIZES(old);
+    if (gd !== 0) {
+      gasDots += gd;
+      const pi = (y >> WSHIFT) * WXg + (x >> WSHIFT);
+      pgasSet(pi, pgasAt(pi) + gd);
+    }
+  }
   speciesSet(i, id);
   lifeSet(i, lifeVal);
   vx8Set(i, 0);
@@ -696,6 +763,16 @@ function swap(i: i32, j: i32, xi: i32, yi: i32, xj: i32, yj: i32): void {
   t = vy8(i); vy8Set(i, vy8(j)); vy8Set(j, t);
   clockSet(i, stamp);
   clockSet(j, stamp);
+  // gas grains carry their census entry between coarse cells (post-swap ids)
+  const gi2 = PRESSURIZES(species(i)) - PRESSURIZES(species(j));
+  if (gi2 !== 0) {
+    const ci = (yi >> WSHIFT) * WXg + (xi >> WSHIFT);
+    const cj = (yj >> WSHIFT) * WXg + (xj >> WSHIFT);
+    if (ci !== cj) {
+      pgasSet(ci, pgasAt(ci) + gi2);
+      pgasSet(cj, pgasAt(cj) - gi2);
+    }
+  }
   wake(xi, yi);
   wake(xj, yj);
 }
@@ -703,6 +780,127 @@ function swap(i: i32, j: i32, xi: i32, yi: i32, xj: i32, yj: i32): void {
 // ---- wind field --------------------------------------------------------
 
 let windTicks: i32 = 0; // wind sim runs only while energy is in the field
+
+/** solid fraction of a coarse cell (0..1): static matter blocks pressure
+ *  flow; powder piles leak, like gas seeping through gravel */
+function solidFrac(wi: i32): f64 {
+  const wx = wi % WXg;
+  const wy = wi / WXg;
+  const x0 = wx << WSHIFT;
+  const y0 = wy << WSHIFT;
+  let s = 0;
+  for (let dy = 0; dy < 4; dy++) {
+    const row = (y0 + dy) * W + x0;
+    for (let dx = 0; dx < 4; dx++) {
+      const id = species(row + dx);
+      if (id !== 0 && (DENSITY(id) === 255 || BEHAVIOR(id) === 0)) s++;
+    }
+  }
+  return <f64>s / 16.0;
+}
+
+/** M5i: trapped gas + heat build overpressure; it vents through openings as
+ *  wind and SHATTERS glass/ice containers past the breaking point */
+function stepPressure(): void {
+  if (gasDots === 0 && pressTicks === 0) return; // gas-free scene: free
+  if (gasDots > 0) pressTicks = 240;
+  else pressTicks--;
+
+  for (let y = 1; y < WYg - 1; y++) {
+    const r = y * WXg;
+    for (let x = 1; x < WXg - 1; x++) {
+      const i = r + x;
+      const cnt = pgasAt(i);
+      let p: f64 = f32At(pressP, i);
+      if (cnt === 0 && p === 0) continue;
+      if (cnt > 0) {
+        // ideal-gas-ish: occupancy x temperature drives the target
+        const t = f32At(tempP, ((y << WSHIFT) >> TSHIFT) * TWg + ((x << WSHIFT) >> TSHIFT));
+        const target = <f64>cnt * 0.5 * (1.0 + max(0.0, t) * 0.004);
+        p += (target - p) * 0.15; // fast fill: burns outrun slow pressure
+      }
+      // openness-gated exchange with neighbors; sealed rooms hold, leaks vent
+      const open = 1.0 - solidFrac(i);
+      const oL = min(open, 1.0 - solidFrac(i - 1));
+      const oR = min(open, 1.0 - solidFrac(i + 1));
+      const oU = min(open, 1.0 - solidFrac(i - WXg));
+      const oD = min(open, 1.0 - solidFrac(i + WXg));
+      p += ((f32At(pressP, i - 1) - p) * oL + (f32At(pressP, i + 1) - p) * oR +
+            (f32At(pressP, i - WXg) - p) * oU + (f32At(pressP, i + WXg) - p) * oD) * 0.25;
+      // venting is CONNECTIVITY, not local openness: open terrain drains to
+      // the zero-pressure borders through diffusion; sealed rooms hold
+      p *= cnt > 0 ? 0.999 : 0.985;
+      p = p > 12 ? 12 : p;
+      f32Set(pressP, i, p > 0.01 || p < -0.01 ? p : 0);
+      // the gradient becomes wind: vents whistle, ruptures blast
+      const gx = (f32At(pressP, i - 1) - f32At(pressP, i + 1)) * 0.15;
+      const gy = (f32At(pressP, i - WXg) - f32At(pressP, i + WXg)) * 0.15;
+      if (gx > 0.05 || gx < -0.05)
+        f32Set(windVxP, i, f32At(windVxP, i) + (gx > 1.5 ? 1.5 : gx < -1.5 ? -1.5 : gx));
+      if (gy > 0.05 || gy < -0.05)
+        f32Set(windVyP, i, f32At(windVyP, i) + (gy > 1.5 ? 1.5 : gy < -1.5 ? -1.5 : gy));
+      if (p > 2.2) rupture(x, y, i, p);
+    }
+  }
+  if (pressTicks > 0) windTicks = max(windTicks, 2);
+}
+
+/** one coarse-cell sweep of the rupture pass; returns whether anything broke.
+ *  Draw order is the contract: GLASS gate byte only when id===GLASS && p>3;
+ *  ICE byte whenever id===ICE. */
+function ruptureSweep(cx: i32, cy: i32, p: f64, lwx: i32, lwy: i32): bool {
+  const x0 = cx << WSHIFT;
+  const y0 = cy << WSHIFT;
+  let broke = false;
+  for (let dy = 0; dy < 4; dy++) {
+    const y = y0 + dy;
+    const row = y * W + x0;
+    for (let dx = 0; dx < 4; dx++) {
+      const i = row + dx;
+      const id = species(i);
+      if (id === E_GLASS && p > 3) {
+        dbgLog(44, lwx, lwy);
+        if (rngByte() < 40) {
+          set(i, x0 + dx, y, E_SHARDS, 0);
+          dbgLog(44, lwx, lwy);
+          shadeSet(i, rngByte());
+          dbgLog(44, lwx, lwy);
+          vx8Set(i, (rngByte() - 128) / 3);
+          dbgLog(44, lwx, lwy);
+          vy8Set(i, -(rngByte() >> 3));
+          broke = true;
+        }
+      } else if (id === E_ICE) {
+        dbgLog(44, lwx, lwy);
+        if (rngByte() < 50) {
+          set(i, x0 + dx, y, E_SNOW, 0);
+          dbgLog(44, lwx, lwy);
+          vx8Set(i, (rngByte() - 128) / 4);
+          dbgLog(44, lwx, lwy);
+          vy8Set(i, -(rngByte() >> 4));
+          broke = true;
+        }
+      }
+    }
+  }
+  return broke;
+}
+
+/** overpressured coarse cell: glass shatters into thrown shards, ice bursts
+ *  into snow; stone and wall hold. The sweep covers this coarse cell AND its
+ *  four neighbors — the vessel skin never pressurizes itself. */
+function rupture(wx: i32, wy: i32, wi: i32, p: f64): void {
+  let broke = ruptureSweep(wx, wy, p, wx, wy);
+  if (wx > 0) broke = ruptureSweep(wx - 1, wy, p, wx, wy) || broke;
+  if (wx < WXg - 1) broke = ruptureSweep(wx + 1, wy, p, wx, wy) || broke;
+  if (wy > 0) broke = ruptureSweep(wx, wy - 1, p, wx, wy) || broke;
+  if (wy < WYg - 1) broke = ruptureSweep(wx, wy + 1, p, wx, wy) || broke;
+  if (broke) {
+    f32Set(pressP, wi, p * 0.55); // the burst vents
+    wake(wx << WSHIFT, wy << WSHIFT);
+    wake((wx << WSHIFT) + 3, (wy << WSHIFT) + 3);
+  }
+}
 
 function stepWind(): void {
   if (fansLen === 0 && windTicks === 0) return; // stage-1 fast path: always taken
@@ -919,6 +1117,7 @@ export function step(): void {
   memory.fill(activeNextP, 0, <usize>(chunksX * chunksY));
 
   stepWind();
+  stepPressure();
   stepTemp();
   if (fxPower > 0.3) fxPower *= 0.88;
   else fxPower = 0;
@@ -2132,6 +2331,22 @@ function explode(cx: i32, cy: i32, r: i32): void {
     store<i32>(blastQP + (<usize>(blastQLen + 1) << 2), cy);
     store<i32>(blastQP + (<usize>(blastQLen + 2) << 2), r);
     blastQLen += 3;
+  }
+  // blast overpressure: sealed rooms near the boom blow their windows
+  {
+    const pw = min(6.0, 2.0 + <f64>r * 0.35);
+    const wr = max(1, r >> WSHIFT);
+    const wcx0 = cx >> WSHIFT;
+    const wcy0 = cy >> WSHIFT;
+    for (let wy = wcy0 - wr; wy <= wcy0 + wr; wy++) {
+      if (wy < 0 || wy >= WYg) continue;
+      for (let wx = wcx0 - wr; wx <= wcx0 + wr; wx++) {
+        if (wx < 0 || wx >= WXg) continue;
+        const wi = wy * WXg + wx;
+        if (f32At(pressP, wi) < pw) f32Set(pressP, wi, pw);
+      }
+    }
+    pressTicks = max(pressTicks, 60);
   }
   const r2 = r * r;
   for (let dy = -r; dy <= r; dy++) {

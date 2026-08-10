@@ -287,6 +287,107 @@ function buildDeviceZoo(paint: PaintFn): void {
   rect(paint, "Acid", 1203, 682, 1226, 689);
 }
 
+/** M5i pressure oracle: sealed glass boiler (water+heater), sealed fermenter
+ *  (sugar/yeast stripes -> CO2), walled propane room with a glass window lit
+ *  by fire painted in the AIR above the pool (paint fills empty only — never
+ *  into the pool). Structure is Wall/Glass only — STONE IS A POWDER, a stone
+ *  room collapses. */
+function buildPressure(paint: PaintFn): void {
+  rect(paint, "Wall", 30, 690, 1250, 700); // floor
+  // 1) sealed glass boiler: heater bed under water inside a glass shell —
+  //    steam + heat pressurize until the glass ruptures into thrown shards
+  rect(paint, "Glass", 100, 596, 104, 689);
+  rect(paint, "Glass", 196, 596, 200, 689);
+  rect(paint, "Glass", 105, 592, 195, 596);
+  rect(paint, "Heater", 105, 684, 195, 689);
+  rect(paint, "Water", 105, 640, 195, 683);
+  // 2) sealed fermenter: wall box, sugar/yeast stripes ferment CO2 that
+  //    pressurizes but cannot burst the walls (containment hold)
+  rect(paint, "Wall", 300, 600, 304, 689);
+  rect(paint, "Wall", 396, 600, 400, 689);
+  rect(paint, "Wall", 305, 596, 395, 600);
+  for (let k = 0; k < 8; k++) {
+    rect(paint, k % 2 === 0 ? "Sugar" : "Yeast", 305, 650 + k * 5, 395, 654 + k * 5);
+  }
+  // 3) propane room with a glass window; the vapor cloud is lit by fire
+  //    painted in the air above the pool — the burn pressurizes the room and
+  //    blows the window out
+  rect(paint, "Wall", 500, 586, 504, 689);
+  rect(paint, "Wall", 505, 582, 639, 586);
+  rect(paint, "Wall", 640, 586, 644, 619);
+  rect(paint, "Glass", 640, 620, 644, 660);
+  rect(paint, "Wall", 640, 661, 644, 689);
+  rect(paint, "Propane", 505, 660, 639, 689);
+  rect(paint, "Fire", 560, 655, 580, 659); // flush with the pool: contact lights it
+  // 4) ice vault: steam pressure bursts the ice walls into thrown snow
+  //    (rupture's ICE branch has no p>3 gate — ice is the weaker vessel)
+  rect(paint, "Ice", 800, 620, 806, 689);
+  rect(paint, "Ice", 894, 620, 900, 689);
+  rect(paint, "Ice", 807, 614, 893, 620);
+  rect(paint, "Heater", 807, 684, 893, 689);
+  rect(paint, "Water", 807, 650, 893, 683);
+}
+
+/** M5h+M5i shelf zoo: paints EVERY element id 90-101 in an exercising
+ *  arrangement — the shelves landed after the stage gates and had no oracle
+ *  coverage. Iodine sublimation/deposition cycle, LN2 flash-freezing a pool
+ *  and boiling to nitrogen, dry ice sealed (pressure-bursts its flask into
+ *  shards) and open, gallium melting onto aluminum (embrittlement), cinnabar
+ *  roasting to mercury+SO2, ammonia sealed over acid (saltpeter), a methane
+ *  pocket found by flame, and a propane pool lit from above. */
+function buildShelf(paint: PaintFn): void {
+  rect(paint, "Wall", 30, 690, 1250, 700); // floor
+  // 1) iodine: heater bed sublimates the pile; a cooler floor section catches
+  //    the dense vapor (liquid-encoded, pools sideways) and re-deposits it
+  rect(paint, "Wall", 60, 640, 62, 689);
+  rect(paint, "Wall", 178, 640, 180, 689);
+  rect(paint, "Heater", 63, 684, 145, 689);
+  rect(paint, "Cooler", 150, 684, 177, 689);
+  rect(paint, "Iodine", 70, 670, 140, 683);
+  rect(paint, "Iodine gas", 100, 645, 130, 655); // painted vapor puff (id 92)
+  // 2) LN2 floats on a water pool: flash-freezes it, boils off to nitrogen
+  rect(paint, "Wall", 220, 640, 222, 689);
+  rect(paint, "Wall", 338, 640, 340, 689);
+  rect(paint, "Water", 223, 660, 337, 689);
+  rect(paint, "Liq. N2", 223, 645, 337, 655);
+  rect(paint, "Nitrogen", 250, 610, 290, 620); // painted N2 puff (id 98)
+  // 3) dry ice sealed (glass flask: CO2 pressure bursts it into shards) + open
+  rect(paint, "Glass", 380, 620, 382, 689);
+  rect(paint, "Glass", 438, 620, 440, 689);
+  rect(paint, "Glass", 380, 618, 440, 620);
+  rect(paint, "Dry ice", 383, 650, 437, 688);
+  rect(paint, "Dry ice", 470, 660, 520, 689);
+  rect(paint, "Shards", 480, 640, 500, 650); // painted shards rain (id 101)
+  // 4) gallium on aluminum over an embedded warm plate (slab-carve-then-embed)
+  rect(paint, "Wall", 560, 660, 562, 689);
+  rect(paint, "Wall", 658, 660, 660, 689);
+  rect(paint, "Aluminum", 563, 675, 657, 689);
+  rect(paint, "Gallium", 580, 660, 640, 674);
+  rect(paint, "Molten Ga", 600, 650, 620, 655); // painted melt drop (id 96)
+  for (let y = 690; y <= 694; y++) for (let x = 570; x <= 650; x++) paint(x, y, 0);
+  rect(paint, "Heater", 570, 690, 650, 694);
+  // 5) cinnabar roasted by a torch: mercury pools, SO2 chokes off
+  rect(paint, "Cinnabar", 700, 670, 760, 689);
+  rect(paint, "Torch", 761, 684, 766, 688);
+  // 6) ammonia sealed over an acid pool: nitric synthesis -> saltpeter
+  rect(paint, "Wall", 820, 618, 900, 620);
+  rect(paint, "Wall", 820, 620, 822, 689);
+  rect(paint, "Wall", 898, 620, 900, 689);
+  rect(paint, "Acid", 823, 670, 897, 689);
+  rect(paint, "Ammonia", 823, 630, 897, 660);
+  // 7) methane pocket under a gallery roof, found by a rising flame
+  rect(paint, "Wall", 940, 600, 1060, 606);
+  rect(paint, "Wall", 940, 606, 946, 689);
+  rect(paint, "Wall", 1054, 606, 1060, 689);
+  rect(paint, "Methane", 950, 608, 1050, 640);
+  rect(paint, "Fire", 990, 645, 1010, 650);
+  // 8) propane pool lit from above (flush fire: contact ignition)
+  rect(paint, "Wall", 1100, 640, 1102, 689);
+  rect(paint, "Wall", 1198, 640, 1200, 689);
+  rect(paint, "Propane", 1103, 665, 1197, 689);
+  rect(paint, "Fire", 1140, 660, 1160, 664);
+}
+
 /** bench.ts churn scene: 211k cells of alternating seawater/oil bands */
 function buildChurn(paint: PaintFn): void {
   rect(paint, "Wall", 20, 700, 1260, 712);
@@ -301,6 +402,17 @@ function buildChurn(paint: PaintFn): void {
 // ---- comparison ------------------------------------------------------------
 
 /** same FNV-1a as tools/bench.ts: species bytes then life bytes */
+/** FNV-1a over a Float32Array's raw bytes (M5i pressure-field comparison) */
+function fnvF32(f: Float32Array): string {
+  const b = new Uint8Array(f.buffer, f.byteOffset, f.length * 4);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < b.length; i++) {
+    h ^= b[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
 function fnv(species: Uint8Array, life: Uint8Array): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < species.length; i++) {
@@ -391,7 +503,7 @@ async function forensic(
     ["doVirus", 1], ["doBird", 1], ["doCloud", 1], ["doSuperball", 1],
     ["doVine", 1], ["doRocket", 1], ["doPump", 1], ["doDetector", 1],
     ["doLaser", 1], ["doMetalCool", 1], ["trySoapBubble", 1],
-    ["tryWindPush", 1], ["explode", 0],
+    ["tryWindPush", 1], ["explode", 0], ["rupture", 0],
   ];
   for (const [fn, xi] of patchDefs) {
     const origFn = proto[fn];
@@ -414,7 +526,7 @@ async function forensic(
     let tag = "?";
     for (const ln of stack.split("\n")) {
       const m = ln.match(
-        /(updateCell|doPowder|doLiquid|doGas|tryWindPush|paint|stepTemp|doFire|hotContact4|doCorrode|doSpark|doClone|doEmitter|doAnt|doVirus|doBird|doCloud|doSuperball|doVine|doRocket|doPump|doDetector|doValve|doCannon|doLaser|doThunder|doFilter|doLitmus|doMetalCool|trySoapBubble|explode)/,
+        /(updateCell|doPowder|doLiquid|doGas|tryWindPush|paint|stepTemp|doFire|hotContact4|doCorrode|doSpark|doClone|doEmitter|doAnt|doVirus|doBird|doCloud|doSuperball|doVine|doRocket|doPump|doDetector|doValve|doCannon|doLaser|doThunder|doFilter|doLitmus|doMetalCool|trySoapBubble|explode|rupture)/,
       );
       if (m) {
         const lm = ln.match(/:(\d+):(\d+)\)?\s*$/);
@@ -450,12 +562,12 @@ async function forensic(
     "corrodeInt4", "corrodeByte", "igniteRoll",
     "spark", "clone", "emitter", "ant", "virus", "bird", "cloud", "superball",
     "vine", "rocket", "pump", "detector", "laser", "metalCool", "explode",
-    "windPush", "soapBubble",
+    "windPush", "soapBubble", "rupture",
   ];
   const siteFnNames = [
     "doSpark", "doClone", "doEmitter", "doAnt", "doVirus", "doBird", "doCloud",
     "doSuperball", "doVine", "doRocket", "doPump", "doDetector", "doLaser",
-    "doMetalCool", "explode", "tryWindPush", "trySoapBubble",
+    "doMetalCool", "explode", "tryWindPush", "trySoapBubble", "rupture",
   ];
   const siteFn = (code: number): string =>
     code <= 1 ? "updateCell" : code <= 3 ? "doPowder" : code <= 5 ? "doLiquid" :
@@ -702,11 +814,14 @@ async function parityRun(label: string, build: (p: PaintFn) => void): Promise<bo
     const wu = wasm.bubbleQueue;
     const qOk = arrEq(ts.blastQueue, wq) && arrEq(ts.bubbleQueue, wu);
     const fxOk = ts.fxPower === wasm.fxPower;
-    const ok = ht === hw && dt === dw && qOk && fxOk;
+    // M5i: the pressure field is compared byte-exact on every scene
+    const pt = fnvF32(ts.press);
+    const pw = fnvF32(wasm.press);
+    const ok = ht === hw && dt === dw && qOk && fxOk && pt === pw;
     console.log(
       `tick ${String(tick).padStart(4)}  hash ts=${ht} wasm=${hw}  draws ts=${dt} wasm=${dw}  ` +
         `blastQ ${ts.blastQueue.length}/${wq.length} bubbleQ ${ts.bubbleQueue.length}/${wu.length} ` +
-        `fx ${ts.fxPower.toFixed(3)}/${wasm.fxPower.toFixed(3)}  ${ok ? "PASS" : "FAIL"}`,
+        `fx ${ts.fxPower.toFixed(3)}/${wasm.fxPower.toFixed(3)}  press ${pt}/${pw}  ${ok ? "PASS" : "FAIL"}`,
     );
     if (!ok) {
       if (!qOk) {
@@ -796,6 +911,44 @@ async function roundTrip(): Promise<boolean> {
   return all;
 }
 
+/** latency gate: the app pattern (build, tick, mid-run clear()+repaint, keep
+ *  ticking) must never produce a pathological single step in node. Catches
+ *  per-tick allocation creep, WASM memory growth, and algorithmic blowups.
+ *  (The 8/10 browser "multi-second step" reports were OS starvation of a
+ *  HIDDEN tab's background-priority renderer under host CPU load — a pure-JS
+ *  spin loop bursts identically there; engine exonerated by a 4-quadrant
+ *  wasm/JS x contention/quiet matrix. This gate pins the engine-side
+ *  contract regardless.) */
+async function latencyGate(): Promise<boolean> {
+  console.log(`\nlatency gate: pressure scene, 1200 ticks incl. mid-run clear()+repaint`);
+  const wasm = await makeWasm();
+  buildPressure((x, y, id, aux) => wasm.paint(x, y, id, aux));
+  let maxMs = 0;
+  let maxAt = 0;
+  let sum = 0;
+  for (let t = 1; t <= 1200; t++) {
+    if (t === 600) {
+      wasm.clear();
+      buildPressure((x, y, id, aux) => wasm.paint(x, y, id, aux)); // app cycle
+    }
+    const t0 = performance.now();
+    wasm.step();
+    const ms = performance.now() - t0;
+    sum += ms;
+    if (ms > maxMs) {
+      maxMs = ms;
+      maxAt = t;
+    }
+    wasm.blastQueue.length = 0; // ObjectSystem stand-in
+    wasm.bubbleQueue.length = 0;
+  }
+  const ok = maxMs < 60;
+  console.log(
+    `  1200 ticks: avg ${(sum / 1200).toFixed(2)} ms/step, max ${maxMs.toFixed(1)} ms at tick ${maxAt} (limit 60ms)  ${ok ? "PASS" : "FAIL"}`,
+  );
+  return ok;
+}
+
 async function sceneBench(
   name: string,
   build: (p: PaintFn) => void,
@@ -832,17 +985,22 @@ if (process.argv.includes("--bench-only")) {
   await sceneBench("thermal", buildThermal);
   await sceneBench("firezoo", buildFireZoo);
   await sceneBench("devzoo", buildDeviceZoo);
+  await sceneBench("pressure", buildPressure);
 } else {
   const ok1 = await parityRun("stage-1 movement", buildStage1);
   const ok2 = ok1 && (await parityRun("stage-2 thermal", buildThermal));
   const ok3 = ok2 && (await parityRun("stage-3 fire zoo", buildFireZoo));
   const ok4 = ok3 && (await parityRun("stage-4 device zoo", buildDeviceZoo));
   const ok5 = ok4 && (await roundTrip());
-  if (ok1 && ok2 && ok3 && ok4 && ok5) {
+  const ok6 = ok5 && (await parityRun("M5i pressure", buildPressure));
+  const ok7 = ok6 && (await parityRun("M5h+M5i shelf zoo", buildShelf));
+  const ok8 = ok7 && (await latencyGate());
+  if (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8) {
     await churnBench();
     await sceneBench("thermal", buildThermal);
     await sceneBench("firezoo", buildFireZoo);
     await sceneBench("devzoo", buildDeviceZoo);
+    await sceneBench("pressure", buildPressure);
   } else {
     process.exitCode = 1;
   }

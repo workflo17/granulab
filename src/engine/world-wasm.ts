@@ -21,7 +21,7 @@ import {
   E, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
   EXPLODE_R, REACT, REACT_DT, HAS_REACT, CONDUCTS, HEAT_PUMP,
   TEMP0, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
-  PH, CONDUCT_IDX, CONDUCTOR_IDS,
+  PH, CONDUCT_IDX, CONDUCTOR_IDS, PRESSURIZES,
 } from "./elements";
 import { Rng } from "./rng";
 
@@ -31,7 +31,9 @@ const TSHIFT = 1; // temperature cell = 2x2 sim cells
 // mirrors the module-level HYST table in world.ts (settle-hysteresis liquids)
 const HYST = new Uint8Array(N_IDS);
 HYST[E.WATER] = HYST[E.SEAWATER] = HYST[E.OIL] = HYST[E.MERCURY] = HYST[E.MUD] = HYST[E.NITRO] = 1;
-HYST[E.SOAPY] = HYST[E.CO2] = HYST[E.CHLORINE] = 1; // heavy gases pool + sleep too
+// M5i: heavy gases no longer sleep — a sleeping pool vanishes from the
+// pressure census, and a calm propane room MUST still pressurize
+HYST[E.SOAPY] = 1;
 
 interface EngineExports {
   memory: WebAssembly.Memory;
@@ -93,6 +95,8 @@ interface EngineExports {
   windVyPtr(): number;
   glowPtr(): number;
   tempPtr(): number;
+  pressurizesPtr(): number;
+  pressPtr(): number;
   rawSet(x: number, y: number, id: number, shade: number): void;
   losClear(x0: number, y0: number, x1: number, y1: number): number;
   clearAll(): void;
@@ -135,6 +139,8 @@ export class WasmWorld {
   private windVy!: Float32Array;
   private glowV!: Float32Array;
   private tempV!: Float32Array;
+  /** M5i pressure field view (WX x WY) — QA + parity read it */
+  press!: Float32Array;
 
   private ex!: EngineExports;
   private mem: WebAssembly.Memory | null = null;
@@ -197,6 +203,7 @@ export class WasmWorld {
     u8.set(THERMAL, this.ex.thermalPtr());
     // stage 4: conduction + litmus registry
     u8.set(PH, this.ex.phPtr());
+    u8.set(PRESSURIZES, this.ex.pressurizesPtr());
     u8.set(CONDUCT_IDX, this.ex.conductIdxPtr());
     u8.set(Uint8Array.from(CONDUCTOR_IDS), this.ex.conductorIdsPtr());
     // fan trig tables: 256 quantized angles, computed HERE with the host's
@@ -223,6 +230,7 @@ export class WasmWorld {
     this.windVy = new Float32Array(buf, this.ex.windVyPtr(), this.WX * this.WY);
     this.glowV = new Float32Array(buf, this.ex.glowPtr(), this.WX * this.WY);
     this.tempV = new Float32Array(buf, this.ex.tempPtr(), this.TW * this.TH);
+    this.press = new Float32Array(buf, this.ex.pressPtr(), this.WX * this.WY);
   }
 
   /** views detach if wasm memory grows (it shouldn't — fixed preallocation) */
