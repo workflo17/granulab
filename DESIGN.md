@@ -433,6 +433,22 @@
 > contact ever (again); products falling into acid get corroded unless
 > exempted — check every row whose product lands in the reagent pool.
 >
+> #CRYO DEMO + DRAMA UPGRADES shipped 8/08: seven M5h stations (ammonia
+> batch reactor snowing saltpeter, gunpowder pop pit w/ clone drip,
+> LN2 glacier-calving lake breathing against a heater patch, iodine lava
+> lamp, gallium bridge sabotage, cinnabar smelter + roofed sulfur burner
+> + fan-lofted SO2 smog/rain, dry-ice-vs-pyre battle). Doom: dry-ice
+> glacier on the volcano flank → lava sublimates a CO2 flood into the
+> burning town. Range: sodium depth-charge tank (recurring H2 flash-
+> bangs). FIXTURE LAWS LEARNED THE HARD WAY: (1) powder/liquid clone
+> primers FALL without a ledge under the primer cell; (2) a clone whose
+> only open face floods with liquid is smothered — batch reactors beat
+> injectors inside tanks; (3) LN2 exists only in BULK: droplets/streams
+> boil the tick they meet warm air, so pour glaciers, never drips;
+> (4) full-width heaters pre-warm pools absolutely — size the heater to
+> the battle you want; (5) torches never EMIT fire: SO2 needs burning
+> sulfur, roofed so collapsing ore can't bury it.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

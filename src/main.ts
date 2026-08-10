@@ -178,6 +178,7 @@ const ui = new Ui(root, {
     else if (name === "range") rangeScene();
     else if (name === "doom") doomScene();
     else if (name === "alchemy") alchemyScene();
+    else if (name === "cryo") cryoScene();
   },
 });
 
@@ -737,6 +738,17 @@ function rangeScene(): void {
   R("Charcoal", 880, 630, 970, 638);
   R("Thermite", 900, 610, 950, 628);
 
+  // 6) SODIUM DEPTH CHARGES: a clone dripper feeds alkali metal into a deep
+  //    tank — each lump floats, boils off hydrogen, and the heat sets it off:
+  //    recurring flash-bangs in the water column
+  R("Wall", 1150, 560, 1152, 690);
+  R("Wall", 1238, 560, 1240, 690);
+  R("Water", 1153, 590, 1237, 688);
+  R("Clone", 1190, 566, 1190, 570);
+  R("Sodium", 1189, 566, 1189, 570); // primer face
+  R("Wall", 1188, 564, 1191, 565);
+  R("Wall", 1188, 566, 1188, 571);
+
   // 5) FIREWORKS BATTERY: a 1-wide column lit from the TOP so every rocket
   //    launches with a clear nose (blocks and tubes both self-destruct — a
   //    nose-blocked rocket detonates); the clone refills from the base
@@ -872,6 +884,12 @@ function doomScene(): void {
   R("Stone", 1067, 310, 1078, 356); // breech feed + supply column
   world.paint(1061, 339, byName("Clone")); // trigger on the barrel top
   world.paint(1062, 339, byName("Spark")); // primer
+
+  // DRY-ICE GLACIER on the volcano's right flank: the lava flow sublimates it
+  // into a CO2 flood that rolls downslope into the burning town — a visible
+  // smother wave fighting the inferno it arrives at
+  R("Dry ice", 260, 440, 330, 470);
+  R("Wall", 254, 472, 336, 474); // bench the glacier sits on
 
   // sky, life, witness
   R("Cloud", 840, 62, 990, 74);
@@ -1015,11 +1033,121 @@ function alchemyScene(): void {
   settle();
 }
 
+// #cryo: the M5h works — cryogenics, sublimation, and the renewable-powder plant
+function cryoScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  R("Wall", 30, 690, 1250, 700); // the works floor
+
+  // 1) SALTPETER WORKS: a clone at the tank floor bubbles ammonia up through
+  // the acid column; saltpeter snows out and drifts to the floor — the
+  // renewable half of the gunpowder loop, running unattended
+  R("Glass", 40, 540, 42, 690);
+  R("Glass", 198, 540, 200, 690);
+  R("Glass", 40, 538, 200, 540);
+  // batch reactor: a deep ammonia atmosphere pressed flush onto the acid —
+  // saltpeter snows out for thousands of ticks. (Clone injectors don't work
+  // here: liquid floods the clone's only open face and smothers it.)
+  R("Acid", 43, 620, 197, 660);
+  R("Ammonia", 43, 541, 197, 619);
+
+  // 2) POWDER POPS: a clone drip feeds gunpowder onto an embedded torch in a
+  // stone pit — recurring pops with the full blast drama pass
+  R("Stone", 230, 660, 350, 688);
+  R("Wall", 236, 640, 238, 660); // pit walls carved into the pile
+  R("Wall", 342, 640, 344, 660);
+  R("Torch", 284, 654, 292, 658);
+  R("Clone", 288, 610, 288, 612);
+  R("Gunpowder", 287, 610, 287, 612); // primer face
+  R("Wall", 286, 608, 289, 609);
+  R("Wall", 286, 610, 286, 613);
+  R("Wall", 287, 613, 287, 613); // ledge: powder primers fall without one
+
+  // 3) CRYO LAKE: LN2 dripper freezes the surface while a heater melts from
+  // the floor — a breathing ice sheet, fighting itself forever
+  R("Wall", 380, 560, 382, 690);
+  R("Wall", 558, 560, 560, 690);
+  R("Heater", 455, 686, 485, 688); // small center patch — a full-width heater
+  R("Water", 383, 600, 557, 685);  // pre-warms the pool and the cryogen never wins
+  // LN2 only survives in BULK (thin streams and droplets boil the tick they
+  // meet warm air — clone drippers can't work). One massive cryogen dump at
+  // t0 freezes the sheet; the heater floor melts it back from below and the
+  // lake breathes between ice and water from then on
+  R("Liq. N2", 440, 560, 500, 590);
+
+  // 4) IODINE LAMP: heater bed sublimates the crystals; violet vapor climbs
+  // the glass chimney, deposits on the cooler-lined shelf, and the crystals
+  // avalanche back down — a purple lava lamp
+  R("Glass", 590, 480, 592, 690);
+  R("Glass", 698, 480, 700, 690);
+  R("Glass", 590, 478, 700, 480);
+  R("Heater", 593, 686, 697, 688);
+  R("Iodine", 600, 660, 690, 684);
+  R("Cooler", 593, 481, 697, 483);
+  R("Glass", 620, 540, 670, 542); // mid shelf the returning crystals pile on
+
+  // 5) GALLIUM SABOTAGE: a warm pipe melts the gallium block; the molten
+  // metal wicks into the aluminum bridge, embrittles it to dust, and the
+  // stone load comes down
+  R("Stone", 730, 600, 750, 688); // left pier
+  R("Stone", 860, 600, 880, 688); // right pier
+  R("Aluminum", 750, 596, 860, 604); // the bridge span
+  R("Stone", 780, 560, 830, 594); // the load
+  R("Gallium", 760, 586, 776, 594); // block resting on the span
+  R("Heater", 758, 594, 778, 595); // warm plate directly under the block
+
+  // 6) SMELTER + SMOG: torch bed roasts cinnabar; mercury rains through the
+  // grate and pools; the SO2 climbs past a vine trellis (acid smog) toward
+  // the cloud, which rains acid back down
+  R("Wall", 910, 600, 912, 690);
+  R("Wall", 1058, 600, 1060, 690);
+  R("Wall", 916, 660, 1054, 662); // grate the mercury drips through
+  R("Torch", 920, 654, 930, 658);
+  R("Cinnabar", 920, 630, 1000, 652);
+  // roofed sulfur burner: collapsing ore can't bury it; the flue fan lofts
+  // the dense SO2 up past the vine trellis toward the cloud
+  R("Wall", 1004, 648, 1036, 650); // burner roof
+  R("Sulfur", 1008, 654, 1026, 658);
+  R("Torch", 1028, 654, 1034, 658); // flush against the sulfur bed
+  for (let y = 636; y <= 644; y++) {
+    for (let x = 1042, e = 0; x <= 1048; x++, e++) world.paint(x, y, byName("Fan"), 192); // blow up
+  }
+  R("Vine", 1050, 610, 1052, 688);
+  R("Cloud", 940, 480, 1040, 492);
+
+  // 7) DRY ICE vs PYRE: the burning stack's own heat sublimates the ledge of
+  // dry ice above it; the CO2 flood smothers the fire, the torch relights it
+  R("Wall", 1090, 690, 1240, 692);
+  R("Wood", 1130, 640, 1200, 688);
+  R("Torch", 1132, 682, 1136, 688); // embedded: relights after every smother
+  R("Wall", 1120, 600, 1210, 602); // the ledge
+  R("Dry ice", 1126, 580, 1204, 598);
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 120 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 120) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
 else if (location.hash.startsWith("#range")) rangeScene();
 else if (location.hash.startsWith("#doom")) doomScene();
 else if (location.hash.startsWith("#alchemy")) alchemyScene();
+else if (location.hash.startsWith("#cryo")) cryoScene();
 
 window.granulab = {
   engine: engineActive,
@@ -1028,6 +1156,7 @@ window.granulab = {
   range: rangeScene,
   doom: doomScene,
   alchemy: alchemyScene,
+  cryo: cryoScene,
   player,
   fighters,
   objects,
