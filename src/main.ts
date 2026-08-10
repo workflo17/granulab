@@ -179,6 +179,7 @@ const ui = new Ui(root, {
     else if (name === "doom") doomScene();
     else if (name === "alchemy") alchemyScene();
     else if (name === "cryo") cryoScene();
+    else if (name === "boiler") boilerScene();
   },
 });
 
@@ -1142,12 +1143,98 @@ function cryoScene(): void {
   settle();
 }
 
+// #boiler: the M5i pressure works — everything here fails by overpressure
+function boilerScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  R("Wall", 30, 690, 1250, 700); // the plant floor
+
+  // 1) THE BOILER: clone-fed water over a fierce heater in a glass shell —
+  // it bursts, vents as a steam geyser through the breach, re-seals... never
+  R("Glass", 60, 540, 62, 690);
+  R("Glass", 198, 540, 200, 690);
+  R("Glass", 60, 538, 200, 540);
+  R("Heater", 63, 684, 197, 688);
+  R("Water", 63, 620, 197, 683);
+  R("Clone", 130, 560, 130, 562);
+  R("Water", 129, 560, 129, 562); // primer
+  R("Wall", 128, 558, 131, 559);
+  R("Wall", 128, 560, 128, 563);
+  R("Wall", 129, 563, 129, 563); // ledge
+
+  // 2) TANK FARM: three sealed propane tanks; a torch slow-cooks the first —
+  // thermal expansion pops it, the vapor cloud finds the flame, and the
+  // fireball chains down the row
+  const tank = (x0: number) => {
+    R("Glass", x0, 600, x0 + 2, 690);
+    R("Glass", x0 + 58, 600, x0 + 60, 690);
+    R("Glass", x0, 598, x0 + 60, 600);
+    R("Propane", x0 + 3, 640, x0 + 57, 688);
+  };
+  tank(240); tank(320); tank(400);
+  // the slow cooker: carve the plant floor under tank 1 and embed a heater —
+  // thermal expansion pops the shell, the escaping vapor finds the hot plate
+  for (let y = 690; y <= 694; y++) for (let x = 250; x <= 290; x++) world.paint(x, y, E.EMPTY);
+  R("Heater", 250, 690, 290, 694);
+  R("Torch", 305, 684, 311, 688); // pilot light between tanks 1 and 2:
+  // the breach vapor drifts over it, and the fireball takes the row
+
+  // 3) FIREDAMP MINE: a wall gallery with a methane pocket under its roof and
+  // glass skylights; the miner's torch flame crawls in and finds the gas
+  R("Wall", 520, 560, 760, 566); // roof
+  R("Glass", 560, 560, 590, 566); // skylight 1
+  R("Glass", 680, 560, 710, 566); // skylight 2
+  R("Wall", 520, 566, 526, 690);
+  R("Wall", 754, 566, 760, 690);
+  R("Methane", 530, 568, 750, 600);
+  R("Torch", 730, 682, 736, 688);
+  R("Wood", 700, 660, 750, 688); // pit props: fuel path toward the pocket
+  R("Ant", 560, 684, 620, 688); // the doomed shift
+
+  // 4) FERMENTATION CELLAR: carboys of different sizes pop on their own clocks
+  const carboy = (x0: number, w: number, h: number) => {
+    R("Glass", x0, 690 - h, x0 + 2, 690);
+    R("Glass", x0 + w - 2, 690 - h, x0 + w, 690);
+    R("Glass", x0, 688 - h, x0 + w, 690 - h);
+    for (let i = 0; i < 4; i++) {
+      R(i % 2 ? "Sugar" : "Yeast", x0 + 3, 690 - Math.floor(h / 2) + i * 5, x0 + w - 3, 690 - Math.floor(h / 2) + i * 5 + 4);
+    }
+  };
+  carboy(820, 50, 80); carboy(890, 70, 110); carboy(980, 40, 60);
+
+  // 5) DRY-ICE BOMB: a sealed flask of dry ice — room warmth sublimates it,
+  // CO2 pressure does the rest (no flame anywhere near it)
+  R("Glass", 1080, 620, 1082, 690);
+  R("Glass", 1138, 620, 1140, 690);
+  R("Glass", 1080, 618, 1140, 620);
+  R("Dry ice", 1083, 660, 1137, 688);
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 60 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 60) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
 else if (location.hash.startsWith("#range")) rangeScene();
 else if (location.hash.startsWith("#doom")) doomScene();
 else if (location.hash.startsWith("#alchemy")) alchemyScene();
 else if (location.hash.startsWith("#cryo")) cryoScene();
+else if (location.hash.startsWith("#boiler")) boilerScene();
 
 window.granulab = {
   engine: engineActive,
@@ -1157,6 +1244,7 @@ window.granulab = {
   doom: doomScene,
   alchemy: alchemyScene,
   cryo: cryoScene,
+  boiler: boilerScene,
   player,
   fighters,
   objects,
