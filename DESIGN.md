@@ -414,6 +414,25 @@
 > granulab-engine=ts) forces the TS engine, and any WASM boot failure
 > still auto-falls back to TS with a console warn.
 >
+> M5h SHIPPED 8/08 — REACTIVE SHELF IV (9 elements, ids 90-98, customs
+> from 99; first data milestone shipped ON the WASM engine — registry
+> tables flow into WASM at init, so pure-data chemistry needs no engine
+> work): AMMONIA (+acid→saltpeter = RENEWABLE GUNPOWDER loop — needed
+> saltpeter corrosion-exempt (nitrate resists its own acid, both engines);
+> +vine fertilizer), IODINE⇄IODINE VAPOR (sublimes 184°, violet dense gas
+> deposits back at 45°), CINNABAR (roasts to mercury: +fire→Hg+SO2, and a
+> +torch row — torches never EMIT fire cells, contact rows must name
+> TORCH as partner for burner setups), LIQ. N2 (floats at density 24,
+> flash-froze a 4,598-cell pool, boils to NITROGEN gas that fades —
+> life0 fade is generic for gases, only steam's water roll is special),
+> GALLIUM⇄MOLTEN GA (melts at 30° hand-warmth, embrittles aluminum to
+> dust), DRY ICE (-78° powder sublimating into the CO2 blanket),
+> lime family acid rows (Neutralization + Marble fizz — lime/limestone
+> corrosion-exempt like magnesia, exemptions mirrored in asm/engine.ts,
+> all five parity gates re-run green). QA: one-row air gap = no gas
+> contact ever (again); products falling into acid get corroded unless
+> exempted — check every row whose product lands in the reagent pool.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

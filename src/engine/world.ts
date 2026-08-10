@@ -1240,12 +1240,16 @@ export class World {
     // the water family is corrosion-proof so neutralization products survive,
     // and gases bubble through acid unharmed (CO2/chlorine are liquid-encoded)
     if (o === E.WATER || o === E.SEAWATER || o === E.SALT) return false;
+    if (o === E.SALTPETER) return false; // nitrate salt resists its own acid
     if (BEHAVIOR[o] === B.GAS || o === E.CO2 || o === E.CHLORINE) return false;
     if (o === E.LITMUS) return false; // the instrument survives to show pH 1
     if (o === E.GOLD || o === E.COPPER || o === E.TUNGSTEN) return false; // noble
     // MgO dissolving in acid IS the antacid reaction — let the REACT row do it
     // (salt + water, acid consumed) instead of corrosion deleting the powder
     if (o === E.MAGNESIA) return false;
+    // same rule for the lime family: dissolving in acid IS their REACT row
+    // (salt + water / marble fizz, acid consumed) — not free corrosion
+    if (o === E.LIME || o === E.LIMESTONE) return false;
     if (o !== E.EMPTY && o !== E.WALL && o !== E.ACID && o !== E.FIRE && this.rng.byte() < 60) {
       this.set(j, nx, ny, E.EMPTY, 0);
       this.life[i]--;

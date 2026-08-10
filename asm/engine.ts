@@ -82,6 +82,9 @@ const E_TUNGSTEN: i32 = 76;
 const E_VERDIGRIS: i32 = 77;
 const E_SMOKE: i32 = 78;
 const E_MAGNESIA: i32 = 81;
+const E_SALTPETER: i32 = 55;
+const E_LIMESTONE: i32 = 57;
+const E_LIME: i32 = 58;
 
 // static direction tables (World.OCT_DX/OCT_DY, DX4/DY4/OPP4, PREF4 flattened)
 const OCT_DX = memory.data<i32>([1, 1, 0, -1, -1, -1, 0, 1]);
@@ -1769,12 +1772,16 @@ function doCorrode(i: i32, x: i32, y: i32): bool {
   // the water family is corrosion-proof so neutralization products survive,
   // and gases bubble through acid unharmed (CO2/chlorine are liquid-encoded)
   if (o === E_WATER || o === E_SEAWATER || o === E_SALT) return false;
+  if (o === E_SALTPETER) return false; // nitrate salt resists its own acid
   if (BEHAVIOR(o) === B_GAS || o === E_CO2 || o === E_CHLORINE) return false;
   if (o === E_LITMUS) return false; // the instrument survives to show pH 1
   if (o === E_GOLD || o === E_COPPER || o === E_TUNGSTEN) return false; // noble
   // MgO dissolving in acid IS the antacid reaction — let the REACT row do it
   // (salt + water, acid consumed) instead of corrosion deleting the powder
   if (o === E_MAGNESIA) return false;
+  // same rule for the lime family: dissolving in acid IS their REACT row
+  // (salt + water / marble fizz, acid consumed) — not free corrosion
+  if (o === E_LIME || o === E_LIMESTONE) return false;
   if (o !== E_EMPTY && o !== E_WALL && o !== E_ACID && o !== E_FIRE) {
     dbgLog(25, x, y);
     if (rngByte() < 60) {

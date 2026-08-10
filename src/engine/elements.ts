@@ -98,6 +98,16 @@ export const E = {
   ACETYLENE: 87, // hottest common fuel gas — the welding flame
   SO2: 88, // choking dense gas off burning sulfur; seeds acid rain
   BLEACH: 89, // hypochlorite: disinfects; NEVER mix with acid (chlorine release)
+  // ---- M5h reactive shelf IV ----
+  AMMONIA: 90, // base gas: + acid = saltpeter (renewable gunpowder), fertilizes vines
+  IODINE: 91, // sublimes at 184° into violet vapor; antiseptic
+  IODINE_V: 92, // dense violet vapor; deposits back to crystals on cool surfaces
+  CINNABAR: 93, // HgS vermilion ore: roasts into mercury + SO2
+  LN2: 94, // liquid nitrogen: floats on water, flash-freezes, boils off at -180°
+  GALLIUM: 95, // metal that melts at 30° — hand-warmth liquefies it
+  LGALLIUM: 96, // molten gallium; embrittles aluminum to dust, refreezes at 25°
+  DRYICE: 97, // solid CO2 at -78°: sublimates into the fire-blanket gas
+  NITROGEN: 98, // boiled-off N2: inert, disperses back into the air
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -276,6 +286,18 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.ACETYLENE, name: "Acetylene", color: "#c8b8d8", behavior: B.GAS, density: 1, disperse: 4, flammable: 255, burnLife: 18, ignitesAt: 305 }),
   def({ id: E.SO2, name: "SO2", color: "#a8a468", behavior: B.LIQUID, density: 4, disperse: 5 }),
   def({ id: E.BLEACH, name: "Bleach", color: "#e6f0d8", behavior: B.LIQUID, density: 31, disperse: 4, ph: 12 }),
+  // ---- M5h reactive shelf IV ----
+  def({ id: E.AMMONIA, name: "Ammonia", color: "#c0d8c0", behavior: B.GAS, density: 1, disperse: 4, ph: 11 }),
+  def({ id: E.IODINE, name: "Iodine", color: "#5a4668", behavior: B.POWDER, density: 65, hotAt: 184, hotTo: E.IODINE_V, group: "REAGENTS" }),
+  // iodine vapor is far denser than air — chlorine-pattern dense gas that pools
+  def({ id: E.IODINE_V, name: "Iodine gas", color: "#9a6ab8", behavior: B.LIQUID, density: 6, disperse: 4, coldAt: 45, coldTo: E.IODINE }),
+  def({ id: E.CINNABAR, name: "Cinnabar", color: "#b84a3a", behavior: B.POWDER, density: 90, group: "REAGENTS" }),
+  // 0.81 g/cm3: LN2 floats ON the pool it flash-freezes, then boils away
+  def({ id: E.LN2, name: "Liq. N2", color: "#bcd8e8", behavior: B.LIQUID, density: 24, disperse: 5, temp0: -196, pump: 0.3, hotAt: -180, hotTo: E.NITROGEN }),
+  def({ id: E.GALLIUM, name: "Gallium", color: "#b8c0c8", behavior: B.POWDER, density: 75, hotAt: 30, hotTo: E.LGALLIUM, group: "METALS" }),
+  def({ id: E.LGALLIUM, name: "Molten Ga", color: "#c8ccd0", behavior: B.LIQUID, density: 74, disperse: 3, coldAt: 25, coldTo: E.GALLIUM, group: "METALS" }),
+  def({ id: E.DRYICE, name: "Dry ice", color: "#dce8ec", behavior: B.POWDER, density: 60, temp0: -78, pump: 0.25, hotAt: -60, hotTo: E.CO2, group: "REAGENTS" }),
+  def({ id: E.NITROGEN, name: "Nitrogen", color: "#c6ccd2", behavior: B.GAS, density: 1, disperse: 4, life0: 200 }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -509,4 +531,14 @@ react(E.LYE, E.CHLORINE, E.BLEACH, E.EMPTY, 60, "Hypochlorite synthesis", 15); /
 react(E.BLEACH, E.ACID, E.CHLORINE, E.WATER, 180, "Never mix: Cl2 release", 10); // the household hazard
 react(E.BLEACH, E.VIRUS, E.WATER, E.EMPTY, 220, "Disinfection");
 react(E.BLEACH, E.VINE, E.BLEACH, E.EMPTY, 40, "Defoliation");
+
+// ---- M5h reactive shelf IV --------------------------------------------------
+react(E.AMMONIA, E.ACID, E.SALTPETER, E.WATER, 120, "Nitric synthesis", 30); // renewable gunpowder loop
+react(E.AMMONIA, E.VINE, E.VINE, E.VINE, 10, "Fertilizer"); // nitrogen feeds the canopy
+react(E.IODINE, E.VIRUS, E.IODINE, E.EMPTY, 200, "Antiseptic");
+react(E.CINNABAR, E.FIRE, E.MERCURY, E.SO2, 60, "Ore roasting"); // HgS + O2 -> Hg + SO2
+react(E.CINNABAR, E.TORCH, E.MERCURY, E.TORCH, 20, "Ore roasting"); // roast over a burner
+react(E.LGALLIUM, E.ALUMINUM, E.LGALLIUM, E.POWDER, 80, "Embrittlement"); // Ga wicks into Al grain boundaries
+react(E.LIME, E.ACID, E.SALT, E.WATER, 200, "Neutralization", 25); // CaO + 2HCl -> CaCl2 + H2O
+react(E.LIMESTONE, E.ACID, E.SALT, E.CO2, 160, "Marble fizz", 5); // the geologist's acid test
 
