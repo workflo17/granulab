@@ -6,6 +6,7 @@ import {
   EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT, REACT_DT, PH,
   CONDUCTS, CONDUCT_IDX, CONDUCTOR_IDS,
   TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
+  PRESSURIZES,
 } from "./elements";
 import { Rng } from "./rng";
 
@@ -16,7 +17,10 @@ const CHUNK_SHIFT = 5;
 // (acid/magma excluded: their life byte is a corrosion budget / they must stay hot)
 const HYST = new Uint8Array(N_IDS);
 HYST[E.WATER] = HYST[E.SEAWATER] = HYST[E.OIL] = HYST[E.MERCURY] = HYST[E.MUD] = HYST[E.NITRO] = 1;
-HYST[E.SOAPY] = HYST[E.CO2] = HYST[E.CHLORINE] = 1; // heavy gases pool + sleep too
+// M5i: heavy gases no longer sleep — a sleeping pool vanishes from the
+// pressure census, and a calm propane room MUST still pressurize. (CO2 and
+// chlorine kept their sleep before pressure existed; gases don't settle now.)
+HYST[E.SOAPY] = 1;
 const SETTLE = 6; // ticks of stillness before a liquid cell stops dispersing
 const MARGIN = 2; // changes this close to a chunk border wake the neighbor
 const WSHIFT = 2; // wind cell = 4x4 sim cells
@@ -53,6 +57,17 @@ export class World {
   // light it up, it fades — the "rx" background mode renders it
   readonly glow: Float32Array;
   private glowTicks = 0;
+
+  // M5i pressure field (quarter res, wind grid dims): trapped gas + heat build
+  // overpressure; it vents through openings as wind, and past the breaking
+  // point it SHATTERS containers. Transient — never serialized, zeroed on load.
+  readonly press: Float32Array;
+  // exact per-coarse-cell gas census, maintained INCREMENTALLY at the four
+  // species-write sites (set/paint/rawSet/swap) — an active-chunk scan missed
+  // calm pools whose chunks had gone structurally inactive
+  private pgas: Int16Array;
+  private pressTicks = 0;
+  private gasDots = 0; // world total of PRESSURIZES cells — system skips when 0
 
   // temperature field (half resolution), chunk-gated like the cell sim
   readonly TW: number;
@@ -92,6 +107,8 @@ export class World {
     this.vx = new Float32Array(this.WX * this.WY);
     this.vy = new Float32Array(this.WX * this.WY);
     this.glow = new Float32Array(this.WX * this.WY);
+    this.press = new Float32Array(this.WX * this.WY);
+    this.pgas = new Int16Array(this.WX * this.WY);
     this.TW = w >> TSHIFT;
     this.TH = h >> TSHIFT;
     this.temp = new Float32Array(this.TW * this.TH).fill(AMBIENT);
@@ -145,6 +162,11 @@ export class World {
     }
     if (old !== E.EMPTY && old !== E.WALL) this.dots--;
     if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+    const gd = PRESSURIZES[id] - PRESSURIZES[old];
+    if (gd !== 0) {
+      this.gasDots += gd;
+      this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
+    }
     this.species[i] = id;
     this.shade[i] = this.rng.byte();
     // sparks track wire-born-ness in shade bit 0 (painted onto a conductor =
@@ -177,6 +199,11 @@ export class World {
     if (old === id) return;
     if (old !== E.EMPTY && old !== E.WALL) this.dots--;
     if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+    const gd = PRESSURIZES[id] - PRESSURIZES[old];
+    if (gd !== 0) {
+      this.gasDots += gd;
+      this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
+    }
     this.species[i] = id;
     this.shade[i] = shade;
     this.life[i] = 0;
@@ -189,6 +216,11 @@ export class World {
     const old = this.species[i];
     if (old !== E.EMPTY && old !== E.WALL) this.dots--;
     if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+    const gd = PRESSURIZES[id] - PRESSURIZES[old];
+    if (gd !== 0) {
+      this.gasDots += gd;
+      this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
+    }
     this.species[i] = id;
     this.life[i] = lifeVal;
     this.vx8[i] = 0;
@@ -210,6 +242,16 @@ export class World {
     t = vy[i]; vy[i] = vy[j]; vy[j] = t;
     this.clock[i] = this.stamp;
     this.clock[j] = this.stamp;
+    // gas grains carry their census entry between coarse cells
+    const gi = PRESSURIZES[s[i]] - PRESSURIZES[s[j]];
+    if (gi !== 0) {
+      const ci = (yi >> WSHIFT) * this.WX + (xi >> WSHIFT);
+      const cj = (yj >> WSHIFT) * this.WX + (xj >> WSHIFT);
+      if (ci !== cj) {
+        this.pgas[ci] += gi;
+        this.pgas[cj] -= gi;
+      }
+    }
     this.wake(xi, yi);
     this.wake(xj, yj);
   }
@@ -217,6 +259,116 @@ export class World {
   // ---- wind field --------------------------------------------------------
 
   private windTicks = 0; // wind sim runs only while energy is in the field
+
+  /** solid fraction of a coarse cell (0..1): static matter blocks pressure
+   *  flow; powder piles leak, like gas seeping through gravel */
+  private solidFrac(wi: number): number {
+    const wx = wi % this.WX;
+    const wy = (wi / this.WX) | 0;
+    const x0 = wx << WSHIFT;
+    const y0 = wy << WSHIFT;
+    let s = 0;
+    for (let dy = 0; dy < 4; dy++) {
+      const row = (y0 + dy) * this.W + x0;
+      for (let dx = 0; dx < 4; dx++) {
+        const id = this.species[row + dx];
+        if (id !== 0 && (DENSITY[id] === 255 || BEHAVIOR[id] === B.NONE)) s++;
+      }
+    }
+    return s / 16;
+  }
+
+  /** M5i: trapped gas + heat build overpressure; it vents through openings as
+   *  wind and SHATTERS glass/ice containers past the breaking point */
+  private stepPressure(): void {
+    if (this.gasDots === 0 && this.pressTicks === 0) return; // gas-free scene: free
+    const { WX, WY, press } = this;
+    const pcount = this.pgas; // exact census, maintained at the write sites
+    if (this.gasDots > 0) this.pressTicks = 240;
+    else this.pressTicks--;
+
+    const T = this.temp;
+    const { vx, vy } = this;
+    for (let y = 1; y < WY - 1; y++) {
+      const r = y * WX;
+      for (let x = 1; x < WX - 1; x++) {
+        const i = r + x;
+        const cnt = pcount[i];
+        let p = press[i];
+        if (cnt === 0 && p === 0) continue;
+        if (cnt > 0) {
+          // ideal-gas-ish: occupancy x temperature drives the target
+          const t = T[((y << WSHIFT) >> TSHIFT) * this.TW + ((x << WSHIFT) >> TSHIFT)];
+          const target = cnt * 0.5 * (1 + Math.max(0, t) * 0.004);
+          p += (target - p) * 0.15; // fast fill: burns outrun slow pressure
+        }
+        // openness-gated exchange with neighbors; sealed rooms hold, leaks vent
+        const open = 1 - this.solidFrac(i);
+        const oL = Math.min(open, 1 - this.solidFrac(i - 1));
+        const oR = Math.min(open, 1 - this.solidFrac(i + 1));
+        const oU = Math.min(open, 1 - this.solidFrac(i - WX));
+        const oD = Math.min(open, 1 - this.solidFrac(i + WX));
+        p += ((press[i - 1] - p) * oL + (press[i + 1] - p) * oR +
+              (press[i - WX] - p) * oU + (press[i + WX] - p) * oD) * 0.25;
+        // venting is CONNECTIVITY, not local openness: open terrain drains to
+        // the zero-pressure borders through diffusion; sealed rooms hold
+        p *= cnt > 0 ? 0.999 : 0.985;
+        p = p > 12 ? 12 : p;
+        press[i] = p > 0.01 || p < -0.01 ? p : 0;
+        // the gradient becomes wind: vents whistle, ruptures blast
+        const gx = (press[i - 1] - press[i + 1]) * 0.15;
+        const gy = (press[i - WX] - press[i + WX]) * 0.15;
+        if (gx > 0.05 || gx < -0.05) vx[i] += gx > 1.5 ? 1.5 : gx < -1.5 ? -1.5 : gx;
+        if (gy > 0.05 || gy < -0.05) vy[i] += gy > 1.5 ? 1.5 : gy < -1.5 ? -1.5 : gy;
+        if (p > 2.2) this.rupture(x, y, i, p);
+      }
+    }
+    if (this.pressTicks > 0) this.windTicks = Math.max(this.windTicks, 2);
+  }
+
+  /** overpressured coarse cell: glass shatters into thrown shards, ice bursts
+   *  into snow; stone and wall hold (that's what makes them pressure vessels).
+   *  Pressure pushes ON the container walls, so the sweep covers this coarse
+   *  cell AND its four neighbors — the vessel skin never pressurizes itself
+   *  (it's solid, so the openness gate keeps the field out of it) */
+  private rupture(wx: number, wy: number, wi: number, p: number): void {
+    const { W, WX, WY } = this;
+    let broke = false;
+    const sweep = (cx: number, cy: number): void => {
+      const x0 = cx << WSHIFT;
+      const y0 = cy << WSHIFT;
+      for (let dy = 0; dy < 4; dy++) {
+        const y = y0 + dy;
+        const row = y * W + x0;
+        for (let dx = 0; dx < 4; dx++) {
+          const i = row + dx;
+          const id = this.species[i];
+          if (id === E.GLASS && p > 3 && this.rng.byte() < 40) {
+            this.set(i, x0 + dx, y, E.SHARDS, 0);
+            this.shade[i] = this.rng.byte();
+            this.vx8[i] = ((this.rng.byte() - 128) / 3) | 0;
+            this.vy8[i] = -(this.rng.byte() >> 3);
+            broke = true;
+          } else if (id === E.ICE && this.rng.byte() < 50) {
+            this.set(i, x0 + dx, y, E.SNOW, 0);
+            this.vx8[i] = ((this.rng.byte() - 128) / 4) | 0;
+            this.vy8[i] = -(this.rng.byte() >> 4);
+            broke = true;
+          }
+        }
+      }
+    };
+    sweep(wx, wy);
+    if (wx > 0) sweep(wx - 1, wy);
+    if (wx < WX - 1) sweep(wx + 1, wy);
+    if (wy > 0) sweep(wx, wy - 1);
+    if (wy < WY - 1) sweep(wx, wy + 1);
+    if (broke) {
+      this.press[wi] = p * 0.55; // the burst vents
+      this.wake(wx << WSHIFT, wy << WSHIFT);
+      this.wake((wx << WSHIFT) + 3, (wy << WSHIFT) + 3);
+    }
+  }
 
   private stepWind(): void {
     if (this.fans.length === 0 && this.windTicks === 0) return;
@@ -449,6 +601,7 @@ export class World {
     this.activeNext.fill(0);
 
     this.stepWind();
+    this.stepPressure();
     this.stepTemp();
     if (this.fxPower > 0.3) this.fxPower *= 0.88;
     else this.fxPower = 0;
@@ -1580,6 +1733,9 @@ export class World {
     this.clock.fill(0);
     this.vx8.fill(0);
     this.vy8.fill(0);
+    this.press.fill(0);
+    this.pgas.fill(0);
+    this.pressTicks = 0;
     this.activeCur.fill(1);
     this.activeNext.fill(1);
     this.fans.length = 0;
@@ -1587,10 +1743,15 @@ export class World {
     this.temp.fill(AMBIENT);
     this.thermalCur.fill(0);
     this.thermalNext.fill(0);
+    this.gasDots = 0;
     for (let i = 0; i < this.species.length; i++) {
       const id = this.species[i];
       if (id !== E.EMPTY) this.shade[i] = this.rng.byte();
       if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+      if (PRESSURIZES[id] !== 0) {
+        this.gasDots++;
+        this.pgas[(((i / this.W) | 0) >> WSHIFT) * this.WX + ((i % this.W) >> WSHIFT)]++;
+      }
       if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
       if (HEAT_PUMP[id] > 0) {
         this.pumpHeat(i % this.W, (i / this.W) | 0, TEMP0[id], 0.6);
@@ -1656,6 +1817,22 @@ export class World {
     if (charge > 0) r = Math.min(46, r + Math.floor(Math.sqrt(charge) * 0.9));
     if (r > this.fxPower) this.fxPower = r;
     if (this.blastQueue.length < 96) this.blastQueue.push(cx, cy, r);
+    // blast overpressure: sealed rooms near the boom blow their windows
+    {
+      const pw = Math.min(6, 2 + r * 0.35);
+      const wr = Math.max(1, r >> WSHIFT);
+      const wcx = cx >> WSHIFT;
+      const wcy = cy >> WSHIFT;
+      for (let wy = wcy - wr; wy <= wcy + wr; wy++) {
+        if (wy < 0 || wy >= this.WY) continue;
+        for (let wx = wcx - wr; wx <= wcx + wr; wx++) {
+          if (wx < 0 || wx >= this.WX) continue;
+          const wi = wy * this.WX + wx;
+          if (this.press[wi] < pw) this.press[wi] = pw;
+        }
+      }
+      this.pressTicks = Math.max(this.pressTicks, 60);
+    }
     const r2 = r * r;
     for (let dy = -r; dy <= r; dy++) {
       const y = cy + dy;
@@ -1749,6 +1926,10 @@ export class World {
     this.vx.fill(0);
     this.vy.fill(0);
     this.glow.fill(0);
+    this.press.fill(0);
+    this.pgas.fill(0);
+    this.pressTicks = 0;
+    this.gasDots = 0;
     this.temp.fill(AMBIENT);
     this.thermalCur.fill(0);
     this.thermalNext.fill(0);

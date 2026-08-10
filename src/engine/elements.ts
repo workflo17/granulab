@@ -108,6 +108,10 @@ export const E = {
   LGALLIUM: 96, // molten gallium; embrittles aluminum to dust, refreezes at 25°
   DRYICE: 97, // solid CO2 at -78°: sublimates into the fire-blanket gas
   NITROGEN: 98, // boiled-off N2: inert, disperses back into the air
+  // ---- M5i pressure shelf ----
+  PROPANE: 99, // LPG: pools like a liquid, one spark = vapor-cloud blast
+  METHANE: 100, // firedamp: rises, pockets under ceilings, detonates the mine
+  SHARDS: 101, // shattered glass: sharp debris thrown by container failures
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -298,6 +302,10 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.LGALLIUM, name: "Molten Ga", color: "#c8ccd0", behavior: B.LIQUID, density: 74, disperse: 3, coldAt: 25, coldTo: E.GALLIUM, group: "METALS" }),
   def({ id: E.DRYICE, name: "Dry ice", color: "#dce8ec", behavior: B.POWDER, density: 60, temp0: -78, pump: 0.25, hotAt: -60, hotTo: E.CO2, group: "REAGENTS" }),
   def({ id: E.NITROGEN, name: "Nitrogen", color: "#c6ccd2", behavior: B.GAS, density: 1, disperse: 4, life0: 200 }),
+  // ---- M5i pressure shelf (propane is denser than air: chlorine-pattern) ----
+  def({ id: E.PROPANE, name: "Propane", color: "#c8b06a", behavior: B.LIQUID, density: 4, disperse: 5, flammable: 255, burnLife: 20, ignitesAt: 470 }),
+  def({ id: E.METHANE, name: "Methane", color: "#9ab8a0", behavior: B.GAS, density: 1, disperse: 5, flammable: 255, burnLife: 15, ignitesAt: 580 }),
+  def({ id: E.SHARDS, name: "Shards", color: "#b8d4d8", behavior: B.POWDER, density: 65 }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -326,10 +334,14 @@ export const CONDUCT_IDX = new Uint8Array(N_IDS);
 export const CONDUCTOR_IDS = [E.METAL, E.COPPER, E.GOLD, E.TUNGSTEN];
 // THERMAL[id] = 1 if the element pumps heat/cold or has any temperature transition
 export const THERMAL = new Uint8Array(N_IDS);
+// M5i: ids that feed the pressure field — true gases (set in applyDef) plus the
+// dense gas-as-liquid ids (set explicitly below the ELEMENTS loop)
+export const PRESSURIZES = new Uint8Array(N_IDS);
 // Palette as flat RGB floats for the shader uniform (vec3[N_IDS]); filled by applyDef
 export const PALETTE = new Float32Array(N_IDS * 3);
 
 function applyDef(el: ElementDef): void {
+  PRESSURIZES[el.id] = el.behavior === B.GAS ? 1 : 0;
   BEHAVIOR[el.id] = el.behavior;
   DENSITY[el.id] = el.density;
   DISPERSE[el.id] = el.disperse;
@@ -356,6 +368,9 @@ function applyDef(el: ElementDef): void {
 }
 
 for (const el of ELEMENTS) applyDef(el);
+// dense gases ride the liquid behavior but still pressurize sealed rooms;
+// FIRE is hot combustion gas — burning in an enclosure IS how rooms blow
+for (const g of [E.CO2, E.CHLORINE, E.SO2, E.IODINE_V, E.PROPANE, E.FIRE]) PRESSURIZES[g] = 1;
 CONDUCTOR_IDS.forEach((id, k) => { CONDUCT_IDX[id] = k; });
 
 // ---- Custom Element Maker (M4) -----------------------------------------
@@ -541,4 +556,11 @@ react(E.CINNABAR, E.TORCH, E.MERCURY, E.TORCH, 20, "Ore roasting"); // roast ove
 react(E.LGALLIUM, E.ALUMINUM, E.LGALLIUM, E.POWDER, 80, "Embrittlement"); // Ga wicks into Al grain boundaries
 react(E.LIME, E.ACID, E.SALT, E.WATER, 200, "Neutralization", 25); // CaO + 2HCl -> CaCl2 + H2O
 react(E.LIMESTONE, E.ACID, E.SALT, E.CO2, 160, "Marble fizz", 5); // the geologist's acid test
+
+// ---- M5i pressure shelf -----------------------------------------------------
+react(E.FIRE, E.PROPANE, E.FIRE, E.FIRE, 220, "Vapor cloud ignition", 90);
+react(E.FIRE, E.METHANE, E.FIRE, E.FIRE, 220, "Firedamp", 80);
+react(E.MUD, E.VINE, E.METHANE, E.VINE, 1, "Marsh gas"); // slow anaerobic rot
+react(E.SHARDS, E.ANT, E.SHARDS, E.EMPTY, 40, "Laceration");
+react(E.SHARDS, E.BIRD, E.SHARDS, E.EMPTY, 40, "Laceration");
 
