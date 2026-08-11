@@ -512,12 +512,29 @@ resize();
 // ---- painting ------------------------------------------------------------
 let strokeAngle = 0; // byte angle of the current pen stroke — fans blow this way
 
+// Brush shapes. A round nib is wrong for most of what people build here:
+// walls and tanks want a square, funnels and slopes want a diamond, and
+// scattering powder wants a spray rather than a solid disc.
 function stamp(cx: number, cy: number, r: number, id: number): void {
   const aux = id === E.FAN || id === E.CANNON ? strokeAngle : undefined;
+  const shape = ui.state.penShape;
   const r2 = r * r;
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy <= r2) world.paint(cx + dx, cy + dy, id, aux);
+      let inside: boolean;
+      switch (shape) {
+        case "square": inside = true; break;
+        case "diamond": inside = Math.abs(dx) + Math.abs(dy) <= r; break;
+        case "spray": inside = dx * dx + dy * dy <= r2 && world.rng.byte() < 70; break;
+        case "ring": {
+          const d2 = dx * dx + dy * dy;
+          const inner = r > 2 ? (r - 2) * (r - 2) : 0;
+          inside = d2 <= r2 && d2 >= inner;
+          break;
+        }
+        default: inside = dx * dx + dy * dy <= r2;
+      }
+      if (inside) world.paint(cx + dx, cy + dy, id, aux);
     }
   }
 }

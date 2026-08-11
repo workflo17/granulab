@@ -57,6 +57,8 @@ export const TOOL_PLAYER = -2;
 export const TOOL_FIGHTER = -3;
 
 export type PenMode = "free" | "line" | "rect";
+/** brush nib: what one dab of the pen covers */
+export type PenShape = "round" | "square" | "diamond" | "ring" | "spray";
 
 // palette rails: explicit registry group, else derived from behavior/device
 const RAIL_ORDER = ["SOLIDS", "LIQUIDS", "GASES", "METALS", "REAGENTS", "LIFE & ENERGY", "DEVICES"] as const;
@@ -76,8 +78,9 @@ for (const el of ELEMENTS) {
 }
 
 export class Ui {
-  state: UiState & { penMode: PenMode } = {
-    toolL: E.POWDER, toolR: E.EMPTY, pen: 6, speed: 1, paused: false, penMode: "free",
+  state: UiState & { penMode: PenMode; penShape: PenShape } = {
+    toolL: E.POWDER, toolR: E.EMPTY, pen: 6, speed: 1, paused: false,
+    penMode: "free", penShape: "round",
   };
 
   private buttons = new Map<number, HTMLButtonElement>();
@@ -133,6 +136,13 @@ export class Ui {
             <option value="cryo">demo: cryo works</option>
             <option value="boiler">demo: boiler room</option>
             <option value="cannon">demo: pressure guns</option>
+          </select>
+          <select id="penshape" title="Brush shape">
+            <option value="round" selected>nib: round</option>
+            <option value="square">nib: square</option>
+            <option value="diamond">nib: diamond</option>
+            <option value="ring">nib: ring</option>
+            <option value="spray">nib: spray</option>
           </select>
           <select id="penmode" title="Pen mode">
             <option value="free" selected>pen: free</option>
@@ -360,6 +370,9 @@ export class Ui {
     root.querySelector("#import")!.addEventListener("click", () => hooks.onImport());
     root.querySelector("#copycode")!.addEventListener("click", () => hooks.onCopyCode());
     root.querySelector("#pastecode")!.addEventListener("click", () => hooks.onPasteCode());
+    root.querySelector<HTMLSelectElement>("#penshape")!.addEventListener("change", (e) => {
+      this.state.penShape = (e.target as HTMLSelectElement).value as PenShape;
+    });
     root.querySelector<HTMLSelectElement>("#penmode")!.addEventListener("change", (e) => {
       this.state.penMode = (e.target as HTMLSelectElement).value as PenMode;
     });
