@@ -2,7 +2,7 @@
 // footprint into the grid as static cells every tick, so powders pile on top and
 // the sim treats them as obstacles; the entity itself collides against cells.
 
-import { E, B, BEHAVIOR } from "./elements";
+import { E, B, BEHAVIOR, SLICK, BOUNCE } from "./elements";
 import type { World } from "./world";
 
 export type ObjKind = "ball" | "box" | "wheel" | "bubble";
@@ -14,6 +14,10 @@ const REST: Record<ObjKind, number> = { ball: 0.72, box: 0.05, wheel: 0.3, bubbl
 const FRICTION: Record<ObjKind, number> = { ball: 0.996, box: 0.86, wheel: 0.999, bubble: 1 };
 const BUOY: Record<ObjKind, number> = { ball: 0.4, box: 0.26, wheel: 0.1, bubble: 0 };
 const MAX_OBJECTS = 64;
+/** how tall a lip an object rides over instead of rebounding off it. Objects
+ *  are r7-r9, so 3 cells is a pebble to them — this is what stops jagged
+ *  terrain from acting like a wall. */
+const STEP_UP = 3;
 
 export class RigidObject {
   vx = 0;
@@ -124,6 +128,16 @@ export class ObjectSystem {
         w.rawSet(cx, cy, E.EMPTY);
       }
     });
+  }
+
+  /** the material an object is about to hit on the given face — rubber throws
+   *  it back, tar swallows it (BOUNCE multiplies restitution) */
+  private faceAt(o: RigidObject, dx: number, dy: number): number {
+    const w = this.world;
+    const x = Math.round(o.x) + dx * (o.r + 1);
+    const y = Math.round(o.y) + dy * (o.r + 1);
+    if (x < 0 || y < 0 || x >= w.W || y >= w.H) return E.WALL;
+    return w.species[y * w.W + x];
   }
 
   /** first solid row at column px scanning down from fromY (slope sensing) */
@@ -247,16 +261,32 @@ export class ObjectSystem {
         o.vx *= 0.93;
         o.vy *= 0.9;
       }
-      o.vx *= FRICTION[o.kind];
+      // surface feel: what it's riding on decides how much speed it keeps
+      const surf = w.species[Math.min(w.H - 1, Math.round(o.y) + o.r + 1) * w.W + Math.round(o.x)];
+      const slick = SLICK[surf];
+      o.vx *= 1 - (1 - FRICTION[o.kind]) * (1 - slick);
       o.vx = Math.max(-12, Math.min(12, o.vx));
       o.vy = Math.max(-12, Math.min(12, o.vy));
       const n = Math.max(1, Math.ceil(Math.max(Math.abs(o.vx), Math.abs(o.vy))));
       const sx = o.vx / n;
-      const sy = o.vy / n;
+      let sy = o.vy / n;
       for (let s = 0; s < n; s++) {
         if (sx !== 0) {
           if (!this.collides(o, o.x + sx, o.y)) o.x += sx;
-          else o.vx = -o.vx * REST[o.kind];
+          else {
+            // a one-cell lip is not a wall: step over small jags instead of
+            // rebounding off them, so things actually roll along a surface
+            let stepped = false;
+            for (let up = 1; up <= STEP_UP; up++) {
+              if (!this.collides(o, o.x + sx, o.y - up)) {
+                o.x += sx;
+                o.y -= up;
+                stepped = true;
+                break;
+              }
+            }
+            if (!stepped) o.vx = -o.vx * REST[o.kind] * BOUNCE[this.faceAt(o, sx > 0 ? 1 : -1, 0)];
+          }
         }
         if (sy !== 0) {
           if (!this.collides(o, o.x, o.y + sy)) o.y += sy;
@@ -272,11 +302,14 @@ export class ObjectSystem {
                 else if (hl - hr > 1) o.vx -= roll;
               }
               if (Math.abs(o.vy) < 0.6) o.vy = 0;
-              else o.vy = -o.vy * REST[o.kind];
+              else o.vy = -o.vy * REST[o.kind] * BOUNCE[this.faceAt(o, 0, 1)];
             } else {
-              o.vy = -o.vy * REST[o.kind];
+              o.vy = -o.vy * REST[o.kind] * BOUNCE[this.faceAt(o, 0, -1)];
             }
-            break;
+            // stop the VERTICAL march but keep spending the horizontal
+            // substeps: breaking the whole loop here capped anything resting
+            // on a solid floor at ~1 cell/tick, however fast it was rolling
+            sy = 0;
           }
         }
       }

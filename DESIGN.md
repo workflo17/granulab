@@ -519,6 +519,33 @@
 > backstop, not object stacks; (5) packed powder slugs still jam in a bore
 > (M5b lesson holds) — ball shot, not sand columns.
 >
+> M5j SHIPPED 8/11 — SURFACES + THINGS ACTUALLY ROLL (owner ask: "walls
+> smooth so things can roll and move on them, not stopped by jagged
+> corners"). THE REAL BUG was not the walls: when a grounded object's
+> vertical substep collided, the loop `break`s — so ANYTHING resting on a
+> solid floor advanced ~1 cell/tick no matter how fast it was rolling
+> (ball on ice: 131 cells in 120 ticks while holding vx 7.8). Powder
+> floors looked faster only because the object sinks in and never trips
+> that break. Now the vertical march stops but the horizontal substeps
+> still spend: ice 948 / marble 926 / wall 843 / stone 761 in the same
+> 120 ticks. STEP-UP: a blocked horizontal move now tries lifting 1-3
+> cells before rebounding, so a one-cell lip is a pebble, not a wall
+> (verified crossing 2, 3 and 6-cell jags; jagged tracks never stall).
+> PER-SURFACE FEEL (data tables in elements.ts, read host-side by
+> ObjectSystem — no engine change, no parity impact): SLICK[id] cancels
+> friction loss (ice .95, marble .85, graphite .8, glass .7, metals .55,
+> WALL .45 so the default building block is a usable track, stone .2),
+> BOUNCE[id] multiplies restitution (vulcanite 1.9, rubber 1.6,
+> superball 1.8, sand .45, mud .3, tar .15 — verified rebound heights).
+> 4 ELEMENTS (ids 102-105, customs from 106): MARBLE (slick track stone,
+> kilns to lime at 460, acid-fizzes like limestone), RUBBER (grippy
+> bumper, burns dirty to smoke), GRAPHITE (dry-lubricant powder, burns to
+> CO2), VULCANITE (rubber cured with sulfur — the bounciest surface).
+> Bench hashes UNCHANGED (e009494c/a884374c/0df5e3db/2ae46e85) and all
+> seven parity gates green: the shelf is additive and the fix is
+> host-side. Regressions checked: cannons still fire 357, boxes stack,
+> wheel rolls 568 downhill, nothing tunnels through floors.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.

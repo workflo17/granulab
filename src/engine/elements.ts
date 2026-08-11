@@ -112,6 +112,11 @@ export const E = {
   PROPANE: 99, // LPG: pools like a liquid, one spark = vapor-cloud blast
   METHANE: 100, // firedamp: rises, pockets under ceilings, detonates the mine
   SHARDS: 101, // shattered glass: sharp debris thrown by container failures
+  // ---- M5j surfaces ----
+  MARBLE: 102, // polished carbonate stone: the slickest thing to build a track from
+  RUBBER: 103, // grippy and bouncy; burns dirty
+  GRAPHITE: 104, // dry lubricant powder — a floor of it is a skid pan
+  VULCANITE: 105, // rubber cured with sulfur: hard, and it throws a ball back
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -306,6 +311,11 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.PROPANE, name: "Propane", color: "#c8b06a", behavior: B.LIQUID, density: 4, disperse: 5, flammable: 255, burnLife: 20, ignitesAt: 470 }),
   def({ id: E.METHANE, name: "Methane", color: "#9ab8a0", behavior: B.GAS, density: 1, disperse: 5, flammable: 255, burnLife: 15, ignitesAt: 580 }),
   def({ id: E.SHARDS, name: "Shards", color: "#b8d4d8", behavior: B.POWDER, density: 65 }),
+  // ---- M5j surfaces: what you build a track or a bumper out of ----
+  def({ id: E.MARBLE, name: "Marble", color: "#e4e2dc", density: 255, hotAt: 460, hotTo: E.LIME }),
+  def({ id: E.RUBBER, name: "Rubber", color: "#2e2c30", density: 255, flammable: 30, burnLife: 110, ignitesAt: 400 }),
+  def({ id: E.GRAPHITE, name: "Graphite", color: "#3c4046", behavior: B.POWDER, density: 62, ignitesAt: 620, flammable: 20, burnLife: 40, group: "REAGENTS" }),
+  def({ id: E.VULCANITE, name: "Vulcanite", color: "#3a3038", density: 255, flammable: 8, burnLife: 90, ignitesAt: 520 }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -337,6 +347,11 @@ export const THERMAL = new Uint8Array(N_IDS);
 // M5i: ids that feed the pressure field — true gases (set in applyDef) plus the
 // dense gas-as-liquid ids (set explicitly below the ELEMENTS loop)
 export const PRESSURIZES = new Uint8Array(N_IDS);
+// M5j surface feel, read by ObjectSystem when something rides on this material.
+// SLICK 0..1 = how much of the object's friction loss the surface cancels
+// (1 = frictionless). BOUNCE = restitution multiplier on impact (1 = normal).
+export const SLICK = new Float32Array(N_IDS);
+export const BOUNCE = new Float32Array(N_IDS).fill(1);
 // Palette as flat RGB floats for the shader uniform (vec3[N_IDS]); filled by applyDef
 export const PALETTE = new Float32Array(N_IDS * 3);
 
@@ -371,6 +386,22 @@ for (const el of ELEMENTS) applyDef(el);
 // dense gases ride the liquid behavior but still pressurize sealed rooms;
 // FIRE is hot combustion gas — burning in an enclosure IS how rooms blow
 for (const g of [E.CO2, E.CHLORINE, E.SO2, E.IODINE_V, E.PROPANE, E.FIRE]) PRESSURIZES[g] = 1;
+// slick surfaces: things keep their speed instead of grinding to a halt
+SLICK[E.ICE] = 0.95;
+SLICK[E.MARBLE] = 0.85;
+SLICK[E.GLASS] = 0.7;
+SLICK[E.GRAPHITE] = 0.8; // dry lubricant underfoot
+SLICK[E.METAL] = SLICK[E.COPPER] = SLICK[E.GOLD] = SLICK[E.TUNGSTEN] = 0.55;
+SLICK[E.WALL] = 0.45; // the default building block is meant to be a track
+SLICK[E.STONE] = 0.2;
+SLICK[E.LGALLIUM] = SLICK[E.MERCURY] = 0.9; // liquid metal is a skid pan
+// bumpers: rubber throws things back, sand and mud swallow them
+BOUNCE[E.RUBBER] = 1.6;
+BOUNCE[E.VULCANITE] = 1.9;
+BOUNCE[E.SUPERBALL] = 1.8;
+BOUNCE[E.SAND] = 0.45;
+BOUNCE[E.MUD] = 0.3;
+BOUNCE[E.TAR] = 0.15;
 CONDUCTOR_IDS.forEach((id, k) => { CONDUCT_IDX[id] = k; });
 
 // ---- Custom Element Maker (M4) -----------------------------------------
@@ -563,4 +594,11 @@ react(E.FIRE, E.METHANE, E.FIRE, E.FIRE, 220, "Firedamp", 80);
 react(E.MUD, E.VINE, E.METHANE, E.VINE, 1, "Marsh gas"); // slow anaerobic rot
 react(E.SHARDS, E.ANT, E.SHARDS, E.EMPTY, 40, "Laceration");
 react(E.SHARDS, E.BIRD, E.SHARDS, E.EMPTY, 40, "Laceration");
+
+// ---- M5j surfaces -----------------------------------------------------------
+react(E.MARBLE, E.ACID, E.SALT, E.CO2, 90, "Marble fizz", 5); // CaCO3 + acid, the same test as limestone
+react(E.RUBBER, E.SULFUR, E.VULCANITE, E.VULCANITE, 25, "Vulcanisation", 20); // Goodyear's cure
+react(E.RUBBER, E.FIRE, E.SMOKE, E.FIRE, 90, "Dirty burn"); // tyre fires smoke black
+react(E.GRAPHITE, E.FIRE, E.CO2, E.FIRE, 40, "Carbon burn", 25);
+react(E.GRAPHITE, E.OXYGEN, E.CO2, E.EMPTY, 6, "Carbon burn", 25);
 
