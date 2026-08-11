@@ -187,6 +187,56 @@ async function loadSceneCode(code: string): Promise<boolean> {
     return false;
   }
 }
+// ---- video capture --------------------------------------------------------
+// The "gif/replay export" pillar, done the way a browser actually can: record
+// the live canvas. Recording the canvas rather than replaying a seed means it
+// captures exactly what the user saw, hand-painting included.
+let recorder: MediaRecorder | null = null;
+let recChunks: Blob[] = [];
+let recStart = 0;
+
+function recordingSupported(): boolean {
+  return typeof MediaRecorder !== "undefined" && typeof canvas.captureStream === "function";
+}
+
+function startRecording(): boolean {
+  if (recorder || !recordingSupported()) return false;
+  const types = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const mime = types.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  try {
+    recorder = new MediaRecorder(canvas.captureStream(30), mime ? { mimeType: mime } : undefined);
+  } catch {
+    recorder = null;
+    return false;
+  }
+  recChunks = [];
+  recStart = performance.now();
+  recorder.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(recChunks, { type: recorder?.mimeType || "video/webm" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `granulab-${Date.now().toString(36)}.webm`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    recorder = null;
+    recChunks = [];
+    ui.setRecording(false, 0);
+  };
+  recorder.start(1000);
+  ui.setRecording(true, 0);
+  return true;
+}
+
+function stopRecording(): void {
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+}
+
+function toggleRecording(): boolean {
+  if (recorder) { stopRecording(); return false; }
+  return startRecording();
+}
+
 // ---- undo -----------------------------------------------------------------
 // A sandbox where one stray click can wreck an hour of building needs a way
 // back. Snapshots are the same bytes as a save, so this costs no new format.
@@ -229,6 +279,13 @@ const ui = new Ui(root, {
   onStep: () => { ui.setPaused(true); stepOnce(); },
   onClear: () => { pushUndo(); armUndo(); world.clear(); player.remove(); objects.clear(); fighters.length = 0; },
   onUndo: () => { if (!undo()) console.log("[granulab] nothing to undo"); },
+  onRecord: () => {
+    if (!recordingSupported()) {
+      alert("This browser can't record the canvas.");
+      return;
+    }
+    toggleRecording();
+  },
   onFit: () => renderer.fit(),
   onBgMode: (m: number) => { renderer.mode = m; },
   onSave: () => localStorage.setItem(QUICK_KEY, toB64(saveAll())),
@@ -667,6 +724,7 @@ function frame(now: number): void {
   statTimer += dt;
   if (statTimer > 250) {
     ui.setStats(fpsEma, tickEma, world.dots, world.activeChunkCount());
+    if (recorder) ui.setRecording(true, (performance.now() - recStart) / 1000);
     ui.refreshNotebook(statTimer);
     statTimer = 0;
   }
@@ -1521,6 +1579,8 @@ window.granulab = {
   loadCode: loadSceneCode,
   undo,
   undoDepth: () => undoStack.length,
+  record: toggleRecording,
+  recording: () => !!recorder,
   galleryList: () => fetch("/api/gallery").then((r) => r.json()),
   galleryUpload: uploadToGallery,
   galleryLoad: loadFromGallery,

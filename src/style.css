@@ -205,6 +205,21 @@ dialog .rxdel {
   line-height: 1;
 }
 
+#rec.recording {
+  border-color: #e8705a;
+  color: #e8705a;
+}
+#rec.recording::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: #e8705a;
+  vertical-align: baseline;
+}
+
 /* ---- scene gallery dialog ---- */
 #gallerydialog { width: 440px; }
 .gal-upload { display: flex; gap: 6px; margin-bottom: 10px; }

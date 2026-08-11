@@ -29,6 +29,7 @@ export interface UiHooks {
   onCreateElement(spec: CustomSpec): void;
   onDemo(name: string): void;
   onUndo(): void;
+  onRecord(): void;
   onGalleryOpen(): void;
   onGalleryUpload(name: string, author: string): void;
   onGalleryLoad(scene: GalleryScene): void;
@@ -144,6 +145,7 @@ export class Ui {
           <button id="import" title="Open a .grn scene file">import</button>
           <button id="copycode" title="Copy the scene as a shareable code">code</button>
           <button id="pastecode" title="Paste a scene code">paste</button>
+          <button id="rec" title="Record the canvas to a video file">rec</button>
           <button id="gallery" title="Community scene gallery — upload and browse">gallery</button>
           <button id="nblog" title="Lab notebook — every reaction you've made happen">log</button>
         </div>
@@ -379,6 +381,8 @@ export class Ui {
     root.querySelector("#nbclose")!.addEventListener("click", () => { this.notebook.hidden = true; });
     this.undoBtn = root.querySelector<HTMLButtonElement>("#undo")!;
     this.undoBtn.addEventListener("click", () => hooks.onUndo());
+    this.recBtn = root.querySelector<HTMLButtonElement>("#rec")!;
+    this.recBtn.addEventListener("click", () => hooks.onRecord());
     // scene gallery: act on submit + e.submitter, never on dialog "close"
     // (embedded browsers can drop the close event entirely)
     this.galDialog = root.querySelector<HTMLDialogElement>("#gallerydialog")!;
@@ -613,6 +617,15 @@ export class Ui {
   }
 
   private undoBtn!: HTMLButtonElement;
+  private recBtn!: HTMLButtonElement;
+
+  /** show the elapsed clock while recording so it is obvious it is running */
+  setRecording(on: boolean, seconds: number): void {
+    this.recBtn.classList.toggle("recording", on);
+    this.recBtn.textContent = on ? `stop ${seconds.toFixed(0)}s` : "rec";
+    this.recBtn.title = on ? "Stop recording and download the clip" : "Record the canvas to a video file";
+  }
+
 
   /** grey the undo button out when there is nothing to go back to */
   setUndoDepth(n: number): void {
