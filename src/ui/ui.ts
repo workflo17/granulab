@@ -28,6 +28,7 @@ export interface UiHooks {
   onPasteCode(): void;
   onCreateElement(spec: CustomSpec): void;
   onDemo(name: string): void;
+  onUndo(): void;
   onGalleryOpen(): void;
   onGalleryUpload(name: string, author: string): void;
   onGalleryLoad(scene: GalleryScene): void;
@@ -112,6 +113,7 @@ export class Ui {
             <option value="7">bg: rx glow</option>
             <option value="8">bg: pH</option>
           </select>
+          <button id="undo" title="Undo the last edit (Ctrl+Z)" disabled>undo</button>
           <button id="clear">clear</button>
           <button id="fit" title="Reset view">fit</button>
           <select id="demosel" title="Load a prebuilt scene" aria-label="Load a prebuilt demo scene">
@@ -369,6 +371,8 @@ export class Ui {
       }
     });
     root.querySelector("#nbclose")!.addEventListener("click", () => { this.notebook.hidden = true; });
+    this.undoBtn = root.querySelector<HTMLButtonElement>("#undo")!;
+    this.undoBtn.addEventListener("click", () => hooks.onUndo());
     // scene gallery: act on submit + e.submitter, never on dialog "close"
     // (embedded browsers can drop the close event entirely)
     this.galDialog = root.querySelector<HTMLDialogElement>("#gallerydialog")!;
@@ -587,6 +591,14 @@ export class Ui {
       return row;
     });
     this.galList.replaceChildren(...rows);
+  }
+
+  private undoBtn!: HTMLButtonElement;
+
+  /** grey the undo button out when there is nothing to go back to */
+  setUndoDepth(n: number): void {
+    this.undoBtn.disabled = n === 0;
+    this.undoBtn.textContent = n > 0 ? `undo ${n}` : "undo";
   }
 
   setPen(n: number): void {

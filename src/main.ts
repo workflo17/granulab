@@ -187,6 +187,32 @@ async function loadSceneCode(code: string): Promise<boolean> {
     return false;
   }
 }
+// ---- undo -----------------------------------------------------------------
+// A sandbox where one stray click can wreck an hour of building needs a way
+// back. Snapshots are the same bytes as a save, so this costs no new format.
+const UNDO_MAX = 24;
+const undoStack: Uint8Array[] = [];
+let undoArmed = true; // one snapshot per stroke, not per painted cell
+
+function pushUndo(): void {
+  if (!undoArmed) return;
+  undoArmed = false;
+  undoStack.push(saveAll());
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+  ui.setUndoDepth(undoStack.length);
+}
+/** call when a stroke/action finishes so the next one snapshots again */
+function armUndo(): void {
+  undoArmed = true;
+}
+function undo(): boolean {
+  const snap = undoStack.pop();
+  ui.setUndoDepth(undoStack.length);
+  if (!snap) return false;
+  loadAll(snap);
+  return true;
+}
+
 const fileInput = document.createElement("input");
 fileInput.type = "file";
 fileInput.accept = ".grn";
@@ -201,13 +227,14 @@ fileInput.addEventListener("change", async () => {
 let renderer: Renderer;
 const ui = new Ui(root, {
   onStep: () => { ui.setPaused(true); stepOnce(); },
-  onClear: () => { world.clear(); player.remove(); objects.clear(); fighters.length = 0; },
+  onClear: () => { pushUndo(); armUndo(); world.clear(); player.remove(); objects.clear(); fighters.length = 0; },
+  onUndo: () => { if (!undo()) console.log("[granulab] nothing to undo"); },
   onFit: () => renderer.fit(),
   onBgMode: (m: number) => { renderer.mode = m; },
   onSave: () => localStorage.setItem(QUICK_KEY, toB64(saveAll())),
   onLoad: () => {
     const b64 = localStorage.getItem(QUICK_KEY);
-    if (b64) loadAll(fromB64(b64));
+    if (b64) { pushUndo(); armUndo(); loadAll(fromB64(b64)); }
   },
   onExport: () => {
     const blob = new Blob([saveAll() as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" });
@@ -235,6 +262,8 @@ const ui = new Ui(root, {
   onGalleryUpload: (name: string, author: string) => { void uploadToGallery(name, author); },
   onGalleryLoad: (scene) => { void loadFromGallery(scene.url); },
   onDemo: (name: string) => {
+    pushUndo();
+    armUndo();
     world.clear();
     player.remove();
     objects.clear();
@@ -419,6 +448,8 @@ canvas.addEventListener("pointerdown", (e) => {
   const tool = e.button === 2 ? ui.state.toolR : ui.state.toolL;
   const c = renderer.toCell(px.x, px.y);
   if (tool === TOOL_PLAYER) {
+    pushUndo();
+    armUndo();
     player.place(c.x, c.y);
     return;
   }
@@ -431,10 +462,13 @@ canvas.addEventListener("pointerdown", (e) => {
     return;
   }
   if (tool === E.BALL || tool === E.BOX || tool === E.WHEEL || tool === E.BUBBLE) {
+    pushUndo();
+    armUndo();
     objects.spawnId(tool, c.x, c.y);
     return;
   }
   painting = tool;
+  pushUndo();
   if (tool === E.EMPTY) objects.removeAt(c.x, c.y);
   if (ui.state.penMode === "free") {
     stamp(c.x, c.y, ui.state.pen, painting);
@@ -488,6 +522,7 @@ canvas.addEventListener("pointerup", () => {
   painting = -1;
   lastCell = null;
   panning = false;
+  armUndo();
 });
 canvas.addEventListener("pointercancel", () => { painting = -1; lastCell = null; panning = false; });
 
@@ -503,6 +538,7 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "ArrowLeft") { keys.left = true; e.preventDefault(); }
   else if (e.code === "ArrowRight") { keys.right = true; e.preventDefault(); }
   else if (e.code === "ArrowUp") { keys.up = true; e.preventDefault(); }
+  else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { e.preventDefault(); undo(); }
   else if (e.code === "Space") { e.preventDefault(); ui.setPaused(!ui.state.paused); }
   else if (e.code === "Enter") { ui.setPaused(true); stepOnce(); }
   else if (e.key >= "1" && e.key <= "9") ui.setPen([1, 2, 4, 6, 8, 12, 16, 24, 32][parseInt(e.key) - 1]);
@@ -1433,6 +1469,8 @@ window.granulab = {
   drawMinimap,
   code: sceneCode,
   loadCode: loadSceneCode,
+  undo,
+  undoDepth: () => undoStack.length,
   galleryList: () => fetch("/api/gallery").then((r) => r.json()),
   galleryUpload: uploadToGallery,
   galleryLoad: loadFromGallery,
