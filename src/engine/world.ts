@@ -260,22 +260,65 @@ export class World {
 
   private windTicks = 0; // wind sim runs only while energy is in the field
 
-  /** solid fraction of a coarse cell (0..1): static matter blocks pressure
-   *  flow; powder piles leak, like gas seeping through gravel */
-  private solidFrac(wi: number): number {
-    const wx = wi % this.WX;
-    const wy = (wi / this.WX) | 0;
+  /** does this cell block pressure? static matter does; powders leak, like gas
+   *  seeping through gravel (a sand plug is not a pressure vessel) */
+  private barrier(id: number): boolean {
+    return id !== 0 && (DENSITY[id] === 255 || BEHAVIOR[id] === B.NONE);
+  }
+
+  /** open fraction (0..1) of the BOUNDARY between coarse cell (wx,wy) and its
+   *  RIGHT neighbour. Pressure crosses through the gap, never through the
+   *  wall — a 1-cell barrier spanning the seam seals it completely, which is
+   *  what makes a wall barrel a barrel (block-average openness leaked 75%
+   *  through any thin wall, so nothing could ever hold a charge) */
+  private edgeOpenR(wx: number, wy: number): number {
+    const x = (wx << WSHIFT) + 3;
+    const y0 = wy << WSHIFT;
+    const { W, species } = this;
+    let open = 0;
+    for (let dy = 0; dy < 4; dy++) {
+      const j = (y0 + dy) * W + x;
+      if (!this.barrier(species[j]) && !this.barrier(species[j + 1])) open++;
+    }
+    return open * 0.25;
+  }
+
+  /** same for the boundary with the coarse cell BELOW */
+  private edgeOpenD(wx: number, wy: number): number {
+    const y = (wy << WSHIFT) + 3;
+    const x0 = wx << WSHIFT;
+    const { W, species } = this;
+    const rowA = y * W + x0;
+    const rowB = rowA + W;
+    let open = 0;
+    for (let dx = 0; dx < 4; dx++) {
+      if (!this.barrier(species[rowA + dx]) && !this.barrier(species[rowB + dx])) open++;
+    }
+    return open * 0.25;
+  }
+
+  /** a steep gradient is a MUZZLE: escaping gas doesn't just breeze past loose
+   *  matter, it launches it down the vector (deterministic — no rng draws) */
+  private pressureLaunch(wx: number, wy: number, gx: number, gy: number): void {
+    const { W, species, vx8, vy8 } = this;
     const x0 = wx << WSHIFT;
     const y0 = wy << WSHIFT;
-    let s = 0;
+    const ax = gx * 4;
+    const ay = gy * 4;
     for (let dy = 0; dy < 4; dy++) {
-      const row = (y0 + dy) * this.W + x0;
+      const y = y0 + dy;
+      const row = y * W + x0;
       for (let dx = 0; dx < 4; dx++) {
-        const id = this.species[row + dx];
-        if (id !== 0 && (DENSITY[id] === 255 || BEHAVIOR[id] === B.NONE)) s++;
+        const i = row + dx;
+        const id = species[i];
+        if (id === E.EMPTY || this.barrier(id)) continue; // fixed matter holds
+        const nx = vx8[i] + ax;
+        const ny = vy8[i] + ay;
+        vx8[i] = nx > 126 ? 126 : nx < -126 ? -126 : nx | 0;
+        vy8[i] = ny > 126 ? 126 : ny < -126 ? -126 : ny | 0;
+        this.wake(x0 + dx, y);
       }
     }
-    return s / 16;
   }
 
   /** M5i: trapped gas + heat build overpressure; it vents through openings as
@@ -302,24 +345,29 @@ export class World {
           const target = cnt * 0.5 * (1 + Math.max(0, t) * 0.004);
           p += (target - p) * 0.15; // fast fill: burns outrun slow pressure
         }
-        // openness-gated exchange with neighbors; sealed rooms hold, leaks vent
-        const open = 1 - this.solidFrac(i);
-        const oL = Math.min(open, 1 - this.solidFrac(i - 1));
-        const oR = Math.min(open, 1 - this.solidFrac(i + 1));
-        const oU = Math.min(open, 1 - this.solidFrac(i - WX));
-        const oD = Math.min(open, 1 - this.solidFrac(i + WX));
+        // flow ONLY through the openings in the shared boundaries: a sealed
+        // vessel holds its whole charge until something gives
+        const oL = this.edgeOpenR(x - 1, y);
+        const oR = this.edgeOpenR(x, y);
+        const oU = this.edgeOpenD(x, y - 1);
+        const oD = this.edgeOpenD(x, y);
         p += ((press[i - 1] - p) * oL + (press[i + 1] - p) * oR +
               (press[i - WX] - p) * oU + (press[i + WX] - p) * oD) * 0.25;
-        // venting is CONNECTIVITY, not local openness: open terrain drains to
-        // the zero-pressure borders through diffusion; sealed rooms hold
+        // venting is CONNECTIVITY: open terrain drains to the zero-pressure
+        // borders through diffusion; sealed rooms have nowhere to drain
         p *= cnt > 0 ? 0.999 : 0.985;
         p = p > 12 ? 12 : p;
         press[i] = p > 0.01 || p < -0.01 ? p : 0;
-        // the gradient becomes wind: vents whistle, ruptures blast
-        const gx = (press[i - 1] - press[i + 1]) * 0.15;
-        const gy = (press[i - WX] - press[i + WX]) * 0.15;
-        if (gx > 0.05 || gx < -0.05) vx[i] += gx > 1.5 ? 1.5 : gx < -1.5 ? -1.5 : gx;
-        if (gy > 0.05 || gy < -0.05) vy[i] += gy > 1.5 ? 1.5 : gy < -1.5 ? -1.5 : gy;
+        // the gradient does WORK: it drives wind, and where it's steep (a vent
+        // or an open muzzle) it throws whatever loose matter sits in the throat
+        const rx = press[i - 1] - press[i + 1];
+        const ry = press[i - WX] - press[i + WX];
+        const gx = rx * 0.5;
+        const gy = ry * 0.5;
+        if (gx > 0.05 || gx < -0.05) vx[i] += gx > 8 ? 8 : gx < -8 ? -8 : gx;
+        if (gy > 0.05 || gy < -0.05) vy[i] += gy > 8 ? 8 : gy < -8 ? -8 : gy;
+        const gm = (rx < 0 ? -rx : rx) + (ry < 0 ? -ry : ry);
+        if (gm > 3) this.pressureLaunch(x, y, rx, ry);
         if (p > 2.2) this.rupture(x, y, i, p);
       }
     }
@@ -540,6 +588,14 @@ export class World {
   windAt(x: number, y: number): [number, number] {
     const wi = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
     return [this.vx[wi], this.vy[wi]];
+  }
+
+  /** pressure at a cell. Rigid objects sample it on OPPOSITE FACES and ride
+   *  the difference — a stamped object is a barrier to the field, so a ball in
+   *  a bore is a piston: read its own centre and you read its sealed inside */
+  pressAt(x: number, y: number): number {
+    if (x < 0 || y < 0 || x >= this.W || y >= this.H) return 0;
+    return this.press[(y >> WSHIFT) * this.WX + (x >> WSHIFT)];
   }
 
   /** fill an RG byte buffer (128-centered) for the air-view shader */

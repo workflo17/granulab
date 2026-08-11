@@ -290,6 +290,13 @@ export class WasmWorld {
     return [this.windVx[wi], this.windVy[wi]];
   }
 
+  /** pressure at a cell (mirrors World.pressAt — ObjectSystem reads opposite
+   *  faces of an object and rides the difference) */
+  pressAt(x: number, y: number): number {
+    if (x < 0 || y < 0 || x >= this.W || y >= this.H) return 0;
+    return this.press[(y >> WSHIFT) * this.WX + (x >> WSHIFT)];
+  }
+
   /** fill an RG byte buffer (128-centered) for the air-view shader */
   fillWindTex(buf: Uint8Array): void {
     const vx = this.windVx;

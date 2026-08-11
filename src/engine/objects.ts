@@ -228,6 +228,18 @@ export class ObjectSystem {
       }
       this.unstamp(o);
       o.vy += 0.22;
+      // PISTON: the object is a barrier to the pressure field, so it rides the
+      // difference across its own faces — a charge under a ball in a sealed
+      // bore drives the shot up the barrel instead of leaking past it
+      {
+        const ox = Math.round(o.x);
+        const oy = Math.round(o.y);
+        const d = o.r + 2; // clear of the object's own stamped footprint
+        const dv = (w.pressAt(ox, oy + d) - w.pressAt(ox, oy - d)) * 0.35;
+        const dh = (w.pressAt(ox + d, oy) - w.pressAt(ox - d, oy)) * 0.35;
+        if (dv !== 0) o.vy -= Math.max(-6, Math.min(6, dv));
+        if (dh !== 0) o.vx -= Math.max(-6, Math.min(6, dh));
+      }
       // buoyancy + drag when the center sits in liquid
       const ci = Math.round(o.y) * w.W + Math.round(o.x);
       if (BEHAVIOR[w.species[ci]] === B.LIQUID) {
