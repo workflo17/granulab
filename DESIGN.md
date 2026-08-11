@@ -580,8 +580,28 @@
 > re-baselined bbbcedfa/611f5992; stage-1 movement hash unchanged as the
 > control. Seven parity gates now also pin the AIR field byte-for-byte.
 >
+> STEPAIR FAST PATH 8/11: full air surrounded by full air has nothing to
+> exchange (almost every cell in almost every scene), so bail BEFORE the
+> four edgeOpen scans that were the whole cost of the pass; recovered
+> cells snap to exactly 1 and drop out of the active set. Latency gate max
+> 27.4 → 6.0ms, fire scenes ~25-35% cheaper on both engines, churn
+> untouched. In-app measurement: 56,113 of 57,600 coarse cells sit at
+> exactly 1.0, which is the small active set the bail is designed to
+> leave. LOAD-BEARING CONSTANT: the 0.9995 snap threshold. At 0.98 a room
+> recovers faster than fire drains it and suffocation stops working
+> entirely (sealed and open both read 0.94 air) — do not round it, and it
+> now lives in BOTH world.ts and asm/engine.ts, so the two must move
+> together. Zoo re-baselined 0c621fb6/9f694342; stage-1 and stage-2 hashes
+> unchanged (no fire, so stepAir early-outs and provably cannot touch
+> them). REMAINING COST: a lone torch still adds ~1.4ms in an empty world
+> because its deficit stays active and spreads; bounding that wants
+> chunk-gated activity like the thermal field, which pressure could share.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays).
+> track — partly obsoleted by the ambient overlays); CUSTOM ELEMENTS DO
+> NOT SURVIVE SHARING — share codes and gallery uploads serialize element
+> IDs while custom specs live in localStorage, so someone else's scene
+> loads your id 106, not theirs. Embed the specs in the save format.
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth

@@ -874,12 +874,21 @@ function stepAir(): void {
     for (let x = 1; x < WXg - 1; x++) {
       const i = r + x;
       const a = f32At(airP, i);
+      // Full air surrounded by full air has nothing to exchange, and this is
+      // almost every cell in almost every scene. Bailing here skips the four
+      // edge scans below, which are the entire cost of this pass.
+      if (a === 1 && f32At(airP, i - 1) === 1 && f32At(airP, i + 1) === 1 &&
+          f32At(airP, i - WXg) === 1 && f32At(airP, i + WXg) === 1) continue;
       let n = a + ((f32At(airP, i - 1) - a) * edgeOpenR(x - 1, y) +
                    (f32At(airP, i + 1) - a) * edgeOpenR(x, y) +
                    (f32At(airP, i - WXg) - a) * edgeOpenD(x, y - 1) +
                    (f32At(airP, i + WXg) - a) * edgeOpenD(x, y)) * 0.25;
       if (x <= 1 || y <= 1 || x >= WXg - 2 || y >= WYg - 2) n += (1.0 - n) * 0.5; // outside air
-      f32Set(airP, i, n < 0 ? 0 : n > 1 ? 1 : n);
+      // Snap a recovered cell to exactly full so it drops back out of the
+      // active set. Keep this threshold TIGHT: at 0.98 a depleting room
+      // recovers faster than fire can drain it and suffocation stops
+      // working altogether.
+      f32Set(airP, i, n < 0 ? 0 : n > 0.9995 ? 1 : n);
     }
   }
 }
