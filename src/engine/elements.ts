@@ -62,7 +62,7 @@ export const E = {
   CHARCOAL: 54, // slow-ember fuel; + saltpeter = gunpowder
   SALTPETER: 55, // oxidizer half of the gunpowder recipe
   SULFUR: 56, // burns readily; enriches gunpowder
-  LIMESTONE: 57, // kiln it (460° — sustained fire/magma) into lime
+  LIMESTONE: 57, // kiln it (825° — real calcination, so it needs magma) into lime
   LIME: 58, // floats out of the melt; + water = cement, + CO2 = limestone again
   ALUMINUM: 59, // + rust = thermite
   THERMITE: 60, // inert until 550° — then it IS magma
@@ -113,7 +113,7 @@ export const E = {
   METHANE: 100, // firedamp: rises, pockets under ceilings, detonates the mine
   SHARDS: 101, // shattered glass: sharp debris thrown by container failures
   // ---- M5j surfaces ----
-  MARBLE: 102, // polished carbonate stone: the slickest thing to build a track from
+  MARBLE: 102, // polished carbonate stone: slickest track material; calcines at 825°
   RUBBER: 103, // grippy and bouncy; burns dirty
   GRAPHITE: 104, // dry lubricant powder — a floor of it is a skid pan
   VULCANITE: 105, // rubber cured with sulfur: hard, and it throws a ball back
@@ -213,22 +213,22 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.ACID, name: "Acid", color: "#b8e33c", behavior: B.LIQUID, density: 28, disperse: 4, life0: 80, ph: 1 }),
   def({ id: E.STONE, name: "Stone", color: "#8d8478", behavior: B.POWDER, density: 90 }),
   def({ id: E.SALT, name: "Salt", color: "#e8e4da", behavior: B.POWDER, density: 55, group: "REAGENTS" }),
-  def({ id: E.SEAWATER, name: "Seawater", color: "#3aa0c8", behavior: B.LIQUID, density: 32, disperse: 5, hotAt: 102, hotTo: E.STEAM, ph: 8 }),
-  def({ id: E.MAGMA, name: "Magma", color: "#e25822", behavior: B.LIQUID, density: 40, disperse: 2, hot: true, temp0: 1000, pump: 0.08, coldAt: 350, coldTo: E.STONE }),
+  def({ id: E.SEAWATER, name: "Seawater", color: "#3aa0c8", behavior: B.LIQUID, density: 32, disperse: 5, hotAt: 102, hotTo: E.STEAM, coldAt: -6, coldTo: E.ICE, ph: 8 }),
+  def({ id: E.MAGMA, name: "Magma", color: "#e25822", behavior: B.LIQUID, density: 40, disperse: 2, hot: true, temp0: 1150, pump: 0.08, coldAt: 350, coldTo: E.STONE }),
   def({ id: E.ICE, name: "Ice", color: "#a8d8f0", density: 255, temp0: -25, pump: 0.05, hotAt: 2, hotTo: E.WATER }),
   def({ id: E.SNOW, name: "Snow", color: "#eef4f8", behavior: B.POWDER, density: 40, temp0: -8, pump: 0.03, hotAt: 1, hotTo: E.WATER }),
-  def({ id: E.NITRO, name: "Nitro", color: "#7fae3e", behavior: B.LIQUID, density: 35, disperse: 3, flammable: 255, explodeR: 8, ignitesAt: 240, ph: 2 }),
+  def({ id: E.NITRO, name: "Nitro", color: "#7fae3e", behavior: B.LIQUID, density: 35, disperse: 3, flammable: 255, explodeR: 8, ignitesAt: 240 }),
   def({ id: E.BOMB, name: "Bomb", color: "#5a3038", behavior: B.POWDER, density: 60, flammable: 255, explodeR: 12, device: true }),
   def({ id: E.METAL, name: "Metal", color: "#8a929e", behavior: B.METAL, density: 255, conducts: 12, group: "METALS" }),
   def({ id: E.TORCH, name: "Torch", color: "#d0582a", behavior: B.EMITTER, density: 255, hot: true, device: true, temp0: 700, pump: 0.3 }),
   def({ id: E.FUSE, name: "Fuse", color: "#b08050", density: 255, flammable: 140, burnLife: 25, device: true }),
   def({ id: E.VIRUS, name: "Virus", color: "#c05ac0", behavior: B.VIRUS, density: 55, life0: 120, group: "LIFE & ENERGY" }),
   def({ id: E.ANT, name: "Ant", color: "#2e2620", behavior: B.ANT, density: 60, flammable: 120, burnLife: 15, group: "LIFE & ENERGY" }),
-  def({ id: E.MERCURY, name: "Mercury", color: "#b8bcc8", behavior: B.LIQUID, density: 120, disperse: 4 }),
+  def({ id: E.MERCURY, name: "Mercury", color: "#b8bcc8", behavior: B.LIQUID, density: 200, disperse: 4 }),
   def({ id: E.SPARK, name: "Spark", color: "#ffe94a", behavior: B.SPARK, density: 255, life0: 4, hot: true, device: true, temp0: 180, pump: 0.04 }),
   def({ id: E.CLONE, name: "Clone", color: "#d8c850", behavior: B.CLONE, density: 255, device: true }),
   def({ id: E.FAN, name: "Fan", color: "#7ab8c8", density: 255, device: true }),
-  def({ id: E.SAND, name: "Sand", color: "#d9a95f", behavior: B.POWDER, density: 62, hotAt: 700, hotTo: E.GLASS }),
+  def({ id: E.SAND, name: "Sand", color: "#d9a95f", behavior: B.POWDER, density: 62, hotAt: 1100, hotTo: E.GLASS }),
   def({ id: E.MUD, name: "Mud", color: "#7a5c38", behavior: B.LIQUID, density: 70, disperse: 1, ph: 6 }),
   def({ id: E.GLASS, name: "Glass", color: "#b8d4dc", density: 255 }),
   def({ id: E.SUPERBALL, name: "Superball", color: "#e84a9a", behavior: B.SUPERBALL, density: 60, group: "LIFE & ENERGY" }),
@@ -258,7 +258,7 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.CHARCOAL, name: "Charcoal", color: "#33302c", behavior: B.POWDER, density: 45, flammable: 40, burnLife: 120, group: "REAGENTS" }),
   def({ id: E.SALTPETER, name: "Saltpeter", color: "#d8d2e8", behavior: B.POWDER, density: 55, group: "REAGENTS" }),
   def({ id: E.SULFUR, name: "Sulfur", color: "#e8d44a", behavior: B.POWDER, density: 50, flammable: 200, burnLife: 30, ignitesAt: 260, group: "REAGENTS" }),
-  def({ id: E.LIMESTONE, name: "Limestone", color: "#cfc9b8", behavior: B.POWDER, density: 80, hotAt: 460, hotTo: E.LIME }),
+  def({ id: E.LIMESTONE, name: "Limestone", color: "#cfc9b8", behavior: B.POWDER, density: 80, hotAt: 825, hotTo: E.LIME }),
   def({ id: E.LIME, name: "Lime", color: "#f4f0e2", behavior: B.POWDER, density: 36, ph: 12, group: "REAGENTS" }),
   def({ id: E.ALUMINUM, name: "Aluminum", color: "#cdd4dc", behavior: B.POWDER, density: 56, group: "METALS" }),
   def({ id: E.THERMITE, name: "Thermite", color: "#7a4a3a", behavior: B.POWDER, density: 62, hotAt: 550, hotTo: E.MAGMA, group: "METALS" }),
@@ -297,14 +297,14 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.BLEACH, name: "Bleach", color: "#e6f0d8", behavior: B.LIQUID, density: 31, disperse: 4, ph: 12 }),
   // ---- M5h reactive shelf IV ----
   def({ id: E.AMMONIA, name: "Ammonia", color: "#c0d8c0", behavior: B.GAS, density: 1, disperse: 4, ph: 11 }),
-  def({ id: E.IODINE, name: "Iodine", color: "#5a4668", behavior: B.POWDER, density: 65, hotAt: 184, hotTo: E.IODINE_V, group: "REAGENTS" }),
+  def({ id: E.IODINE, name: "Iodine", color: "#5a4668", behavior: B.POWDER, density: 95, hotAt: 184, hotTo: E.IODINE_V, group: "REAGENTS" }),
   // iodine vapor is far denser than air — chlorine-pattern dense gas that pools
   def({ id: E.IODINE_V, name: "Iodine gas", color: "#9a6ab8", behavior: B.LIQUID, density: 6, disperse: 4, coldAt: 45, coldTo: E.IODINE }),
-  def({ id: E.CINNABAR, name: "Cinnabar", color: "#b84a3a", behavior: B.POWDER, density: 90, group: "REAGENTS" }),
+  def({ id: E.CINNABAR, name: "Cinnabar", color: "#b84a3a", behavior: B.POWDER, density: 150, group: "REAGENTS" }),
   // 0.81 g/cm3: LN2 floats ON the pool it flash-freezes, then boils away
   def({ id: E.LN2, name: "Liq. N2", color: "#bcd8e8", behavior: B.LIQUID, density: 24, disperse: 5, temp0: -196, pump: 0.3, hotAt: -180, hotTo: E.NITROGEN }),
-  def({ id: E.GALLIUM, name: "Gallium", color: "#b8c0c8", behavior: B.POWDER, density: 75, hotAt: 30, hotTo: E.LGALLIUM, group: "METALS" }),
-  def({ id: E.LGALLIUM, name: "Molten Ga", color: "#c8ccd0", behavior: B.LIQUID, density: 74, disperse: 3, coldAt: 25, coldTo: E.GALLIUM, group: "METALS" }),
+  def({ id: E.GALLIUM, name: "Gallium", color: "#b8c0c8", behavior: B.POWDER, density: 115, hotAt: 30, hotTo: E.LGALLIUM, group: "METALS" }),
+  def({ id: E.LGALLIUM, name: "Molten Ga", color: "#c8ccd0", behavior: B.LIQUID, density: 113, disperse: 3, coldAt: 25, coldTo: E.GALLIUM, group: "METALS" }),
   def({ id: E.DRYICE, name: "Dry ice", color: "#dce8ec", behavior: B.POWDER, density: 60, temp0: -78, pump: 0.25, hotAt: -60, hotTo: E.CO2, group: "REAGENTS" }),
   def({ id: E.NITROGEN, name: "Nitrogen", color: "#c6ccd2", behavior: B.GAS, density: 1, disperse: 4, life0: 200 }),
   // ---- M5i pressure shelf (propane is denser than air: chlorine-pattern) ----
@@ -312,7 +312,7 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.METHANE, name: "Methane", color: "#9ab8a0", behavior: B.GAS, density: 1, disperse: 5, flammable: 255, burnLife: 15, ignitesAt: 580 }),
   def({ id: E.SHARDS, name: "Shards", color: "#b8d4d8", behavior: B.POWDER, density: 65 }),
   // ---- M5j surfaces: what you build a track or a bumper out of ----
-  def({ id: E.MARBLE, name: "Marble", color: "#e4e2dc", density: 255, hotAt: 460, hotTo: E.LIME }),
+  def({ id: E.MARBLE, name: "Marble", color: "#e4e2dc", density: 255, hotAt: 825, hotTo: E.LIME }),
   def({ id: E.RUBBER, name: "Rubber", color: "#2e2c30", density: 255, flammable: 30, burnLife: 110, ignitesAt: 400 }),
   def({ id: E.GRAPHITE, name: "Graphite", color: "#3c4046", behavior: B.POWDER, density: 62, ignitesAt: 620, flammable: 20, burnLife: 40, group: "REAGENTS" }),
   def({ id: E.VULCANITE, name: "Vulcanite", color: "#3a3038", density: 255, flammable: 8, burnLife: 90, ignitesAt: 520 }),
@@ -347,6 +347,14 @@ export const THERMAL = new Uint8Array(N_IDS);
 // M5i: ids that feed the pressure field — true gases (set in applyDef) plus the
 // dense gas-as-liquid ids (set explicitly below the ELEMENTS loop)
 export const PRESSURIZES = new Uint8Array(N_IDS);
+// M5k heat conductivity, 0..1: how readily this material passes heat along
+// itself. Metals move heat; wood and stone barely do. Empty space uses the
+// ambient default so open air still mixes.
+export const HEAT_COND = new Float32Array(N_IDS).fill(0.35);
+// M5k: fuels that carry their OWN oxidiser and so burn without ambient air.
+// Gunpowder is saltpeter + fuel by definition, a fuse burns sealed inside a
+// floor slab, thermite burns underwater, and magnesium burns in pure CO2.
+export const SELF_OXIDIZING = new Uint8Array(N_IDS);
 // M5j surface feel, read by ObjectSystem when something rides on this material.
 // SLICK 0..1 = how much of the object's friction loss the surface cancels
 // (1 = frictionless). BOUNCE = restitution multiplier on impact (1 = normal).
@@ -386,6 +394,33 @@ for (const el of ELEMENTS) applyDef(el);
 // dense gases ride the liquid behavior but still pressurize sealed rooms;
 // FIRE is hot combustion gas — burning in an enclosure IS how rooms blow
 for (const g of [E.CO2, E.CHLORINE, E.SO2, E.IODINE_V, E.PROPANE, E.FIRE]) PRESSURIZES[g] = 1;
+// heat conductivity: a copper bar carries a torch's heat down its length, a
+// wooden handle does not. (Real k, W/m·K: Cu 400, Al 237, W 173, Fe 80,
+// glass 1, water 0.6, wood 0.15, air 0.026 — compressed into 0..1.)
+HEAT_COND[E.COPPER] = 1.0;
+HEAT_COND[E.GOLD] = 0.95;
+HEAT_COND[E.ALUMINUM] = 0.85;
+HEAT_COND[E.TUNGSTEN] = 0.8;
+HEAT_COND[E.METAL] = HEAT_COND[E.RUST] = 0.6;
+HEAT_COND[E.MERCURY] = HEAT_COND[E.LGALLIUM] = HEAT_COND[E.GALLIUM] = 0.55;
+HEAT_COND[E.GRAPHITE] = 0.7; // graphite really is a good thermal conductor
+HEAT_COND[E.STONE] = HEAT_COND[E.MARBLE] = HEAT_COND[E.LIMESTONE] = 0.22;
+HEAT_COND[E.GLASS] = HEAT_COND[E.SHARDS] = 0.15;
+HEAT_COND[E.WATER] = HEAT_COND[E.SEAWATER] = 0.2;
+HEAT_COND[E.ICE] = 0.25;
+HEAT_COND[E.WOOD] = HEAT_COND[E.CHARCOAL] = 0.08;
+HEAT_COND[E.RUBBER] = HEAT_COND[E.VULCANITE] = HEAT_COND[E.WAX] = 0.06;
+HEAT_COND[E.SAND] = HEAT_COND[E.POWDER] = 0.12; // loose grain is a poor conductor
+HEAT_COND[E.WALL] = 0.3;
+// air is a far worse conductor than any solid (0.026 W/m*K). Leaving it at the
+// solid default let every hot bar bleed sideways into the room before heat
+// could travel along its length.
+HEAT_COND[E.EMPTY] = 0.05;
+HEAT_COND[E.SMOKE] = HEAT_COND[E.STEAM] = HEAT_COND[E.CO2] = 0.07;
+for (const o of [E.GUNPOWDER, E.FUSE, E.NITRO, E.BOMB, E.THERMITE, E.FIREWORKS,
+                E.ROCKET, E.SALTPETER, E.MAGNESIUM, E.PHOSPHORUS, E.OXYGEN, E.PEROXIDE]) {
+  SELF_OXIDIZING[o] = 1;
+}
 // slick surfaces: things keep their speed instead of grinding to a halt
 SLICK[E.ICE] = 0.95;
 SLICK[E.MARBLE] = 0.85;
@@ -474,6 +509,10 @@ export const REACT_NAME: Record<number, string> = {};
 // M5d thermochemistry: heat released (+) or absorbed (-) at the reaction site,
 // pumped straight into the temperature field (canonical pair key)
 export const REACT_DT = new Int16Array(N_IDS * N_IDS);
+// M5k: an optional THIRD product, vented into a free neighbouring cell when the
+// row fires. Real reactions rarely produce exactly two things, and a table with
+// only two product slots forced electrolysis to throw away its oxygen.
+export const REACT_BYPRODUCT = new Uint8Array(N_IDS * N_IDS);
 export const pairKey = (a: number, b: number): number =>
   a < b ? a * N_IDS + b : b * N_IDS + a;
 const react = (a: number, b: number, newA: number, newB: number, prob: number, name?: string, dT?: number): void => {
@@ -483,6 +522,11 @@ const react = (a: number, b: number, newA: number, newB: number, prob: number, n
   HAS_REACT[b] = 1;
   if (name) REACT_NAME[pairKey(a, b)] = name;
   if (dT) REACT_DT[pairKey(a, b)] = dT;
+};
+
+/** attach a third product to an existing row (see REACT_BYPRODUCT) */
+const byproduct = (a: number, b: number, id: number): void => {
+  REACT_BYPRODUCT[pairKey(a, b)] = id;
 };
 
 // HAS_REACT[id] = 1 if the element appears in any reaction — lets the hot loop
@@ -509,6 +553,10 @@ react(E.LYE, E.ACID, E.SALT, E.WATER, 180, "Neutralization", 90); // neutralizat
 react(E.ACID, E.METAL, E.HYDROGEN, E.METAL, 30, "Hydrogen evolution", 10); // hydrogen evolution
 react(E.WATER, E.SPARK, E.HYDROGEN, E.SPARK, 200, "Electrolysis"); // electrolysis
 react(E.SEAWATER, E.SPARK, E.CHLORINE, E.SPARK, 200, "Chlor-alkali process"); // chlor-alkali process
+// the halves these rows used to throw away: 2H2O -> 2H2 + O2 at the anode, and
+// the "alkali" in chlor-alkali (2NaCl + 2H2O -> Cl2 + H2 + 2NaOH)
+byproduct(E.WATER, E.SPARK, E.OXYGEN);
+byproduct(E.SEAWATER, E.SPARK, E.LYE);
 react(E.SODA, E.ACID, E.CO2, E.WATER, 220, "Carbonation fizz", -15); // bicarbonate fizz
 react(E.FIRE, E.CO2, E.EMPTY, E.CO2, 220, "Fire suppression", -20); // CO2 smothers fire
 react(E.VINE, E.CO2, E.VINE, E.OXYGEN, 25, "Photosynthesis"); // photosynthesis

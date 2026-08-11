@@ -6,7 +6,7 @@ import {
   EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT, REACT_DT, PH,
   CONDUCTS, CONDUCT_IDX, CONDUCTOR_IDS,
   TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
-  PRESSURIZES,
+  PRESSURIZES, REACT_BYPRODUCT, HEAT_COND, SELF_OXIDIZING,
 } from "./elements";
 import { Rng } from "./rng";
 
@@ -69,6 +69,13 @@ export class World {
   private pressTicks = 0;
   private gasDots = 0; // world total of PRESSURIZES cells — system skips when 0
 
+  // M5k AIR: breathable oxygen per coarse cell, 1 = open atmosphere. Fire eats
+  // it and dies without it, so a sealed room smothers its own fire while an
+  // open one never runs short. Refilled from the world edge (outside air)
+  // through the same openings pressure uses. Transient, never serialized.
+  readonly air: Float32Array;
+  private fireDots = 0; // burning cells; the field sleeps when none
+
   // temperature field (half resolution), chunk-gated like the cell sim
   readonly TW: number;
   readonly TH: number;
@@ -109,6 +116,7 @@ export class World {
     this.glow = new Float32Array(this.WX * this.WY);
     this.press = new Float32Array(this.WX * this.WY);
     this.pgas = new Int16Array(this.WX * this.WY);
+    this.air = new Float32Array(this.WX * this.WY).fill(1);
     this.TW = w >> TSHIFT;
     this.TH = h >> TSHIFT;
     this.temp = new Float32Array(this.TW * this.TH).fill(AMBIENT);
@@ -167,6 +175,8 @@ export class World {
       this.gasDots += gd;
       this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
     }
+    if (id === E.FIRE) this.fireDots++;
+    if (old === E.FIRE) this.fireDots--;
     this.species[i] = id;
     this.shade[i] = this.rng.byte();
     // sparks track wire-born-ness in shade bit 0 (painted onto a conductor =
@@ -204,6 +214,8 @@ export class World {
       this.gasDots += gd;
       this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
     }
+    if (id === E.FIRE) this.fireDots++;
+    if (old === E.FIRE) this.fireDots--;
     this.species[i] = id;
     this.shade[i] = shade;
     this.life[i] = 0;
@@ -221,6 +233,8 @@ export class World {
       this.gasDots += gd;
       this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
     }
+    if (id === E.FIRE) this.fireDots++;
+    if (old === E.FIRE) this.fireDots--;
     this.species[i] = id;
     this.life[i] = lifeVal;
     this.vx8[i] = 0;
@@ -295,6 +309,33 @@ export class World {
       if (!this.barrier(species[rowA + dx]) && !this.barrier(species[rowB + dx])) open++;
     }
     return open * 0.25;
+  }
+
+  /** M5k: spend and replenish the oxygen supply. Budget check: a coarse cell
+   *  fully ablaze draws 16*0.01 = 0.16/tick, while an open neighbourhood pushes
+   *  back up to 0.25*4 — so open fires hold near 0.8 and never starve, and a
+   *  sealed room (no path to the edge) drains to nothing and goes out. */
+  private stepAir(): void {
+    if (this.fireDots === 0) return;
+    const { WX, WY, air } = this;
+    for (let y = 1; y < WY - 1; y++) {
+      const r = y * WX;
+      for (let x = 1; x < WX - 1; x++) {
+        const i = r + x;
+        const a = air[i];
+        let n = a + ((air[i - 1] - a) * this.edgeOpenR(x - 1, y) +
+                     (air[i + 1] - a) * this.edgeOpenR(x, y) +
+                     (air[i - WX] - a) * this.edgeOpenD(x, y - 1) +
+                     (air[i + WX] - a) * this.edgeOpenD(x, y)) * 0.25;
+        if (x <= 1 || y <= 1 || x >= WX - 2 || y >= WY - 2) n += (1 - n) * 0.5; // outside air
+        air[i] = n < 0 ? 0 : n > 1 ? 1 : n;
+      }
+    }
+  }
+
+  /** oxygen left where this cell stands (QA + the datasheet read it) */
+  airAt(x: number, y: number): number {
+    return this.air[(y >> WSHIFT) * this.WX + (x >> WSHIFT)];
   }
 
   /** a steep gradient is a MUZZLE: escaping gas doesn't just breeze past loose
@@ -524,13 +565,27 @@ export class World {
           const row = ty * TW;
           for (let tx = tx0; tx < tx1; tx++) {
             const i = row + tx;
-            // diffuse (in-place, clamped neighbors) + drift toward ambient
+            // diffuse (in-place, clamped neighbors) + drift toward ambient.
+            // The rate is set by what the heat is travelling THROUGH: a copper
+            // bar carries a torch down its length, a wooden one does not.
             const l = tx > 0 ? temp[i - 1] : AMBIENT;
             const r = tx < TW - 1 ? temp[i + 1] : AMBIENT;
             const u = ty > 0 ? temp[i - TW] : AMBIENT;
             const d = ty < TH - 1 ? temp[i + TW] : AMBIENT;
-            let t = temp[i] * 0.72 + (l + r + u + d) * 0.07;
-            t += (AMBIENT - t) * 0.004;
+            // heat crosses an interface no faster than the WORSE conductor
+            // allows (resistances in series). Using only this cell's rate made
+            // a copper bar dump its heat into the surrounding air before it
+            // could travel any distance along itself.
+            const si0 = (ty << TSHIFT) * W + (tx << TSHIFT);
+            const kc = HEAT_COND[species[si0]];
+            const kL = tx > 0 ? Math.min(kc, HEAT_COND[species[si0 - 2]]) : kc;
+            const kR = tx < TW - 1 ? Math.min(kc, HEAT_COND[species[si0 + 2]]) : kc;
+            const kU = ty > 0 ? Math.min(kc, HEAT_COND[species[si0 - 2 * W]]) : kc;
+            const kD = ty < TH - 1 ? Math.min(kc, HEAT_COND[species[si0 + 2 * W]]) : kc;
+            const t0 = temp[i];
+            let t = t0 + ((l - t0) * kL + (r - t0) * kR + (u - t0) * kU + (d - t0) * kD) * 0.22;
+            // a conductor also loses less to the room around it
+            t += (AMBIENT - t) * 0.004 * (1 - kc * 0.97);
             temp[i] = t;
             if (t > AMBIENT + 2 || t < AMBIENT - 2) this.markThermalCoarse(tx, ty);
             else continue; // thermally boring cell: skip the phase scan
@@ -561,6 +616,15 @@ export class World {
                     this.set(si, sx, sy, to, LIFE0[to]);
                     this.shade[si] = this.rng.byte();
                   }
+                } else if (
+                  // water does not wait for a rolling boil to leave: a warm
+                  // puddle with open air above it evaporates, slowly
+                  (id === E.WATER || id === E.SEAWATER) &&
+                  t > 24 && sy > 0 && species[si - W] === E.EMPTY &&
+                  this.rng.next() * 4096 < t - 20
+                ) {
+                  this.set(si - W, sx, sy - 1, E.STEAM, LIFE0[E.STEAM] >> 1);
+                  this.set(si, sx, sy, E.EMPTY, 0);
                 } else if (t <= COLD_AT[id]) {
                   const p = Math.min(180, (COLD_AT[id] - t) * 3);
                   if (this.rng.byte() < p) {
@@ -658,6 +722,7 @@ export class World {
 
     this.stepWind();
     this.stepPressure();
+    this.stepAir();
     this.stepTemp();
     if (this.fxPower > 0.3) this.fxPower *= 0.88;
     else this.fxPower = 0;
@@ -753,6 +818,21 @@ export class World {
           const newB = r & 255;
           this.set(i, x, y, newA, LIFE0[newA]);
           this.set(j, rx, ry, newB, LIFE0[newB]);
+          // third product (electrolysis oxygen, chlor-alkali lye): vent it into
+          // a free neighbour, else it is simply lost to the surroundings
+          const bp = REACT_BYPRODUCT[pk];
+          if (bp !== 0) {
+            const k = this.rng.int(4);
+            const bx = x + (k === 0 ? 1 : k === 1 ? -1 : 0);
+            const by = y + (k === 2 ? 1 : k === 3 ? -1 : 0);
+            if (bx >= 0 && by >= 0 && bx < this.W && by < this.H) {
+              const bi = by * this.W + bx;
+              if (this.species[bi] === E.EMPTY) {
+                this.set(bi, bx, by, bp, LIFE0[bp]);
+                this.shade[bi] = this.rng.byte();
+              }
+            }
+          }
           return;
         }
         this.wake(x, y); // reactive contact stays awake until it resolves
@@ -1195,8 +1275,46 @@ export class World {
   private doFire(i: number, x: number, y: number): void {
     const { W, H, species } = this;
     if (this.life[i] === 0) {
-      this.set(i, x, y, E.EMPTY, 0);
+      // burnt-out flame leaves exhaust: in a sealed space this accumulates
+      // until the CO2 smothers what is still alight, and in the open it just
+      // sinks and drifts away
+      this.set(i, x, y, this.rng.byte() < 26 ? E.CO2 : E.EMPTY, 0);
       return;
+    }
+    // fire breathes. Combustion happens where fuel meets AIR, so a flame with
+    // no open cell beside it has nothing to burn with and goes out. In a sealed
+    // room its own CO2 and smoke fill the gaps, and the fire chokes on them.
+    let hasAir = false;
+    let selfFed = false;
+    for (let ay = -1; ay <= 1; ay++) {
+      const ny = y + ay;
+      if (ny < 0 || ny >= H) continue;
+      for (let ax = -1; ax <= 1; ax++) {
+        const nx = x + ax;
+        if (nx < 0 || nx >= W || (ax === 0 && ay === 0)) continue;
+        const o = species[ny * W + nx];
+        if (o === E.EMPTY || o === E.OXYGEN || o === E.FIRE) hasAir = true;
+        if (SELF_OXIDIZING[o]) { selfFed = true; ay = 2; break; }
+      }
+    }
+    // powder, fuse and thermite bring their own oxygen: they burn sealed in a
+    // slab or under water, which is exactly why fuses work
+    if (!selfFed) {
+      const ai = (y >> WSHIFT) * this.WX + (x >> WSHIFT);
+      const oxy = this.air[ai];
+      this.air[ai] = oxy > 0.025 ? oxy - 0.025 : 0;
+      if (oxy < 0.25 || !hasAir) {
+        this.set(i, x, y, E.SMOKE, LIFE0[E.SMOKE]);
+        return;
+      }
+    }
+    // combustion products: carbon goes up as CO2, not just soot
+    if (this.rng.byte() < 8) {
+      const uy = y - 1;
+      if (uy >= 0 && species[i - W] === E.EMPTY) {
+        this.set(i - W, x, uy, E.CO2, 0);
+        this.shade[i - W] = this.rng.byte();
+      }
     }
     this.life[i]--;
     this.wake(x, y);
@@ -1792,6 +1910,8 @@ export class World {
     this.press.fill(0);
     this.pgas.fill(0);
     this.pressTicks = 0;
+    this.air.fill(1);
+    this.fireDots = 0;
     this.activeCur.fill(1);
     this.activeNext.fill(1);
     this.fans.length = 0;
@@ -1804,6 +1924,7 @@ export class World {
       const id = this.species[i];
       if (id !== E.EMPTY) this.shade[i] = this.rng.byte();
       if (id !== E.EMPTY && id !== E.WALL) this.dots++;
+      if (id === E.FIRE) this.fireDots++;
       if (PRESSURIZES[id] !== 0) {
         this.gasDots++;
         this.pgas[(((i / this.W) | 0) >> WSHIFT) * this.WX + ((i % this.W) >> WSHIFT)]++;
@@ -1986,6 +2107,8 @@ export class World {
     this.pgas.fill(0);
     this.pressTicks = 0;
     this.gasDots = 0;
+    this.air.fill(1);
+    this.fireDots = 0;
     this.temp.fill(AMBIENT);
     this.thermalCur.fill(0);
     this.thermalNext.fill(0);
