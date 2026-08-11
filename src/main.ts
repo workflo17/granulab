@@ -5,7 +5,7 @@ import wasmUrl from "../asm/build/engine.wasm?url";
 import { Player, Fighter } from "./engine/player";
 import { ObjectSystem } from "./engine/objects";
 import { Renderer } from "./render/renderer";
-import { Ui, TOOL_PLAYER, TOOL_FIGHTER } from "./ui/ui";
+import { Ui, TOOL_PLAYER, TOOL_FIGHTER, type GalleryScene } from "./ui/ui";
 import { E, ELEMENTS, PALETTE, registerElement, type CustomSpec } from "./engine/elements";
 
 const GRID_W = 1280;
@@ -260,7 +260,8 @@ const ui = new Ui(root, {
   onCreateElement: createCustomElement,
   onGalleryOpen: () => { void refreshGallery(); },
   onGalleryUpload: (name: string, author: string) => { void uploadToGallery(name, author); },
-  onGalleryLoad: (scene) => { void loadFromGallery(scene.url); },
+  onGalleryLoad: (scene) => { pushUndo(); armUndo(); void loadFromGallery(scene.url); },
+  onGalleryDelete: (stamp: string) => { void deleteFromGallery(stamp); },
   onDemo: (name: string) => {
     pushUndo();
     armUndo();
@@ -282,16 +283,38 @@ const ui = new Ui(root, {
 // ---- scene gallery (backend: /api/gallery — Vercel Blob in prod, a
 // filesystem twin under the Vite dev server; same routes and shapes) --------
 const AUTHOR_KEY = "granulab-author";
+const thumbCache = new Map<string, string>();
 
 async function refreshGallery(): Promise<void> {
   try {
     const r = await fetch("/api/gallery");
     if (!r.ok) throw new Error(String(r.status));
     const j = await r.json();
-    ui.setGalleryScenes(j.scenes ?? []);
+    // the list needs thumbnails, which live in each scene blob, so fetch the
+    // ones we do not have yet and let the rest fill in as they arrive
+    const scenes = (j.scenes ?? []) as GalleryScene[];
+    for (const sc of scenes) sc.owned = !!owned[sc.stamp];
+    ui.setGalleryScenes(scenes);
+    void Promise.all(scenes.slice(0, 24).map(async (sc) => {
+      if (thumbCache.has(sc.stamp)) { sc.thumb = thumbCache.get(sc.stamp); return; }
+      try {
+        const d = await (await fetch(sc.url)).json();
+        if (d.thumb) { thumbCache.set(sc.stamp, d.thumb); sc.thumb = d.thumb; }
+      } catch { /* a missing thumbnail is not worth failing the list over */ }
+    })).then(() => ui.setGalleryScenes(scenes));
   } catch {
     ui.setGalleryScenes(null);
   }
+}
+
+/** tokens for scenes THIS browser uploaded — what lets it delete them later */
+const OWNED_KEY = "granulab-owned";
+const owned: Record<string, string> = JSON.parse(localStorage.getItem(OWNED_KEY) ?? "{}");
+
+/** a small picture of the scene, drawn from the same sampler as the minimap */
+function sceneThumb(): string {
+  drawMinimap();
+  return mini.toDataURL("image/webp", 0.7);
 }
 
 async function uploadToGallery(name: string, author: string): Promise<boolean> {
@@ -302,15 +325,42 @@ async function uploadToGallery(name: string, author: string): Promise<boolean> {
     const r = await fetch("/api/gallery", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, author, code }),
+      body: JSON.stringify({ name, author, code, thumb: sceneThumb() }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+    if (j.stamp && j.token) {
+      owned[j.stamp] = j.token;
+      localStorage.setItem(OWNED_KEY, JSON.stringify(owned));
+    }
     ui.setGalleryStatus("uploaded ✓ — it's live in the list");
     void refreshGallery();
     return true;
   } catch (err) {
     ui.setGalleryStatus(`upload failed: ${(err as Error).message}`, true);
+    return false;
+  }
+}
+
+async function deleteFromGallery(stamp: string): Promise<boolean> {
+  const token = owned[stamp];
+  if (!token) return false;
+  ui.setGalleryStatus("deleting…");
+  try {
+    const r = await fetch("/api/gallery", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stamp, token }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+    delete owned[stamp];
+    localStorage.setItem(OWNED_KEY, JSON.stringify(owned));
+    ui.setGalleryStatus("deleted");
+    void refreshGallery();
+    return true;
+  } catch (err) {
+    ui.setGalleryStatus(`delete failed: ${(err as Error).message}`, true);
     return false;
   }
 }

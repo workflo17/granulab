@@ -235,6 +235,24 @@ dialog .rxdel {
   white-space: nowrap;
 }
 .gal-meta { color: var(--dim); font-size: 10px; margin-left: auto; white-space: nowrap; }
+.gal-thumb {
+  width: 40px;
+  height: 23px;
+  flex: none;
+  object-fit: cover;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: var(--well);
+  image-rendering: pixelated;
+}
+.gal-del {
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1;
+  flex: none;
+  color: var(--dim);
+}
+.gal-del:hover { color: #e8705a; border-color: #e8705a; }
 .gal-row button { padding: 3px 8px; font-size: 11px; flex: none; }
 .gal-empty { padding: 12px 10px; color: var(--dim); font-style: italic; }
 

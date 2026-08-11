@@ -32,16 +32,22 @@ export interface UiHooks {
   onGalleryOpen(): void;
   onGalleryUpload(name: string, author: string): void;
   onGalleryLoad(scene: GalleryScene): void;
+  onGalleryDelete(stamp: string): void;
 }
 
 /** one gallery listing entry, as served by /api/gallery */
 export interface GalleryScene {
   id: string;
+  stamp: string;
   name: string;
   author: string;
   created: number;
   size: number;
   url: string;
+  /** data URL, filled in after the listing renders */
+  thumb?: string;
+  /** true when this browser uploaded it and therefore may delete it */
+  owned?: boolean;
 }
 
 /** pseudo-tool: click the canvas to (re)place the stickman */
@@ -571,6 +577,10 @@ export class Ui {
     const rows = scenes.map((s) => {
       const row = document.createElement("div");
       row.className = "gal-row";
+      const shot = document.createElement("img");
+      shot.className = "gal-thumb";
+      shot.alt = "";
+      if (s.thumb) shot.src = s.thumb;
       const name = document.createElement("span");
       name.className = "gal-name";
       name.textContent = s.name;
@@ -587,7 +597,16 @@ export class Ui {
         this.galDialog.close();
         this.hooks.onGalleryLoad(s);
       });
-      row.append(name, meta, load);
+      row.append(shot, name, meta, load);
+      if (s.owned) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "gal-del";
+        del.textContent = "×";
+        del.title = "Delete this upload";
+        del.addEventListener("click", () => this.hooks.onGalleryDelete(s.stamp));
+        row.append(del);
+      }
       return row;
     });
     this.galList.replaceChildren(...rows);

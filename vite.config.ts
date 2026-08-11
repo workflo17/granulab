@@ -60,7 +60,7 @@ function galleryDev(): Plugin {
               let name = "";
               let author = "";
               try { name = unb64u(parts[1] ?? ""); author = unb64u(parts[2] ?? ""); } catch { /* untitled */ }
-              return { id: f, name: name || "untitled", author, created: st.mtimeMs, size: st.size, url: "/api/gallery/scene/" + f };
+              return { id: f, stamp: parts[0] ?? "", name: name || "untitled", author, created: st.mtimeMs, size: st.size, url: "/api/gallery/scene/" + f };
             })
             .sort((a, z) => z.created - a.created);
           res.end(JSON.stringify({ scenes }));
@@ -83,8 +83,26 @@ function galleryDev(): Plugin {
               fs.mkdirSync(dir, { recursive: true });
               const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
               const id = `${stamp}.${b64u(name)}.${b64u(author) || "0"}.json`;
-              fs.writeFileSync(path.join(dir, id), JSON.stringify({ name, author, code, created: Date.now() }));
-              res.end(JSON.stringify({ ok: true, id, url: "/api/gallery/scene/" + id }));
+              const thumb = typeof j.thumb === "string" && j.thumb.startsWith("data:image/") ? j.thumb : "";
+              fs.writeFileSync(path.join(dir, id), JSON.stringify({ name, author, code, thumb, created: Date.now() }));
+              res.end(JSON.stringify({ ok: true, id, url: "/api/gallery/scene/" + id, stamp, token: "dev-" + stamp }));
+            } catch {
+              res.statusCode = 400;
+              res.end('{"error":"bad json"}');
+            }
+          });
+          return;
+        }
+        if (req.method === "DELETE") {
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            try {
+              const j = JSON.parse(body) as Record<string, unknown>;
+              const stamp = String(j.stamp ?? "").replace(/[^a-z0-9]/gi, "");
+              const hit = fs.readdirSync(dir).find((f) => f.startsWith(stamp + "."));
+              if (hit) fs.unlinkSync(path.join(dir, hit));
+              res.end(JSON.stringify({ ok: !!hit }));
             } catch {
               res.statusCode = 400;
               res.end('{"error":"bad json"}');
