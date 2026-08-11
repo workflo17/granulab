@@ -386,6 +386,48 @@ function buildShelf(paint: PaintFn): void {
   rect(paint, "Wall", 1198, 640, 1200, 689);
   rect(paint, "Propane", 1103, 665, 1197, 689);
   rect(paint, "Fire", 1140, 660, 1160, 664);
+
+  // ---- M5j surfaces (ids 102-105), on the free upper deck (y 470-560) so
+  // every station above stays exactly as it was. SLICK/BOUNCE are host-side
+  // (ObjectSystem) and never enter world.step, so nothing to cover there.
+  // 9) marble kiln: a walled magma tank cooks the marble slab above it past
+  //    460 through the field (no REACT row exists for marble+magma)
+  rect(paint, "Wall", 60, 470, 64, 560);
+  rect(paint, "Wall", 196, 470, 200, 560);
+  rect(paint, "Wall", 65, 558, 195, 560);
+  rect(paint, "Magma", 65, 522, 195, 557);
+  rect(paint, "Marble", 65, 505, 195, 521);
+  // 10) marble fizz: acid poured around marble pillars -> salt + CO2
+  rect(paint, "Wall", 240, 520, 244, 560);
+  rect(paint, "Wall", 356, 520, 360, 560);
+  rect(paint, "Wall", 245, 558, 355, 560);
+  rect(paint, "Marble", 260, 530, 268, 557);
+  rect(paint, "Marble", 300, 530, 308, 557);
+  rect(paint, "Marble", 330, 530, 338, 557);
+  rect(paint, "Acid", 245, 538, 355, 557); // fills around the pillars
+  // 11) rubber block lit in place (paint fire ONTO it) -> dirty burn to smoke
+  rect(paint, "Wall", 400, 558, 520, 560);
+  rect(paint, "Rubber", 420, 530, 500, 557);
+  rect(paint, "Fire", 440, 530, 470, 532);
+  // 12) vulcanisation: sulfur poured onto a rubber slab cures it to vulcanite
+  rect(paint, "Wall", 560, 558, 680, 560);
+  rect(paint, "Rubber", 570, 540, 670, 557);
+  rect(paint, "Sulfur", 570, 518, 670, 538);
+  // 13) graphite burning to CO2 (fire painted onto the pile)
+  rect(paint, "Wall", 720, 558, 840, 560);
+  rect(paint, "Graphite", 740, 535, 820, 557);
+  rect(paint, "Fire", 760, 535, 790, 537);
+  // 14) graphite under an oxygen pocket: slow carbon burn with no flame
+  rect(paint, "Wall", 880, 500, 884, 560);
+  rect(paint, "Wall", 996, 500, 1000, 560);
+  rect(paint, "Wall", 885, 498, 995, 500);
+  rect(paint, "Wall", 885, 558, 995, 560);
+  rect(paint, "Graphite", 890, 540, 990, 557);
+  rect(paint, "Oxygen", 890, 505, 990, 538);
+  // 15) vulcanite bumper in a fire (flammable 8: it resists, then chars)
+  rect(paint, "Wall", 1040, 558, 1160, 560);
+  rect(paint, "Vulcanite", 1060, 535, 1140, 557);
+  rect(paint, "Fire", 1080, 535, 1110, 537);
 }
 
 /** bench.ts churn scene: 211k cells of alternating seawater/oil bands */
