@@ -22,6 +22,7 @@ import {
   EXPLODE_R, REACT, REACT_DT, HAS_REACT, CONDUCTS, HEAT_PUMP,
   TEMP0, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
   PH, CONDUCT_IDX, CONDUCTOR_IDS, PRESSURIZES,
+  HEAT_COND, SELF_OXIDIZING, REACT_BYPRODUCT,
 } from "./elements";
 import { Rng } from "./rng";
 
@@ -97,6 +98,10 @@ interface EngineExports {
   tempPtr(): number;
   pressurizesPtr(): number;
   pressPtr(): number;
+  heatCondPtr(): number;
+  selfOxidizingPtr(): number;
+  reactByproductPtr(): number;
+  airPtr(): number;
   rawSet(x: number, y: number, id: number, shade: number): void;
   losClear(x0: number, y0: number, x1: number, y1: number): number;
   clearAll(): void;
@@ -141,6 +146,8 @@ export class WasmWorld {
   private tempV!: Float32Array;
   /** M5i pressure field view (WX x WY) — QA + parity read it */
   press!: Float32Array;
+  /** M5k breathable-air field view (WX x WY), 1 = open atmosphere */
+  air!: Float32Array;
 
   private ex!: EngineExports;
   private mem: WebAssembly.Memory | null = null;
@@ -204,6 +211,10 @@ export class WasmWorld {
     // stage 4: conduction + litmus registry
     u8.set(PH, this.ex.phPtr());
     u8.set(PRESSURIZES, this.ex.pressurizesPtr());
+    // M5k: per-material conduction, self-oxidising fuels, third products
+    new Float32Array(buf).set(HEAT_COND, this.ex.heatCondPtr() >>> 2);
+    u8.set(SELF_OXIDIZING, this.ex.selfOxidizingPtr());
+    u8.set(REACT_BYPRODUCT, this.ex.reactByproductPtr());
     u8.set(CONDUCT_IDX, this.ex.conductIdxPtr());
     u8.set(Uint8Array.from(CONDUCTOR_IDS), this.ex.conductorIdsPtr());
     // fan trig tables: 256 quantized angles, computed HERE with the host's
@@ -231,6 +242,7 @@ export class WasmWorld {
     this.glowV = new Float32Array(buf, this.ex.glowPtr(), this.WX * this.WY);
     this.tempV = new Float32Array(buf, this.ex.tempPtr(), this.TW * this.TH);
     this.press = new Float32Array(buf, this.ex.pressPtr(), this.WX * this.WY);
+    this.air = new Float32Array(buf, this.ex.airPtr(), this.WX * this.WY);
   }
 
   /** views detach if wasm memory grows (it shouldn't — fixed preallocation) */
@@ -295,6 +307,11 @@ export class WasmWorld {
   pressAt(x: number, y: number): number {
     if (x < 0 || y < 0 || x >= this.W || y >= this.H) return 0;
     return this.press[(y >> WSHIFT) * this.WX + (x >> WSHIFT)];
+  }
+
+  /** oxygen left where this cell stands (mirrors World.airAt) */
+  airAt(x: number, y: number): number {
+    return this.air[(y >> WSHIFT) * this.WX + (x >> WSHIFT)];
   }
 
   /** fill an RG byte buffer (128-centered) for the air-view shader */

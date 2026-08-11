@@ -74,6 +74,7 @@ const E_PUMP: i32 = 43;
 const E_SOAPY: i32 = 45;
 const E_CHLORINE: i32 = 48;
 const E_CO2: i32 = 50;
+const E_OXYGEN: i32 = 51;
 const E_RUST: i32 = 52;
 const E_CANNON: i32 = 63;
 const E_DETECTOR: i32 = 64;
@@ -216,6 +217,13 @@ let pgasP: usize = 0; // Int16Array [WX*WY]
 let pressTicks: i32 = 0;
 let gasDots: i32 = 0; // world total of PRESSURIZES cells — system skips when 0
 
+// M5k AIR: breathable oxygen per coarse cell, 1 = open atmosphere. Fire eats
+// it and dies without it, so a sealed room smothers its own fire while an
+// open one never runs short. Refilled from the world edge (outside air)
+// through the same openings pressure uses. Transient, never serialized.
+let airP: usize = 0; // Float32Array [WX*WY]
+let fireDots: i32 = 0; // burning cells; the field sleeps when none
+
 // temperature field (half resolution), chunk-gated like the cell sim
 let TWg: i32 = 0;
 let THg: i32 = 0;
@@ -251,6 +259,11 @@ let coldToP: usize = 0; // u8
 let ignitesAtP: usize = 0; // i16 (32767 = never)
 let thermalP: usize = 0; // u8
 let pressurizesP: usize = 0; // u8 (M5i: ids that feed the pressure field)
+// M5k registry: per-material heat conduction, self-oxidising fuels, and the
+// optional third product a reaction row vents into a free neighbour
+let heatCondP: usize = 0; // f32
+let selfOxidizingP: usize = 0; // u8
+let reactByproductP: usize = 0; // u8 [N_IDS * N_IDS]
 // stage 4: conduction + litmus registry, fan trig tables (loader-filled from
 // JS Math.cos/sin so the 256 quantized fan angles match V8 bit-for-bit)
 let phP: usize = 0; // u8
@@ -346,6 +359,12 @@ let bubbleQLen: i32 = 0;
 // @ts-ignore: decorator
 @inline function PRESSURIZES(id: i32): i32 { return u8At(pressurizesP, id); }
 // @ts-ignore: decorator
+@inline function HEAT_COND(id: i32): f64 { return f32At(heatCondP, id); }
+// @ts-ignore: decorator
+@inline function SELF_OXIDIZING(id: i32): i32 { return u8At(selfOxidizingP, id); }
+// @ts-ignore: decorator
+@inline function REACT_BYPRODUCT(k: i32): i32 { return u8At(reactByproductP, k); }
+// @ts-ignore: decorator
 @inline function pgasAt(i: i32): i32 { return <i32>load<i16>(pgasP + (<usize>i << 1)); }
 // @ts-ignore: decorator
 @inline function pgasSet(i: i32, v: i32): void { store<i16>(pgasP + (<usize>i << 1), <i16>v); }
@@ -414,10 +433,16 @@ export function init(w: i32, h: i32, seed: u32): void {
   ignitesAtP = allocZ(N_IDS << 1);
   thermalP = allocZ(N_IDS);
   pressurizesP = allocZ(N_IDS);
+  heatCondP = allocZ(N_IDS << 2);
+  selfOxidizingP = allocZ(N_IDS);
+  reactByproductP = allocZ(N_IDS * N_IDS);
   pressP = allocZ((WXg * WYg) << 2);
   pgasP = allocZ((WXg * WYg) << 1);
   pressTicks = 0;
   gasDots = 0;
+  airP = allocZ((WXg * WYg) << 2);
+  for (let i = 0, an = WXg * WYg; i < an; i++) f32Set(airP, i, 1.0);
+  fireDots = 0;
   phP = allocZ(N_IDS);
   conductIdxP = allocZ(N_IDS);
   conductorIdsP = allocZ(4);
@@ -465,6 +490,10 @@ export function coldAtPtr(): usize { return coldAtP; }
 export function coldToPtr(): usize { return coldToP; }
 export function ignitesAtPtr(): usize { return ignitesAtP; }
 export function thermalPtr(): usize { return thermalP; }
+export function heatCondPtr(): usize { return heatCondP; }
+export function selfOxidizingPtr(): usize { return selfOxidizingP; }
+export function reactByproductPtr(): usize { return reactByproductP; }
+export function airPtr(): usize { return airP; }
 export function pressurizesPtr(): usize { return pressurizesP; }
 export function pressPtr(): usize { return pressP; }
 export function phPtr(): usize { return phP; }
@@ -513,6 +542,8 @@ export function rawSet(x: i32, y: i32, id: i32, shadeV: i32): void {
       pgasSet(pi, pgasAt(pi) + gd);
     }
   }
+  if (id === E_FIRE) fireDots++;
+  if (old === E_FIRE) fireDots--;
   speciesSet(i, id);
   shadeSet(i, shadeV);
   lifeSet(i, 0);
@@ -541,9 +572,11 @@ export function clearAll(): void {
     f32Set(glowP, i, 0);
     f32Set(pressP, i, 0);
     pgasSet(i, 0);
+    f32Set(airP, i, 1.0);
   }
   pressTicks = 0;
   gasDots = 0;
+  fireDots = 0;
   const tn = TWg * THg;
   for (let i = 0; i < tn; i++) f32Set(tempP, i, AMBIENT);
   memory.fill(thermalCurP, 0, <usize>(chunksX * chunksY));
@@ -566,8 +599,10 @@ export function postLoad(): void {
   for (let i = 0; i < wn; i++) {
     f32Set(pressP, i, 0);
     pgasSet(i, 0);
+    f32Set(airP, i, 1.0);
   }
   pressTicks = 0;
+  fireDots = 0;
   memory.fill(activeCurP, 1, <usize>(chunksX * chunksY));
   memory.fill(activeNextP, 1, <usize>(chunksX * chunksY));
   fansLen = 0;
@@ -581,6 +616,7 @@ export function postLoad(): void {
     const id = species(i);
     if (id !== E_EMPTY) shadeSet(i, rngByte());
     if (id !== E_EMPTY && id !== E_WALL) dots++;
+    if (id === E_FIRE) fireDots++;
     if (PRESSURIZES(id) !== 0) {
       gasDots++;
       const pi = ((i / W) >> WSHIFT) * WXg + ((i % W) >> WSHIFT);
@@ -707,6 +743,8 @@ export function paint(x: i32, y: i32, id: i32, aux: i32): void {
       pgasSet(pi, pgasAt(pi) + gd);
     }
   }
+  if (id === E_FIRE) fireDots++;
+  if (old === E_FIRE) fireDots--;
   speciesSet(i, id);
   shadeSet(i, rngByte()); // paint consumes rng for shade — parity-critical
   // sparks track wire-born-ness in shade bit 0 (painted onto a conductor =
@@ -747,6 +785,8 @@ function set(i: i32, x: i32, y: i32, id: i32, lifeVal: i32): void {
       pgasSet(pi, pgasAt(pi) + gd);
     }
   }
+  if (id === E_FIRE) fireDots++;
+  if (old === E_FIRE) fireDots--;
   speciesSet(i, id);
   lifeSet(i, lifeVal);
   vx8Set(i, 0);
@@ -814,6 +854,39 @@ function edgeOpenD(wx: i32, wy: i32): f64 {
     if (!barrier(species(rowA + dx)) && !barrier(species(rowB + dx))) open++;
   }
   return <f64>open * 0.25;
+}
+
+/** M5k: spend and replenish the oxygen supply. Budget check: a coarse cell
+ *  fully ablaze draws 16*0.01 = 0.16/tick, while an open neighbourhood pushes
+ *  back up to 0.25*4 — so open fires hold near 0.8 and never starve, and a
+ *  sealed room (no path to the edge) drains to nothing and goes out. */
+/** the evaporation roll, split out so the draw is logged for forensics —
+ *  it fires only after the cheap guards pass (short-circuit order matters) */
+function evapRoll(sx: i32, sy: i32): f64 {
+  dbgLog(46, sx, sy);
+  return rngNext();
+}
+
+function stepAir(): void {
+  if (fireDots === 0) return;
+  for (let y = 1; y < WYg - 1; y++) {
+    const r = y * WXg;
+    for (let x = 1; x < WXg - 1; x++) {
+      const i = r + x;
+      const a = f32At(airP, i);
+      let n = a + ((f32At(airP, i - 1) - a) * edgeOpenR(x - 1, y) +
+                   (f32At(airP, i + 1) - a) * edgeOpenR(x, y) +
+                   (f32At(airP, i - WXg) - a) * edgeOpenD(x, y - 1) +
+                   (f32At(airP, i + WXg) - a) * edgeOpenD(x, y)) * 0.25;
+      if (x <= 1 || y <= 1 || x >= WXg - 2 || y >= WYg - 2) n += (1.0 - n) * 0.5; // outside air
+      f32Set(airP, i, n < 0 ? 0 : n > 1 ? 1 : n);
+    }
+  }
+}
+
+/** oxygen left where this cell stands (QA + the datasheet read it) */
+export function airAt(x: i32, y: i32): f64 {
+  return f32At(airP, (y >> WSHIFT) * WXg + (x >> WSHIFT));
 }
 
 /** a steep gradient is a MUZZLE: escaping gas doesn't just breeze past loose
@@ -1048,8 +1121,20 @@ function stepTemp(): void {
           const r = tx < TWg - 1 ? f32At(tempP, i + 1) : AMBIENT;
           const u = ty > 0 ? f32At(tempP, i - TWg) : AMBIENT;
           const d = ty < THg - 1 ? f32At(tempP, i + TWg) : AMBIENT;
-          let t = f32At(tempP, i) * 0.72 + (l + r + u + d) * 0.07;
-          t += (AMBIENT - t) * 0.004;
+          // heat crosses an interface no faster than the WORSE conductor
+          // allows (resistances in series). Using only this cell's rate made
+          // a copper bar dump its heat into the surrounding air before it
+          // could travel any distance along itself.
+          const si0 = (ty << TSHIFT) * W + (tx << TSHIFT);
+          const kc = HEAT_COND(species(si0));
+          const kL = tx > 0 ? min(kc, HEAT_COND(species(si0 - 2))) : kc;
+          const kR = tx < TWg - 1 ? min(kc, HEAT_COND(species(si0 + 2))) : kc;
+          const kU = ty > 0 ? min(kc, HEAT_COND(species(si0 - 2 * W))) : kc;
+          const kD = ty < THg - 1 ? min(kc, HEAT_COND(species(si0 + 2 * W))) : kc;
+          const t0 = f32At(tempP, i);
+          let t = t0 + ((l - t0) * kL + (r - t0) * kR + (u - t0) * kU + (d - t0) * kD) * 0.22;
+          // a conductor also loses less to the room around it
+          t += (AMBIENT - t) * 0.004 * (1.0 - kc * 0.97);
           f32Set(tempP, i, t);
           if (t > AMBIENT + 2 || t < AMBIENT - 2) markThermalCoarse(tx, ty);
           else continue; // thermally boring cell: skip the phase scan
@@ -1090,6 +1175,15 @@ function stepTemp(): void {
                   dbgLog(12, sx, sy);
                   shadeSet(si, rngByte());
                 }
+              } else if (
+                // water does not wait for a rolling boil to leave: a warm
+                // puddle with open air above it evaporates, slowly
+                (id === E_WATER || id === E_SEAWATER) &&
+                t > 24 && sy > 0 && species(si - W) === E_EMPTY &&
+                evapRoll(sx, sy) * 4096.0 < t - 20.0
+              ) {
+                set(si - W, sx, sy - 1, E_STEAM, LIFE0(E_STEAM) >> 1);
+                set(si, sx, sy, E_EMPTY, 0);
               } else if (t <= <f64>COLD_AT(id)) {
                 const p = min(180.0, (<f64>COLD_AT(id) - t) * 3.0);
                 dbgLog(13, sx, sy);
@@ -1163,6 +1257,7 @@ export function step(): void {
 
   stepWind();
   stepPressure();
+  stepAir();
   stepTemp();
   if (fxPower > 0.3) fxPower *= 0.88;
   else fxPower = 0;
@@ -1261,6 +1356,23 @@ function updateCell(i: i32, x: i32, y: i32, id: i32): void {
         const newB = <i32>(r & 255);
         set(i, x, y, newA, LIFE0(newA));
         set(j, rx, ry, newB, LIFE0(newB));
+        // third product (electrolysis oxygen, chlor-alkali lye): vent it into
+        // a free neighbour, else it is simply lost to the surroundings
+        const bp = REACT_BYPRODUCT(pk);
+        if (bp !== 0) {
+          dbgLog(47, x, y);
+          const bk = rngInt(4);
+          const bx = x + (bk === 0 ? 1 : bk === 1 ? -1 : 0);
+          const by = y + (bk === 2 ? 1 : bk === 3 ? -1 : 0);
+          if (bx >= 0 && by >= 0 && bx < W && by < H) {
+            const bi = by * W + bx;
+            if (species(bi) === E_EMPTY) {
+              set(bi, bx, by, bp, LIFE0(bp));
+              dbgLog(47, x, y);
+              shadeSet(bi, rngByte());
+            }
+          }
+        }
         return;
       }
       wake(x, y); // reactive contact stays awake until it resolves
@@ -1727,8 +1839,49 @@ function hotContact4(x: i32, y: i32): void {
 
 function doFire(i: i32, x: i32, y: i32): void {
   if (life(i) === 0) {
-    set(i, x, y, E_EMPTY, 0);
+    // burnt-out flame leaves exhaust: in a sealed space this accumulates
+    // until the CO2 smothers what is still alight, and in the open it just
+    // sinks and drifts away
+    dbgLog(45, x, y);
+    set(i, x, y, rngByte() < 26 ? E_CO2 : E_EMPTY, 0);
     return;
+  }
+  // fire breathes. Combustion happens where fuel meets AIR, so a flame with
+  // no open cell beside it has nothing to burn with and goes out. In a sealed
+  // room its own CO2 and smoke fill the gaps, and the fire chokes on them.
+  let hasAir = false;
+  let selfFed = false;
+  for (let ay = -1; ay <= 1; ay++) {
+    const ny = y + ay;
+    if (ny < 0 || ny >= H) continue;
+    for (let ax = -1; ax <= 1; ax++) {
+      const nx = x + ax;
+      if (nx < 0 || nx >= W || (ax === 0 && ay === 0)) continue;
+      const o = species(ny * W + nx);
+      if (o === E_EMPTY || o === E_OXYGEN || o === E_FIRE) hasAir = true;
+      if (SELF_OXIDIZING(o)) { selfFed = true; ay = 2; break; }
+    }
+  }
+  // powder, fuse and thermite bring their own oxygen: they burn sealed in a
+  // slab or under water, which is exactly why fuses work
+  if (!selfFed) {
+    const ai = (y >> WSHIFT) * WXg + (x >> WSHIFT);
+    const oxy = f32At(airP, ai);
+    f32Set(airP, ai, oxy > 0.025 ? oxy - 0.025 : 0);
+    if (oxy < 0.25 || !hasAir) {
+      set(i, x, y, E_SMOKE, LIFE0(E_SMOKE));
+      return;
+    }
+  }
+  // combustion products: carbon goes up as CO2, not just soot
+  dbgLog(45, x, y);
+  if (rngByte() < 8) {
+    const uy = y - 1;
+    if (uy >= 0 && species(i - W) === E_EMPTY) {
+      set(i - W, x, uy, E_CO2, 0);
+      dbgLog(45, x, y);
+      shadeSet(i - W, rngByte());
+    }
   }
   lifeSet(i, life(i) - 1);
   wake(x, y);

@@ -326,6 +326,22 @@ function buildPressure(paint: PaintFn): void {
   rect(paint, "Ice", 807, 614, 893, 620);
   rect(paint, "Heater", 807, 684, 893, 689);
   rect(paint, "Water", 807, 650, 893, 683);
+  // 5) M5k AIR: two identical wood fires, one sealed and one vented. The
+  //    sealed box has no path to the world edge, so its own exhaust starves
+  //    the flame and it smothers to smoke; the vented twin has a chimney to
+  //    open sky and keeps burning. Fire is painted ONTO the wood (the only
+  //    deterministic ignition), and both boxes sit on the shared floor.
+  rect(paint, "Wall", 950, 596, 1100, 600); // sealed: unbroken roof
+  rect(paint, "Wall", 950, 600, 954, 689);
+  rect(paint, "Wall", 1096, 600, 1100, 689);
+  rect(paint, "Charcoal", 960, 672, 1090, 689); // long-burning bed
+  rect(paint, "Fire", 970, 670, 1080, 671); // lit in the cavity above the fuel
+  rect(paint, "Wall", 1120, 596, 1168, 600); // vented: roof with a chimney gap
+  rect(paint, "Wall", 1182, 596, 1240, 600);
+  rect(paint, "Wall", 1120, 600, 1124, 689);
+  rect(paint, "Wall", 1236, 600, 1240, 689);
+  rect(paint, "Charcoal", 1130, 672, 1230, 689);
+  rect(paint, "Fire", 1140, 670, 1225, 671);
 }
 
 /** M5h+M5i shelf zoo: paints EVERY element id 90-101 in an exercising
@@ -856,14 +872,16 @@ async function parityRun(label: string, build: (p: PaintFn) => void): Promise<bo
     const wu = wasm.bubbleQueue;
     const qOk = arrEq(ts.blastQueue, wq) && arrEq(ts.bubbleQueue, wu);
     const fxOk = ts.fxPower === wasm.fxPower;
-    // M5i: the pressure field is compared byte-exact on every scene
+    // M5i/M5k: pressure AND air fields compared byte-exact on every scene
     const pt = fnvF32(ts.press);
     const pw = fnvF32(wasm.press);
-    const ok = ht === hw && dt === dw && qOk && fxOk && pt === pw;
+    const at = fnvF32(ts.air);
+    const aw = fnvF32(wasm.air);
+    const ok = ht === hw && dt === dw && qOk && fxOk && pt === pw && at === aw;
     console.log(
       `tick ${String(tick).padStart(4)}  hash ts=${ht} wasm=${hw}  draws ts=${dt} wasm=${dw}  ` +
         `blastQ ${ts.blastQueue.length}/${wq.length} bubbleQ ${ts.bubbleQueue.length}/${wu.length} ` +
-        `fx ${ts.fxPower.toFixed(3)}/${wasm.fxPower.toFixed(3)}  press ${pt}/${pw}  ${ok ? "PASS" : "FAIL"}`,
+        `fx ${ts.fxPower.toFixed(3)}/${wasm.fxPower.toFixed(3)}  press ${pt}/${pw}  air ${at}/${aw}  ${ok ? "PASS" : "FAIL"}`,
     );
     if (!ok) {
       if (!qOk) {

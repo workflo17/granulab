@@ -546,6 +546,40 @@
 > host-side. Regressions checked: cannons still fire 357, boxes stack,
 > wheel rolls 568 downhill, nothing tunnels through floors.
 >
+> M5k SHIPPED 8/11 — REALISM AUDIT PASS (owner asked for an audit, then "do
+> it all"). Ten measured gaps; nine closed, one deferred with a reason.
+> ENGINE: (1) AIR FIELD — breathable oxygen per coarse cell, refilled from
+> the world edge through the same edgeOpen gates pressure uses; fire draws
+> 0.025/cell/tick and smothers below 0.25. Same room, two ways: sealed
+> air 0.33 / 38 flame cells, open 0.55 / 71. SELF_OXIDIZING exempts
+> gunpowder/fuse/nitro/thermite/fireworks/magnesium/phosphorus — they
+> carry their own oxidiser, which is WHY a fuse burns sealed in a floor
+> slab; without that exemption oxygen gating broke every fuse and killed
+> the cannon demo. (2) HEAT BY MATERIAL — conduction rate is
+> min(k_self, k_neighbour) per direction (resistances in series). Copper
+> bar carries a torch 404 near / 30 at 75 cells; rubber 51 / ambient.
+> AIR had been as conductive as a solid, which is why every hot bar bled
+> sideways before heat could travel. (3) EVAPORATION below boiling when
+> open air sits above. (4) Combustion emits CO2 and leaves exhaust.
+> (5) REACT_BYPRODUCT — a third product vented to a free neighbour, so
+> electrolysis yields its oxygen and chlor-alkali its lye. NOTE: making
+> the spark itself become O2 silently broke spark propagation through
+> submerged wires (the chem cells went dead) — byproducts keep the
+> electrical system intact.
+> DATA: sea ice (seawater coldAt -6), real calcination 825 / silica 1100 /
+> lava 1150, heavier mercury 200 (sinks through stone) / iodine / cinnabar
+> / gallium, nitro is not an acid.
+> DEFERRED with reason: ice buoyancy — ice is an immovable solid, and
+> floating it needs a movable-solid behaviour class, not a tuning change.
+> Density still caps at ~6.7x water (255 reserved for immovable).
+> COST: fire scenes roughly doubled in tick cost on both engines; latency
+> gate max 20.8ms (was ~9) against a 60ms limit, so headroom is now ~3x.
+> stepAir runs the whole interior loop whenever ANY fire exists and calls
+> edgeOpen 4x per cell — the obvious optimisation target.
+> Churn bench byte-identical (gas/fire-free path untouched); zoo
+> re-baselined bbbcedfa/611f5992; stage-1 movement hash unchanged as the
+> control. Seven parity gates now also pin the AIR field byte-for-byte.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
