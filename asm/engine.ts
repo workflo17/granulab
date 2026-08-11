@@ -783,20 +783,60 @@ let windTicks: i32 = 0; // wind sim runs only while energy is in the field
 
 /** solid fraction of a coarse cell (0..1): static matter blocks pressure
  *  flow; powder piles leak, like gas seeping through gravel */
-function solidFrac(wi: i32): f64 {
-  const wx = wi % WXg;
-  const wy = wi / WXg;
+function barrier(id: i32): bool {
+  return id !== 0 && (DENSITY(id) === 255 || BEHAVIOR(id) === 0);
+}
+
+/** open fraction (0..1) of the BOUNDARY between coarse cell (wx,wy) and its
+ *  RIGHT neighbour. Pressure crosses through the gap, never through the
+ *  wall — a 1-cell barrier spanning the seam seals it completely, which is
+ *  what makes a wall barrel a barrel (block-average openness leaked 75%
+ *  through any thin wall, so nothing could ever hold a charge) */
+function edgeOpenR(wx: i32, wy: i32): f64 {
+  const x = (wx << WSHIFT) + 3;
+  const y0 = wy << WSHIFT;
+  let open = 0;
+  for (let dy = 0; dy < 4; dy++) {
+    const j = (y0 + dy) * W + x;
+    if (!barrier(species(j)) && !barrier(species(j + 1))) open++;
+  }
+  return <f64>open * 0.25;
+}
+
+/** same for the boundary with the coarse cell BELOW */
+function edgeOpenD(wx: i32, wy: i32): f64 {
+  const y = (wy << WSHIFT) + 3;
+  const x0 = wx << WSHIFT;
+  const rowA = y * W + x0;
+  const rowB = rowA + W;
+  let open = 0;
+  for (let dx = 0; dx < 4; dx++) {
+    if (!barrier(species(rowA + dx)) && !barrier(species(rowB + dx))) open++;
+  }
+  return <f64>open * 0.25;
+}
+
+/** a steep gradient is a MUZZLE: escaping gas doesn't just breeze past loose
+ *  matter, it launches it down the vector (deterministic — no rng draws) */
+function pressureLaunch(wx: i32, wy: i32, gx: f64, gy: f64): void {
   const x0 = wx << WSHIFT;
   const y0 = wy << WSHIFT;
-  let s = 0;
+  const ax = gx * 4.0;
+  const ay = gy * 4.0;
   for (let dy = 0; dy < 4; dy++) {
-    const row = (y0 + dy) * W + x0;
+    const y = y0 + dy;
+    const row = y * W + x0;
     for (let dx = 0; dx < 4; dx++) {
-      const id = species(row + dx);
-      if (id !== 0 && (DENSITY(id) === 255 || BEHAVIOR(id) === 0)) s++;
+      const i = row + dx;
+      const id = species(i);
+      if (id === E_EMPTY || barrier(id)) continue; // fixed matter holds
+      const nx = <f64>vx8(i) + ax;
+      const ny = <f64>vy8(i) + ay;
+      vx8Set(i, nx > 126.0 ? 126 : nx < -126.0 ? -126 : <i32>nx);
+      vy8Set(i, ny > 126.0 ? 126 : ny < -126.0 ? -126 : <i32>ny);
+      wake(x0 + dx, y);
     }
   }
-  return <f64>s / 16.0;
 }
 
 /** M5i: trapped gas + heat build overpressure; it vents through openings as
@@ -819,26 +859,31 @@ function stepPressure(): void {
         const target = <f64>cnt * 0.5 * (1.0 + max(0.0, t) * 0.004);
         p += (target - p) * 0.15; // fast fill: burns outrun slow pressure
       }
-      // openness-gated exchange with neighbors; sealed rooms hold, leaks vent
-      const open = 1.0 - solidFrac(i);
-      const oL = min(open, 1.0 - solidFrac(i - 1));
-      const oR = min(open, 1.0 - solidFrac(i + 1));
-      const oU = min(open, 1.0 - solidFrac(i - WXg));
-      const oD = min(open, 1.0 - solidFrac(i + WXg));
+      // flow ONLY through the openings in the shared boundaries: a sealed
+      // vessel holds its whole charge until something gives
+      const oL = edgeOpenR(x - 1, y);
+      const oR = edgeOpenR(x, y);
+      const oU = edgeOpenD(x, y - 1);
+      const oD = edgeOpenD(x, y);
       p += ((f32At(pressP, i - 1) - p) * oL + (f32At(pressP, i + 1) - p) * oR +
             (f32At(pressP, i - WXg) - p) * oU + (f32At(pressP, i + WXg) - p) * oD) * 0.25;
-      // venting is CONNECTIVITY, not local openness: open terrain drains to
-      // the zero-pressure borders through diffusion; sealed rooms hold
+      // venting is CONNECTIVITY: open terrain drains to the zero-pressure
+      // borders through diffusion; sealed rooms have nowhere to drain
       p *= cnt > 0 ? 0.999 : 0.985;
       p = p > 12 ? 12 : p;
       f32Set(pressP, i, p > 0.01 || p < -0.01 ? p : 0);
-      // the gradient becomes wind: vents whistle, ruptures blast
-      const gx = (f32At(pressP, i - 1) - f32At(pressP, i + 1)) * 0.15;
-      const gy = (f32At(pressP, i - WXg) - f32At(pressP, i + WXg)) * 0.15;
+      // the gradient does WORK: it drives wind, and where it's steep (a vent
+      // or an open muzzle) it throws whatever loose matter sits in the throat
+      const rx = f32At(pressP, i - 1) - f32At(pressP, i + 1);
+      const ry = f32At(pressP, i - WXg) - f32At(pressP, i + WXg);
+      const gx = rx * 0.5;
+      const gy = ry * 0.5;
       if (gx > 0.05 || gx < -0.05)
-        f32Set(windVxP, i, f32At(windVxP, i) + (gx > 1.5 ? 1.5 : gx < -1.5 ? -1.5 : gx));
+        f32Set(windVxP, i, f32At(windVxP, i) + (gx > 8.0 ? 8.0 : gx < -8.0 ? -8.0 : gx));
       if (gy > 0.05 || gy < -0.05)
-        f32Set(windVyP, i, f32At(windVyP, i) + (gy > 1.5 ? 1.5 : gy < -1.5 ? -1.5 : gy));
+        f32Set(windVyP, i, f32At(windVyP, i) + (gy > 8.0 ? 8.0 : gy < -8.0 ? -8.0 : gy));
+      const gm = (rx < 0 ? -rx : rx) + (ry < 0 ? -ry : ry);
+      if (gm > 3) pressureLaunch(x, y, rx, ry);
       if (p > 2.2) rupture(x, y, i, p);
     }
   }

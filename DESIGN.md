@@ -475,6 +475,31 @@
 > second "hangs" in hidden panes are OS tab-throttling under machine
 > load (pure-JS control bursts identically) — time on a quiet machine.
 >
+> PRESSURE DOES WORK (owner ask 8/11 "walls should hold pressure and only
+> release on openings so projectiles can be made"): (1) CONTAINMENT — flow
+> is gated by the open fraction of the SHARED BOUNDARY between coarse
+> cells, not block-average solidity. A 1-cell wall spanning the seam now
+> seals completely; it used to leak 75% (a 4x4 block with a 1-cell wall
+> reads only 25% solid), which is why nothing could hold a charge.
+> Verified: sealed vessel holds 5.2 with ZERO outside. Powders still leak
+> (a sand plug is not a pressure vessel). (2) FORCE — gradient->wind
+> 0.15->0.5, clamp 1.5->8 (the blast wind cap); steep gradients (|rx|+|ry|
+> > 3 = a vent or muzzle) LAUNCH loose matter ballistically via vx8/vy8,
+> deterministically, no rng; RIGID OBJECTS sample pressAt on OPPOSITE
+> FACES and ride the difference — a stamped object is a barrier to the
+> field (density 255), so a ball in a bore is a real piston. Objects
+> previously felt NOTHING from pressure or wind (only blast impulse) —
+> that was the "little hop". Verified on WASM: powder cannon 357 cells;
+> shot 110 cells up the bore (beyond blast reach) rises 112 at 9.7 c/t on
+> pressure alone; PNEUMATIC steam cannon 69 cells with no explosive.
+> BORE GOTCHA (cost a debug round, and is the likely cause of any
+> "cannon only hops"): ball r=7, so a bore under ~16 cells WEDGES the
+> shot — it oscillates ±8 vy at a fixed y and never moves.
+> Zoo re-baselined 0df5e3db/2ae46e85; churn byte-identical (gas-free
+> scenes still pay zero). Mirrored bit-exact; seven parity gates + the
+> latency gate green, and the WASM engine replays the whole 1,500-tick
+> bench sequence phase-for-phase.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
