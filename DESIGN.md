@@ -630,11 +630,33 @@
 > 2542d494. Stage-1 and stage-4 parity hashes unchanged (no ice) as the
 > control that the change touches only ice and what it touches.
 >
-> M4 QUEUE (still open): chunk-gated stepAir (a lone torch still costs
-> ~1.4ms; wants the thermal field's activity machinery, which pressure
-> could share too), dissolved-concentration channel, engine-in-a-worker,
-> remaining BG modes (blur/shade/aura/light/mesh/track — partly obsoleted
-> by the ambient overlays).
+> BRUSH NIBS 8/11: the pen was always a disc; now round / square / diamond
+> / ring / spray, because walls want a square, funnels a diamond, vessels
+> a ring, and scattered powder a spray. Verified geometrically at r=10:
+> round 317 (pi r^2), square 441 (21^2, corner filled), diamond 221,
+> ring 124, spray ~27% scatter.
+>
+> CHUNK-GATED stepAir TRIED AND REJECTED 8/11 (negative result, recorded so
+> nobody retries it blind). Implemented an active bounding window over the
+> depleted region: it tracked correctly (3,072 cells of 56,604 interior,
+> containing all 2,473 depleted cells) but measured WITHIN NOISE of the
+> plain early-out — A/B on the same machine: windowed torch 2.84ms / big
+> fire 17.5ms, stashed 2.60 / 15.2. The earlier "1.4ms torch" figure was a
+> SHORTER RUN, not a faster build: cost grows with elapsed time because a
+> persistent flame's deficit keeps diffusing outward, so any measurement
+> must state its tick count. Tried bounding the spread by healing shallow
+> deficits (>0.7) toward full — that broke suppression outright (sealed and
+> open rooms both back to 1.0 air), the SAME trap as the 0.98 snap: a local
+> rule cannot tell "connected to outside" from "sealed", so it invents air
+> inside a closed room. Bounding this properly needs real connectivity
+> (periodic flood fill from the borders), which is a design, not a tweak.
+> Reverted; the shipped early-out stands.
+>
+> M4 QUEUE (still open): stepAir spread-bounding via connectivity (see
+> above), dissolved-concentration channel, engine-in-a-worker (needs
+> COOP/COEP headers for SharedArrayBuffer, or OffscreenCanvas + moving the
+> renderer across too), remaining BG modes (blur/shade/aura/light/mesh/
+> track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
