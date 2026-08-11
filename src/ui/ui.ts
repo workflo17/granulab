@@ -123,6 +123,7 @@ export class Ui {
             <option value="alchemy">demo: alchemy</option>
             <option value="cryo">demo: cryo works</option>
             <option value="boiler">demo: boiler room</option>
+            <option value="cannon">demo: pressure guns</option>
           </select>
           <select id="penmode" title="Pen mode">
             <option value="free" selected>pen: free</option>

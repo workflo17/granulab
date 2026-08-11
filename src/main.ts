@@ -180,6 +180,7 @@ const ui = new Ui(root, {
     else if (name === "alchemy") alchemyScene();
     else if (name === "cryo") cryoScene();
     else if (name === "boiler") boilerScene();
+    else if (name === "cannon") cannonScene();
   },
 });
 
@@ -1228,6 +1229,117 @@ function boilerScene(): void {
   settle();
 }
 
+// #cannon: the pressure gunnery range — every gun here is driven by the
+// pressure field. Bores are 18 wide because a ball is r=7: a narrower bore
+// WEDGES the shot and it just judders in place.
+function cannonScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  const carve = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, E.EMPTY);
+  };
+  R("Wall", 20, 690, 1260, 700); // the range floor — also every gun's breech
+
+  // 1) PNEUMATIC MORTAR — no explosive anywhere: a sealed steam chamber, and
+  // the ball's own body sealing the bore. Boil it and the shot leaves.
+  R("Wall", 40, 300, 54, 689);
+  R("Wall", 73, 300, 87, 689);
+  R("Heater", 55, 686, 72, 689);
+  R("Water", 55, 668, 72, 685);
+  objects.spawn("ball", 63, 650);
+
+  // 2) POWDER CANNON — the same barrel with a charge instead of a boiler
+  R("Wall", 150, 300, 164, 689);
+  R("Wall", 183, 300, 197, 689);
+  R("Gunpowder", 165, 668, 182, 689);
+  objects.spawn("ball", 173, 650);
+
+  // 3) STEAM FOUNTAIN — self-running: a clone re-drips water onto the plate,
+  // so the chamber keeps re-pressurising and keeps throwing its sand charge
+  R("Wall", 260, 300, 274, 689);
+  R("Wall", 293, 300, 307, 689);
+  R("Heater", 275, 686, 292, 689);
+  R("Water", 275, 672, 292, 685);
+  R("Sand", 275, 644, 292, 670); // the charge it throws, over and over
+  R("Clone", 281, 610, 281, 612); // re-feeds the boiler forever
+  R("Water", 280, 610, 280, 612);
+  R("Wall", 279, 608, 282, 609);
+  R("Wall", 279, 610, 279, 613);
+  R("Wall", 280, 613, 280, 613); // ledge — liquid primers fall without one
+
+  // 4) THE LESSON: identical charges, one barrel OPEN and one CAPPED. The
+  // open one fires its shot; the capped one has nowhere to vent and bursts.
+  R("Wall", 380, 420, 394, 689);
+  R("Wall", 413, 420, 427, 689);
+  R("Gunpowder", 395, 668, 412, 689);
+  objects.spawn("ball", 404, 650);
+
+  // the capped twin is deliberately STUBBY: a cap 250 cells up the bore never
+  // sees the charge's pressure, so the lid sits just above the powder
+  R("Wall", 470, 636, 484, 689);
+  R("Wall", 503, 636, 517, 689);
+  R("Gunpowder", 485, 668, 502, 689);
+  R("Glass", 485, 636, 502, 644); // the cap that has to give
+
+  // Each powder gun gets its OWN fuse under the floor, cut to a different
+  // length so the range fires in sequence (fuse burns ~0.1 cell/tick, so a
+  // shared 380-cell train would never reach the far guns). Carve the tunnel
+  // through the slab FIRST, then embed the fuse — wall paint overwrites it —
+  // and light it with fire painted ON the fuse end: an open-air flame rises
+  // away instead of burning downward.
+  const fuseRun = (gunX: number, len: number) => {
+    carve(gunX - len, 694, gunX, 694);
+    carve(gunX, 690, gunX, 693);
+    R("Fuse", gunX - len, 694, gunX, 694);
+    R("Fuse", gunX, 690, gunX, 693);
+    world.paint(gunX - len, 694, byName("Fire"));
+  };
+  fuseRun(173, 12); // powder cannon fires first
+  fuseRun(404, 30); // the open barrel next
+  fuseRun(494, 48); // the capped one last — it bursts instead of firing
+
+  // 5) JET VENT — a boiler with one small side opening: everything escapes
+  // through that hole as a working jet that sweeps the loose sand downrange
+  R("Wall", 580, 560, 594, 689);
+  R("Wall", 660, 560, 674, 689);
+  R("Wall", 580, 556, 674, 560);
+  R("Heater", 595, 686, 659, 689);
+  R("Water", 595, 640, 659, 685);
+  carve(660, 596, 674, 604); // the nozzle, punched through the right wall
+  R("Sand", 700, 676, 900, 689); // the dune the jet works on
+
+  // 6) FLAT SHOT — a short horizontal bore that rockets its ball the length of
+  // the range into the keep. (A packed powder slug jams in a bore instead of
+  // spraying — the M5b lesson — so the shot is a ball; and a flat shot at
+  // y≈615 sails clean over anything resting on the floor.)
+  R("Wall", 950, 600, 1020, 604);
+  R("Wall", 950, 623, 1020, 627);
+  R("Wall", 946, 600, 950, 627); // breech plate
+  R("Gunpowder", 951, 605, 975, 622);
+  objects.spawn("ball", 990, 613);
+  world.paint(955, 613, byName("Fire"));
+  R("Stone", 1210, 540, 1250, 689); // the keep it all ends against
+  R("Glass", 1210, 520, 1250, 538);
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 40 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 40) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
 else if (location.hash.startsWith("#range")) rangeScene();
@@ -1235,6 +1347,7 @@ else if (location.hash.startsWith("#doom")) doomScene();
 else if (location.hash.startsWith("#alchemy")) alchemyScene();
 else if (location.hash.startsWith("#cryo")) cryoScene();
 else if (location.hash.startsWith("#boiler")) boilerScene();
+else if (location.hash.startsWith("#cannon")) cannonScene();
 
 window.granulab = {
   engine: engineActive,
@@ -1245,6 +1358,7 @@ window.granulab = {
   alchemy: alchemyScene,
   cryo: cryoScene,
   boiler: boilerScene,
+  cannon: cannonScene,
   player,
   fighters,
   objects,

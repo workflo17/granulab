@@ -500,6 +500,25 @@
 > latency gate green, and the WASM engine replays the whole 1,500-tick
 > bench sequence phase-for-phase.
 >
+> #CANNON DEMO shipped 8/11 (demo picker "pressure guns"): six stations, all
+> driven by the pressure field — PNEUMATIC MORTAR (sealed steam chamber, no
+> explosive anywhere: 82-cell lob), POWDER CANNON (358), OPEN vs CAPPED twins
+> on staggered fuses (open barrel fires its 356-cell shot; the capped twin has
+> nowhere to vent and bursts its glass lid at ~t250, 75 shards), STEAM FOUNTAIN
+> (clone re-drips the boiler forever, so it keeps throwing its sand charge),
+> JET VENT (one nozzle carved through the wall; everything escapes there as a
+> working jet), FLAT SHOT (213 cells across the range into the keep).
+> FIXTURE LAWS EARNED HERE: (1) fuse burns ~0.1 cell/tick — one shared 380-cell
+> train never reaches the far guns; give each gun its own short fuse and
+> stagger by LENGTH; (2) the breech floor must be the range slab itself, or
+> the fuse painted at y+1 lands inside wall and no-ops (paint fills EMPTY);
+> (3) a cap 250 cells up a bore never sees the charge's pressure — capped
+> demos need STUBBY barrels; (4) a flat shot at y≈615 sails clean over crates
+> resting on the floor, and stacked boxes lock each other in place via their
+> stamped footprints (the ball rebounds, nothing scatters) — use terrain as a
+> backstop, not object stacks; (5) packed powder slugs still jam in a bore
+> (M5b lesson holds) — ball shot, not sand columns.
+>
 > M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
 > track — partly obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
