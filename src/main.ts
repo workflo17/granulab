@@ -11,7 +11,10 @@ import { E, ELEMENTS, PALETTE, registerElement, type CustomSpec } from "./engine
 const GRID_W = 1280;
 const GRID_H = 720;
 
-// custom elements persist per-browser and register before the UI builds
+// custom elements persist per-browser and register before the UI builds.
+// Capture the base id FIRST: everything at or above it is user-invented and
+// therefore has to travel inside a shared scene rather than being assumed.
+const FIRST_CUSTOM_ID = ELEMENTS.length;
 const CUSTOM_KEY = "granulab-custom";
 const customSpecs: CustomSpec[] = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? "[]");
 const customIds: number[] = [];
@@ -75,27 +78,90 @@ const fromB64 = (b64: string): Uint8Array => {
 };
 const QUICK_KEY = "granulab-quick";
 
-// combined snapshot: [u32 worldLen][world GRN1][objects block]; legacy raw GRN1 loads too
+// Combined snapshot. v2 = ["GLC2"][u32 customLen][custom JSON][u32 worldLen]
+// [world GRN1][objects block]; v1 = [u32 worldLen][world][objects]; legacy raw
+// GRN1 also loads. The custom block is what makes a shared scene carry its own
+// chemistry: without it a scene painted with someone's invented element loads
+// as whatever YOUR id 106 happens to be, which is usually nothing.
+const u32 = (n: number): number[] => [n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >> 24) & 255];
+const rd32 = (b: Uint8Array, o: number): number => b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24);
+
 function saveAll(): Uint8Array {
   const w = world.serialize();
   const o = objects.serialize();
-  const buf = new Uint8Array(4 + w.length + o.length);
-  buf[0] = w.length & 255; buf[1] = (w.length >> 8) & 255;
-  buf[2] = (w.length >> 16) & 255; buf[3] = (w.length >> 24) & 255;
-  buf.set(w, 4);
-  buf.set(o, 4 + w.length);
+  // only the customs this scene actually uses travel with it
+  const used = new Set<number>();
+  for (let i = 0; i < world.species.length; i++) {
+    const id = world.species[i];
+    if (id >= FIRST_CUSTOM_ID) used.add(id);
+  }
+  const carried = customIds
+    .map((id, k) => ({ id, spec: customSpecs[k] }))
+    .filter((c) => used.has(c.id) && c.spec);
+  const cJson = new TextEncoder().encode(carried.length ? JSON.stringify(carried) : "");
+  const head = [0x47, 0x4c, 0x43, 0x32, ...u32(cJson.length)];
+  const buf = new Uint8Array(head.length + cJson.length + 4 + w.length + o.length);
+  buf.set(head, 0);
+  buf.set(cJson, head.length);
+  let p = head.length + cJson.length;
+  buf.set(u32(w.length), p);
+  buf.set(w, p + 4);
+  buf.set(o, p + 4 + w.length);
   return buf;
 }
+
+/** adopt the scene's custom elements, reusing an identical local one where it
+ *  exists and registering a fresh id otherwise, then rewrite the grid so the
+ *  cells point at whatever id they ended up with here */
+function adoptCustoms(json: string): void {
+  let carried: { id: number; spec: CustomSpec }[];
+  try {
+    carried = JSON.parse(json);
+  } catch {
+    return;
+  }
+  const remap = new Map<number, number>();
+  for (const c of carried) {
+    if (!c || typeof c.id !== "number" || !c.spec) continue;
+    const sig = JSON.stringify(c.spec);
+    const existing = customSpecs.findIndex((s) => JSON.stringify(s) === sig);
+    let local = existing >= 0 ? customIds[existing] : -1;
+    if (local < 0) {
+      const made = createCustomElement(c.spec);
+      if (made === null) continue; // out of slots: leave those cells as-is
+      local = made;
+    }
+    if (local !== c.id) remap.set(c.id, local);
+  }
+  if (remap.size === 0) return;
+  const sp = world.species;
+  for (let i = 0; i < sp.length; i++) {
+    const to = remap.get(sp[i]);
+    if (to !== undefined) sp[i] = to;
+  }
+}
+
 function loadAll(buf: Uint8Array): boolean {
   fighters.length = 0;
   if (buf[0] === 0x47 && buf[1] === 0x52 && buf[2] === 0x4e) {
     objects.clear();
     return world.deserialize(buf); // legacy world-only save
   }
-  const wLen = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
-  if (4 + wLen > buf.length) return false;
-  const ok = world.deserialize(buf.subarray(4, 4 + wLen));
-  if (ok) objects.deserialize(buf.subarray(4 + wLen));
+  let customJson = "";
+  let p = 0;
+  if (buf[0] === 0x47 && buf[1] === 0x4c && buf[2] === 0x43 && buf[3] === 0x32) {
+    const cLen = rd32(buf, 4);
+    if (8 + cLen > buf.length) return false;
+    if (cLen > 0) customJson = new TextDecoder().decode(buf.subarray(8, 8 + cLen));
+    p = 8 + cLen;
+  }
+  const wLen = rd32(buf, p);
+  if (p + 4 + wLen > buf.length) return false;
+  const ok = world.deserialize(buf.subarray(p + 4, p + 4 + wLen));
+  if (ok) {
+    if (customJson) adoptCustoms(customJson);
+    objects.deserialize(buf.subarray(p + 4 + wLen));
+  }
   return ok;
 }
 
