@@ -323,12 +323,21 @@ export class World {
       for (let x = 1; x < WX - 1; x++) {
         const i = r + x;
         const a = air[i];
+        // Full air surrounded by full air has nothing to exchange, and this is
+        // almost every cell in almost every scene. Bailing here skips the four
+        // edge scans below, which are the entire cost of this pass.
+        if (a === 1 && air[i - 1] === 1 && air[i + 1] === 1 &&
+            air[i - WX] === 1 && air[i + WX] === 1) continue;
         let n = a + ((air[i - 1] - a) * this.edgeOpenR(x - 1, y) +
                      (air[i + 1] - a) * this.edgeOpenR(x, y) +
                      (air[i - WX] - a) * this.edgeOpenD(x, y - 1) +
                      (air[i + WX] - a) * this.edgeOpenD(x, y)) * 0.25;
         if (x <= 1 || y <= 1 || x >= WX - 2 || y >= WY - 2) n += (1 - n) * 0.5; // outside air
-        air[i] = n < 0 ? 0 : n > 1 ? 1 : n;
+        // Snap a recovered cell to exactly full so it drops back out of the
+        // active set. Keep this threshold TIGHT: at 0.98 a depleting room
+        // recovers faster than fire can drain it and suffocation stops
+        // working altogether.
+        air[i] = n < 0 ? 0 : n > 0.9995 ? 1 : n;
       }
     }
   }
