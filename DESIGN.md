@@ -652,11 +652,36 @@
 > (periodic flood fill from the borders), which is a design, not a tweak.
 > Reverted; the shipped early-out stands.
 >
-> M4 QUEUE (still open): stepAir spread-bounding via connectivity (see
-> above), dissolved-concentration channel, engine-in-a-worker (needs
-> COOP/COEP headers for SharedArrayBuffer, or OffscreenCanvas + moving the
-> renderer across too), remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays).
+> WORKER FEASIBILITY SPIKE 8/11 — shared memory REJECTED, copy-transfer is
+> the design. Findings, so the next attempt starts from the right place:
+> (1) AssemblyScript CAN build shared memory: asconfig `sharedMemory` +
+> `maximumMemory` + `importMemory`, and it needs `enable: ["threads"]`
+> (error AS108 otherwise). The adapter must then CREATE the memory and
+> pass it as an `env.memory` import instead of reading `exports.memory`.
+> Verified: it compiles and links.
+> (2) BUT a module compiled with shared memory can ONLY accept shared
+> memory (LinkError: "mismatch in shared state of memory"). That makes
+> cross-origin isolation MANDATORY for the WASM engine, which is the
+> DEFAULT engine in production — so a header problem would take the whole
+> sim down, not just the worker.
+> (3) And isolation fights the gallery: COEP require-corp blocks the
+> cross-origin Vercel Blob scene fetches unless those responses carry CORP.
+> COEP credentialless avoids that but Safari does not support it.
+> (4) So if this is built, use COPY-TRANSFER instead: the worker owns an
+> UNSHARED engine, and after each tick copies species+shade into a spare
+> pair of buffers and transfers them (transfer is O(1); the memcpy is
+> ~0.2ms against a 7-15ms tick), with main transferring them back. No
+> headers, no isolation, works everywhere. ObjectSystem and Player must
+> move INTO the worker with it (they need synchronous per-tick grid
+> access), their positions ride along with the frame, and the QA API plus
+> every scene builder become async/batched — that is the real cost, and it
+> is a milestone, not a patch.
+> Reverted the spike; production still runs the unshared build.
+>
+> M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
+> stepAir spread-bounding via connectivity, dissolved-concentration
+> channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
+> obsoleted by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth
