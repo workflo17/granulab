@@ -872,12 +872,37 @@ export class World {
       case B.VALVE: this.doValve(i, x, y); break;
       case B.FILTER: this.doFilter(i, x, y); break;
       case B.LITMUS: this.doLitmus(i, x, y); break;
+      case B.FLOATER: this.doFloater(i, x, y, id); break;
     }
   }
 
   /** litmus indicator: sample the first pH-bearing neighbor into the shade
    *  byte (the shader renders litmus by shade as an indicator ramp), then
    *  fall like any powder */
+  /** Rigid but buoyant. It holds together like a solid (no diagonal slumping,
+   *  no dispersion) yet obeys Archimedes: it rises through anything denser and
+   *  settles through anything lighter. This is what lets an ice sheet float on
+   *  the pool it froze from instead of hanging in the air. */
+  private doFloater(i: number, x: number, y: number, id: number): void {
+    const { W, H, species } = this;
+    const d = DENSITY[id];
+    if (y + 1 < H) {
+      const below = species[i + W];
+      // sink through air and anything lighter than it
+      if (below === E.EMPTY || (BEHAVIOR[below] !== B.NONE && DENSITY[below] < d && DENSITY[below] !== 255)) {
+        this.swap(i, i + W, x, y, x, y + 1);
+        return;
+      }
+    }
+    if (y > 0) {
+      const above = species[i - W];
+      // and bob up through anything heavier: a berg rides its own meltwater
+      if (above !== E.EMPTY && DENSITY[above] > d && DENSITY[above] !== 255 && BEHAVIOR[above] !== B.NONE) {
+        this.swap(i, i - W, x, y, x, y - 1);
+      }
+    }
+  }
+
   private doLitmus(i: number, x: number, y: number): void {
     const { W, H, species } = this;
     for (let k = 0; k < 4; k++) {

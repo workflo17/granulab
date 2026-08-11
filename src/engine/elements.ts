@@ -145,6 +145,7 @@ export const B = {
   VALVE: 21, // sparked: open drop-gate for a short while, else solid
   FILTER: 22, // passes gases (light up, heavy down), blocks everything else
   LITMUS: 23, // falls like powder, samples neighbor pH into its shade byte
+  FLOATER: 24, // rigid but buoyant: settles in air, rises through denser liquid
 } as const;
 
 export interface ElementDef {
@@ -215,7 +216,7 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.SALT, name: "Salt", color: "#e8e4da", behavior: B.POWDER, density: 55, group: "REAGENTS" }),
   def({ id: E.SEAWATER, name: "Seawater", color: "#3aa0c8", behavior: B.LIQUID, density: 32, disperse: 5, hotAt: 102, hotTo: E.STEAM, coldAt: -6, coldTo: E.ICE, ph: 8 }),
   def({ id: E.MAGMA, name: "Magma", color: "#e25822", behavior: B.LIQUID, density: 40, disperse: 2, hot: true, temp0: 1150, pump: 0.08, coldAt: 350, coldTo: E.STONE }),
-  def({ id: E.ICE, name: "Ice", color: "#a8d8f0", density: 255, temp0: -25, pump: 0.05, hotAt: 2, hotTo: E.WATER }),
+  def({ id: E.ICE, name: "Ice", color: "#a8d8f0", behavior: B.FLOATER, density: 28, temp0: -25, pump: 0.05, hotAt: 2, hotTo: E.WATER }),
   def({ id: E.SNOW, name: "Snow", color: "#eef4f8", behavior: B.POWDER, density: 40, temp0: -8, pump: 0.03, hotAt: 1, hotTo: E.WATER }),
   def({ id: E.NITRO, name: "Nitro", color: "#7fae3e", behavior: B.LIQUID, density: 35, disperse: 3, flammable: 255, explodeR: 8, ignitesAt: 240 }),
   def({ id: E.BOMB, name: "Bomb", color: "#5a3038", behavior: B.POWDER, density: 60, flammable: 255, explodeR: 12, device: true }),
