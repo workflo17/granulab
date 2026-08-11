@@ -136,6 +136,7 @@ const B_DETECTOR: i32 = 20;
 const B_VALVE: i32 = 21;
 const B_FILTER: i32 = 22;
 const B_LITMUS: i32 = 23;
+const B_FLOATER: i32 = 24; // rigid but buoyant: settles in air, rises through denser liquid
 
 // ---- Rng (src/engine/rng.ts, mulberry32) -----------------------------------
 // State is a pure u32 with wrapping add — matches TS, whose next() masks with
@@ -1412,10 +1413,34 @@ function updateCell(i: i32, x: i32, y: i32, id: i32): void {
     case B_VALVE: doValve(i, x, y); break;
     case B_FILTER: doFilter(i, x, y); break;
     case B_LITMUS: doLitmus(i, x, y); break;
+    case B_FLOATER: doFloater(i, x, y, id); break;
   }
 }
 
 // ---- stage-1 UNREACHABLE behaviors: loud traps, names kept for diffing ----
+
+/** Rigid but buoyant. It holds together like a solid (no diagonal slumping,
+ *  no dispersion) yet obeys Archimedes: it rises through anything denser and
+ *  settles through anything lighter. This is what lets an ice sheet float on
+ *  the pool it froze from instead of hanging in the air. Draws no rng. */
+function doFloater(i: i32, x: i32, y: i32, id: i32): void {
+  const d = DENSITY(id);
+  if (y + 1 < H) {
+    const below = species(i + W);
+    // sink through air and anything lighter than it
+    if (below === E_EMPTY || (BEHAVIOR(below) !== 0 && DENSITY(below) < d && DENSITY(below) !== 255)) {
+      swap(i, i + W, x, y, x, y + 1);
+      return;
+    }
+  }
+  if (y > 0) {
+    const above = species(i - W);
+    // and bob up through anything heavier: a berg rides its own meltwater
+    if (above !== E_EMPTY && DENSITY(above) > d && DENSITY(above) !== 255 && BEHAVIOR(above) !== 0) {
+      swap(i, i - W, x, y, x, y - 1);
+    }
+  }
+}
 
 /** litmus indicator: sample the first pH-bearing neighbor into the shade
  *  byte (the shader renders litmus by shade as an indicator ramp), then

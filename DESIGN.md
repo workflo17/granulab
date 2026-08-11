@@ -597,11 +597,44 @@
 > because its deficit stays active and spreads; bounding that wants
 > chunk-gated activity like the thermal field, which pressure could share.
 >
-> M4 QUEUE (still open): remaining BG modes (blur/shade/aura/light/mesh/
-> track — partly obsoleted by the ambient overlays); CUSTOM ELEMENTS DO
-> NOT SURVIVE SHARING — share codes and gallery uploads serialize element
-> IDs while custom specs live in localStorage, so someone else's scene
-> loads your id 106, not theirs. Embed the specs in the save format.
+> M5l SHIPPED 8/11 — THE "DO IT ALL" BATCH (four host-side wins live, plus
+> the last realism gap):
+> (1) CUSTOM ELEMENTS NOW SURVIVE SHARING (was a real defect: saves store
+> element IDs while specs lived only in localStorage, so a shared scene
+> loaded as whatever YOUR id 106 was). Save format v2 = ["GLC2"][u32
+> customLen][specs JSON][v1 body]; only the customs the scene actually
+> uses travel. On load the scene ADOPTS them — identical local element
+> reused, else a fresh id — then the grid is rewritten to match. Verified
+> both ways: fresh browser adopts and keeps 11,800 cells; a browser whose
+> own element holds 106 puts the incoming one at 107 and remaps. v1 and
+> legacy GRN1 still load.
+> (2) UNDO, 24 deep, Ctrl+Z or the transport button. Snapshots are save
+> bytes (no new format), one per STROKE not per cell; also clear, quick-
+> load, demo loads, object placement, gallery loads.
+> (3) GALLERY THUMBNAILS + DELETE-YOUR-OWN. ~2.5KB webp from the minimap
+> sampler. SECURITY: delete auth is an HMAC DERIVED server-side from the
+> blob credential — the first draft stored the token in a public blob
+> whose URL was guessable straight from the listing, i.e. anyone could
+> delete anything. Never store the token.
+> (4) VIDEO CAPTURE: MediaRecorder on the live canvas at 30fps → .webm,
+> so clips show exactly what was on screen including hand-painting.
+> (5) ICE FLOATS — closes the last audit gap. New B.FLOATER behavior:
+> rigid (no slumping/dispersion) but Archimedean — settles through air and
+> lighter matter, rises through denser. Ice goes from immovable to density
+> 28 vs water 30 (the real 0.92 ratio). Submerged block climbs 600→556
+> toward the surface; a sheet on land still rests on the floor. SIDE
+> EFFECT worth knowing: ice is no longer a barrier() so ice-walled vessels
+> no longer hold pressure/air. Ice behavior now lives in THREE places
+> (registry data, doFloater, rupture's ice→snow) — change them together.
+> Churn bench byte-identical throughout; zoo re-baselined 7e20f1b2/
+> 2542d494. Stage-1 and stage-4 parity hashes unchanged (no ice) as the
+> control that the change touches only ice and what it touches.
+>
+> M4 QUEUE (still open): chunk-gated stepAir (a lone torch still costs
+> ~1.4ms; wants the thermal field's activity machinery, which pressure
+> could share too), dissolved-concentration channel, engine-in-a-worker,
+> remaining BG modes (blur/shade/aura/light/mesh/track — partly obsoleted
+> by the ambient overlays).
 > Run: `npm run dev` → :4870. QA API on `window.granulab`.
 
 Next-generation Powder Game: keep every recognisable Dan-Ball feature, add the depth

@@ -113,6 +113,13 @@ function buildThermal(paint: PaintFn): void {
   // inert stone pile (THERMAL=0 fast path) + a steam puff for doGas
   rect(paint, "Stone", 300, 660, 380, 699);
   rect(paint, "Steam", 400, 400, 460, 430);
+  // buoyancy (B.FLOATER): an ice block held BELOW the waterline must rise and
+  // ride on the surface. The ice is painted FIRST — paint fills empty cells
+  // only, so pouring the water first would leave nothing to submerge.
+  rect(paint, "Wall", 1040, 596, 1044, 699);
+  rect(paint, "Wall", 1200, 596, 1204, 699);
+  rect(paint, "Ice", 1100, 668, 1150, 690); // submerged block
+  rect(paint, "Water", 1045, 600, 1199, 699); // fills in around it
 }
 
 /** stage-3 reaction+fire zoo: rows FIRE and fire BURNS. Stations: salt
