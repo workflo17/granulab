@@ -2382,12 +2382,20 @@ else if (location.hash.startsWith("#cannon")) cannonScene();
 // that shipped: dialogs pinned to the corner by a CSS reset, a demo that could
 // not be reloaded, a notebook "clear" that rebuilt itself, a palette filter that
 // forgot the arrow keys. Run it with granulab.selftest().
-function selftest(): { passed: number; failed: number; failures: string[] } {
+function selftest(): { passed: number; failed: number; failures: string[]; known: string[] } {
   const failures: string[] = [];
+  const known: string[] = [];
   let passed = 0;
   const check = (name: string, cond: boolean, detail = ""): void => {
     if (cond) passed++;
     else failures.push(name + (detail ? ` — ${detail}` : ""));
+  };
+  // A defect we have found, measured and not yet fixed. It does not turn the
+  // suite red — a permanently failing suite stops being read — but it is
+  // reported every run, and the moment it starts passing the suite says so.
+  const expectFail = (name: string, cond: boolean, detail = ""): void => {
+    if (cond) failures.push(`${name} — NOW PASSES: delete the known-failure marker`);
+    else known.push(name + (detail ? ` — ${detail}` : ""));
   };
   const wasPaused = ui.state.paused;
   ui.setPaused(true);
@@ -2548,13 +2556,82 @@ function selftest(): { passed: number; failed: number; failures: string[] } {
     } catch { return false; }
   })());
 
+  // ---- the demos ---------------------------------------------------------
+  // Eight showcase scenes, each encoding dozens of hard-won fixture laws, and
+  // nothing guarded them — which is how the doomsday magazine came to be dead
+  // for days without anyone noticing. One signature outcome each: not "does it
+  // build" (it always did) but "does the thing it exists to show still happen".
+  const runDemo = (name: string, ticks: number, build: () => void): void => {
+    build();
+    for (let i = 0; i < ticks; i++) simTick();
+  };
+  const n = (name: string): number => {
+    const id = byName(name);
+    let c = 0;
+    for (let i = 0; i < world.species.length; i++) if (world.species[i] === id) c++;
+    return c;
+  };
+
+  runDemo("sandbox", 300, demoScene);
+  check("the sandbox demo settles into a full scene", world.dots > 80_000, `${world.dots} dots`);
+
+  runDemo("chem", 600, chemScene);
+  check("chem lab: the electrolysis cells evolve hydrogen", n("Hydrogen") > 50, `${n("Hydrogen")}`);
+  check("chem lab: the fizz basin makes CO2", n("CO2") > 400, `${n("CO2")}`);
+  check("chem lab: the greenhouse photosynthesises oxygen", n("Oxygen") > 400, `${n("Oxygen")}`);
+  check("chem lab: the kiln calcines lime", n("Lime") > 20, `${n("Lime")}`);
+
+  runDemo("range", 700, rangeScene);
+  check("weapons range: the thermite lights", n("Magma") > 200, `${n("Magma")} magma`);
+
+  runDemo("alchemy", 600, alchemyScene);
+  check("alchemy: the brewery ferments alcohol", n("Alcohol") > 400, `${n("Alcohol")}`);
+  check("alchemy: elephant toothpaste evolves oxygen", n("Oxygen") > 1000, `${n("Oxygen")}`);
+
+  runDemo("cryo", 600, cryoScene);
+  check("cryo works: the LN2 lake freezes ice", n("Ice") > 400, `${n("Ice")}`);
+  check("cryo works: the iodine lamp sublimes", n("Iodine gas") > 50, `${n("Iodine gas")}`);
+
+  runDemo("boiler", 500, boilerScene);
+  check("boiler room: overpressure bursts the vessels", n("Shards") > 100, `${n("Shards")} shards`);
+
+  {
+    cannonScene();
+    let peak = 0;
+    for (let i = 0; i < 900; i++) {
+      simTick();
+      for (const o of objects.list) peak = Math.max(peak, Math.hypot(o.vx, o.vy));
+    }
+    check("pressure guns: a shot is actually launched", peak > 3, `peak ${peak.toFixed(1)} c/t`);
+  }
+
+  {
+    doomScene();
+    const before = n("Gunpowder");
+    let peakFx = 0;
+    for (let i = 0; i < 900; i++) { simTick(); peakFx = Math.max(peakFx, world.fxPower); }
+    check("doomsday: the volcano erupts", n("Magma") > 60, `${n("Magma")} magma`);
+    // KNOWN FAILURE, measured 2026-08-12. The fuse train from the volcano's foot
+    // to the buried magazine stalls a few dozen cells in, so the ~t475 boom
+    // DESIGN records never happens — and it did not happen on the pre-session
+    // build either, so it is not from the liquid-flow work. Root cause not yet
+    // established: it is not oxygen (air 1.0 at the front), not cold (409°C at
+    // the front) and not the dry-ice glacier (removing it changes nothing).
+    expectFail("doomsday: the buried magazine detonates",
+      n("Gunpowder") < before * 0.5 && peakFx > 8,
+      `${before} -> ${n("Gunpowder")} gunpowder, peak blast ${Math.round(peakFx)}`);
+  }
+
   world.clear();
   objects.clear();
+  fighters.length = 0;
+  player.remove();
   ui.bind("L", E.POWDER);
   ui.setPaused(wasPaused);
-  const result = { passed, failed: failures.length, failures };
-  console.log(`[granulab-selftest] ${passed} passed, ${failures.length} failed`);
-  for (const f of failures) console.log(`  - ${f}`);
+  const result = { passed, failed: failures.length, failures, known };
+  console.log(`[granulab-selftest] ${passed} passed, ${failures.length} failed, ${known.length} known-failing`);
+  for (const f of failures) console.log(`  FAIL  ${f}`);
+  for (const k of known) console.log(`  known ${k}`);
   return result;
 }
 

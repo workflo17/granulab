@@ -1063,6 +1063,47 @@
 > (new uPulse uniform: the lift stays, the throb goes).
 > The self test grew 34 -> 44 checks covering all of it; node suite still 28.
 >
+> DEMO GATES + THE DOOMSDAY DEFECT 8/12. Stopped checking demos by dot count and
+> started asking whether their stations still FIRE. One of the eight does not.
+> DOOMSDAY IS DEAD and has been for a while: the buried magazine never goes up
+> — 1,234 gunpowder untouched after 900 ticks, peak blast 0, against the
+> "magazine boom ~t475" this file records. NOT FROM THIS SESSION'S WORK: the
+> pre-session production deployment (granulab-55s9pnzjd) shows exactly the same
+> thing, and its downward fuse burned ZERO cells where the current build burns
+> 16, so the liquid-flow change made it marginally less dead, not more.
+> WHAT IT IS NOT (each measured, not reasoned): not oxygen — air reads 1.0 at
+> the burn front; not cold — 409°C at the front, 332° ahead of it; not the
+> dry-ice glacier — deleting every dry-ice cell changes nothing. The front
+> advances a few dozen cells (342 -> ~352-360 of a 342->575 run) inside the
+> first ~100 ticks and then effectively stops. In one trace the fire cells' life
+> bytes did not decrement for 14 consecutive ticks, which can only mean doFire
+> was not running for them (a sleeping chunk); a later run showed life
+> decrementing normally, so THAT IS A LEAD, NOT A CONCLUSION. Root cause open.
+> TWO CORRECTIONS TO EARLIER CLAIMS IN THIS SAME INVESTIGATION, both from
+> trusting a measurement whose rig was wrong:
+> (1) "fuse burns 12x slower than documented" was FALSE. In a clean carved
+> 1-cell tunnel a fuse runs at 0.26 cells/tick — FASTER than the ~0.1 recorded
+> here. The slow reading came from a test that carved an open riser shaft right
+> above the ignition point, so the flame rose away instead of propagating.
+> (2) "the dry-ice glacier freezes the fuse line" was FALSE. The -57°C I read
+> was the FLOOR OF THE TEMP BYTE ENCODING ((0+0.5)/0.18-60), i.e. an all-zero
+> buffer: renderer.tempAt reads a texture the renderer only fills while it
+> DRAWS, and a non-compositing pane never draws. Force it with
+> `renderer.tempCurrent = false; renderer.refreshTemp(b => world.fillTempTex(b))`
+> before reading, or you are measuring your own instrument. Same family as the
+> rAF and CSS-transition traps.
+> DEMO GATES (the durable half): the in-page suite now runs all eight scenes and
+> asserts a signature OUTCOME each — hydrogen from the electrolysis cells, CO2
+> from the fizz basin, oxygen from the greenhouse, lime from the kiln, magma
+> from the thermite, alcohol from the brewery, ice from the LN2 lake, iodine
+> vapour, shards from the bursting boilers, and a shot leaving a pressure gun
+> above 3 c/t. 57 passed / 0 failed / 1 known-failing, ~24s to run.
+> KNOWN-FAILURE CHANNEL: expectFail() records a defect that is found, measured
+> and unfixed. It does not turn the suite red — a permanently red suite stops
+> being read — but it prints every run WITH its measurement, and if the thing
+> ever starts passing it flips to a hard FAILURE telling you to delete the
+> marker. Doom's magazine is the first entry.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
