@@ -1136,6 +1136,31 @@
 > The suite's known-failure entry is now a real passing gate: 58 checks green,
 > 0 known-failing.
 >
+> SANDBOX RESTAGED 8/12 (owner: "rework the demos to be more dramatic and showcase
+> their individual features"). Started with the front door — #demo is what the
+> intro card's "Load a demo scene" hands a first-time visitor, and it was a flat
+> heap of everything at once. Now SIX VIGNETTES along one bench, each doing a
+> single thing continuously with headroom above it: a three-step CASCADE (the
+> liquid flow filling and overtopping each step), a fan-driven DUNE, a FORGE
+> where a clone vent drips magma onto water, a glass GREENHOUSE of climbing
+> vines, a firework BATTERY, and a marble RAMP for the rigid objects — plus a
+> beaker of acid layered over lye, left stratified on purpose because the stir
+> tool is the point.
+> MEASURED after 620 ticks: 155,905 dots, vent holding 113 magma, forge making
+> 311 steam / 291 stone, battery seen launching on 116 of 500 ticks.
+> THREE FIXTURE LAWS RE-LEARNED THE HARD WAY, all of them already in this file:
+> (1) a clone primer FALLS without a ledge, and a WIDE clone block splits into
+> primed-but-blocked and open-but-unprimed — the vent only runs as a ONE-wide
+> pillar with the pool against one face and open air against the other, exactly
+> as the volcano does it; (2) FIREWORKS FALL. A 46-cell one-wide tower collapses
+> into a heap and leaves the torch lighting empty air — 0 rocket sightings in
+> 600 ticks. Short column resting on its clone, torch bracketing the top from
+> the side (the range demo's proportions): 116 sightings. (3) An oil slick added
+> purely for bulk caught and smothered the whole right-hand side in smoke —
+> every element added to a scene is a fuel decision.
+> STILL TO DO: the other seven demos. They all work and are gated by the suite,
+> so they were left alone rather than half-restaged in one pass.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

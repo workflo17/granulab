@@ -1563,39 +1563,82 @@ function demoScene(): void {
     const id = byName(name);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
   };
-  R("Wall", 40, 640, 1240, 652);
-  R("Wall", 40, 420, 52, 652);
-  R("Wall", 1228, 420, 1240, 652);
-  R("Wall", 420, 520, 620, 530);
-  R("Powder", 80, 200, 360, 380);
-  R("Water", 660, 200, 1000, 340);
-  R("Oil", 700, 120, 900, 170);
-  R("Seed", 460, 300, 580, 306);
-  R("Water", 440, 400, 600, 440);
-  R("Gas", 1050, 560, 1150, 620);
-  // M2: magma drips into the pool (stone + steam), a fan blows the dune's crest,
-  // a spark pulse travels a metal wire, salt dissolves into seawater
-  R("Magma", 980, 60, 1060, 90);
-  R("Salt", 820, 100, 860, 116);
-  R("Metal", 100, 100, 400, 104);
-  world.paint(100, 100, byName("Spark"));
+  // The front door: this is what "load a demo" gives a first-time visitor, so it
+  // is staged as six vignettes along one floor rather than a heap of everything
+  // at once. Each one does a single thing, continuously, with headroom above it
+  // so the motion is legible from across the room.
+  R("Wall", 20, 688, 1260, 704); // the bench everything stands on
+
+  // 1) THE CASCADE — a header tank spills down three steps into a basin. Shows
+  //    the liquid flow: each step fills, levels, and overtops the next.
+  R("Wall", 40, 300, 60, 470);
+  R("Wall", 40, 458, 210, 470);
+  R("Wall", 190, 470, 210, 560);
+  R("Wall", 60, 548, 210, 560);
+  R("Wall", 40, 560, 60, 660);
+  R("Wall", 40, 648, 250, 660);
+  R("Wall", 236, 560, 250, 688); // basin wall
+  R("Water", 61, 316, 189, 457);
+  R("Clone", 45, 306, 55, 316); // keeps the header tank topped up for ever
+  R("Water", 45, 318, 55, 318); // primer under the clone, on its own ledge
+
+  // 2) THE DUNE — a fan drives sand across a shelf: saltation you can watch.
   const fan = byName("Fan");
-  for (let y = 470; y <= 500; y++) for (let x = 70; x <= 78; x++) world.paint(x, y, fan, 0); // blow right
-  // M2b toys: raining cloud, bouncing superballs, birds, endless fireworks, stickman
-  R("Cloud", 150, 70, 330, 86);
-  R("Ice", 700, 616, 780, 638); // cold pole for the thermography view
-  R("Superball", 470, 120, 490, 130);
-  for (const [bx, by] of [[880, 140], [930, 170], [980, 120]]) world.paint(bx, by, byName("Bird"), 1);
-  R("Clone", 626, 626, 628, 636); // remembers fireworks, feeds the launcher
-  R("Fireworks", 630, 628, 646, 636);
-  R("Torch", 648, 630, 650, 636);
-  player.place(560, 400);
-  // rigid objects: ball bounces on the terrace, wheel rolls down the dune, box rests
-  objects.spawn("ball", 540, 200);
-  objects.spawn("wheel", 300, 100);
-  objects.spawn("box", 740, 300);
+  for (let y = 636, k = 0; y <= 664; y++, k++) {
+    for (let x = 268; x <= 278; x++) world.paint(x, y, fan, 0); // angle 0 = blow right
+  }
+  R("Sand", 288, 520, 500, 687);
+
+  // 3) THE FORGE — magma drips onto water: stone, steam and light, every second.
+  R("Wall", 520, 610, 700, 622); // the anvil the drops land on
+  R("Wall", 520, 622, 532, 688);
+  R("Wall", 688, 622, 700, 688);
+  R("Water", 533, 640, 687, 687);
+  R("Wall", 576, 312, 600, 320); // the shelf the primer pool rests on
+  R("Clone", 601, 300, 601, 311); // one cell wide: primed left, open right
+  R("Magma", 593, 300, 600, 311); // the pool that primes the whole pillar height
+
+  // 4) THE GREENHOUSE — vines climbing under glass, with birds over the top.
+  R("Glass", 740, 520, 752, 688);
+  R("Glass", 880, 520, 892, 688);
+  R("Glass", 740, 512, 892, 520);
+  R("Vine", 770, 660, 774, 687);
+  R("Vine", 810, 668, 814, 687);
+  R("Vine", 850, 654, 854, 687);
+  R("Water", 753, 600, 879, 687);
+  for (const [bx, by] of [[800, 200], [860, 260], [920, 170]]) world.paint(bx, by, byName("Bird"), 1);
+
+  // 5) THE BATTERY — a one-wide firework column lit from the TOP, so every
+  //    rocket leaves with a clear nose (a blocked nose detonates in the tube).
+  R("Wall", 930, 600, 942, 688);
+  R("Wall", 990, 600, 1002, 688);
+  R("Clone", 966, 686, 966, 687);
+  R("Fireworks", 966, 663, 966, 685);
+  R("Torch", 967, 661, 970, 665);
+
+  // 6) THE RAMP — a slope for the rigid objects, with a lip at the bottom so
+  //    the ball comes to rest in view instead of rolling off the world.
+  for (let s = 0; s <= 150; s++) {
+    R("Marble", 1040 + s, 470 + ((s * 1.4) | 0), 1046 + s, 480 + ((s * 1.4) | 0));
+  }
+  R("Wall", 1240, 620, 1252, 688);
+
+  // a beaker of acid over lye, left stratified on purpose: the stir tool is the
+  // point, and the two only meet where you make them meet
+  R("Glass", 430, 300, 442, 470);
+  R("Glass", 520, 300, 532, 470);
+  R("Glass", 430, 458, 532, 470);
+  R("Lye", 443, 400, 519, 457);
+  R("Acid", 443, 330, 519, 399);
+
+  R("Ice", 1100, 640, 1180, 687); // a cold corner for the thermography view
+  R("Powder", 60, 60, 400, 240); // a dune of loose powder overhead, ready to fall
+  player.place(620, 680);
+  objects.spawn("ball", 1060, 430);
+  objects.spawn("wheel", 320, 560);
+  objects.spawn("box", 1180, 640);
   const fighter = new Fighter();
-  fighter.place(460, 300);
+  fighter.place(660, 680);
   fighters.push(fighter);
   if (location.hash.includes("shot=")) {
     // shot harness: settle synchronously so the capture gate is reached fast
