@@ -482,6 +482,7 @@ const ui = new Ui(root, {
       ui.toast("Engine switched — reload to run on it");
     }
   },
+  onKeyPaintToggle: () => keyPaintSet(!keyPaint),
   onTuneOpen: () => pushTunablesToUi(),
   onTune: (key: string, value: number) => {
     const id = ui.state.toolL;
@@ -552,14 +553,15 @@ async function refreshGallery(): Promise<void> {
     // ones we do not have yet and let the rest fill in as they arrive
     const scenes = (j.scenes ?? []) as GalleryScene[];
     for (const sc of scenes) sc.owned = !!owned[sc.stamp];
-    ui.setGalleryScenes(scenes);
+    ui.setGalleryScenes(scenes, Number(j.total ?? scenes.length));
+    const total = Number(j.total ?? scenes.length);
     void Promise.all(scenes.slice(0, 24).map(async (sc) => {
       if (thumbCache.has(sc.stamp)) { sc.thumb = thumbCache.get(sc.stamp); return; }
       try {
         const d = await (await fetch(sc.url)).json();
         if (d.thumb) { thumbCache.set(sc.stamp, d.thumb); sc.thumb = d.thumb; }
       } catch { /* a missing thumbnail is not worth failing the list over */ }
-    })).then(() => ui.setGalleryScenes(scenes));
+    })).then(() => ui.setGalleryScenes(scenes, total));
   } catch {
     ui.setGalleryScenes(null);
   }
@@ -942,13 +944,17 @@ canvas.addEventListener("pointerdown", (e) => {
       const f = new Fighter();
       f.place(c.x, c.y);
       fighters.push(f);
+    } else {
+      ui.toast("Eight fighters is the limit.", "err");
     }
     return;
   }
   if (tool === E.BALL || tool === E.BOX || tool === E.WHEEL || tool === E.BUBBLE) {
     pushUndo();
     armUndo();
+    const had = objects.list.length;
     objects.spawnId(tool, c.x, c.y);
+    if (objects.list.length === had) ui.toast("That is all the objects the scene will hold (64).", "err");
     return;
   }
   painting = tool;
@@ -1207,6 +1213,59 @@ function panBy(dx: number, dy: number): void {
   renderer.pan.y += dy;
 }
 
+// ---- keyboard painting ----------------------------------------------------
+// Everything else on the page could be driven from the keyboard; the canvas —
+// the whole point of the app — could not be touched without a pointer. K puts a
+// cursor on the grid that the brush preview and the cell probe both follow, so
+// the same nib, size and shape apply. Arrows move it, Enter dabs, Escape leaves.
+let keyPaint = false;
+let keyCursor = { x: GRID_W >> 1, y: GRID_H >> 1 };
+
+function keyPaintSet(on: boolean): void {
+  keyPaint = on;
+  ui.setKeyPaint(on);
+  if (on) {
+    keyCursor = hoverCell
+      ? { x: Math.max(0, Math.min(GRID_W - 1, hoverCell.x)), y: Math.max(0, Math.min(GRID_H - 1, hoverCell.y)) }
+      : keyCursor;
+    hoverCell = { ...keyCursor };
+    probe(hoverCell);
+    canvas.focus();
+    ui.toast("Keyboard painting on — arrows move, Enter paints, Esc leaves");
+  } else {
+    ui.toast("Keyboard painting off");
+  }
+}
+
+/** move the keyboard cursor; Shift is a fine step, plain is a coarse one */
+function keyCursorMove(dx: number, dy: number, fine: boolean): void {
+  const step = fine ? 1 : Math.max(2, ui.state.pen);
+  keyCursor.x = Math.max(0, Math.min(GRID_W - 1, keyCursor.x + dx * step));
+  keyCursor.y = Math.max(0, Math.min(GRID_H - 1, keyCursor.y + dy * step));
+  hoverCell = { ...keyCursor };
+  probe(hoverCell);
+}
+
+function keyPaintDab(side: "L" | "R"): void {
+  const tool = side === "L" ? ui.state.toolL : ui.state.toolR;
+  if (tool === TOOL_PLAYER) { pushUndo(); armUndo(); player.place(keyCursor.x, keyCursor.y); return; }
+  if (tool === TOOL_FIGHTER) {
+    if (fighters.length < 8) { const f = new Fighter(); f.place(keyCursor.x, keyCursor.y); fighters.push(f); }
+    else ui.toast("Eight fighters is the limit.", "err");
+    return;
+  }
+  pushUndo();
+  if (tool === E.BALL || tool === E.BOX || tool === E.WHEEL || tool === E.BUBBLE) {
+    const had = objects.list.length;
+    objects.spawnId(tool, keyCursor.x, keyCursor.y);
+    if (objects.list.length === had) ui.toast("That is all the objects the scene will hold (64).", "err");
+  } else {
+    if (tool === E.EMPTY) objects.removeAt(keyCursor.x, keyCursor.y);
+    stamp(keyCursor.x, keyCursor.y, ui.state.pen, tool);
+  }
+  armUndo();
+}
+
 // ---- keyboard ------------------------------------------------------------
 // Space does double duty: held it is the pan modifier, tapped it is play/pause.
 // Which one it was is only knowable on release, so the toggle waits for keyup
@@ -1219,6 +1278,23 @@ window.addEventListener("keydown", (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement ||
       e.target instanceof HTMLTextAreaElement) return;
   const arrow = e.code === "ArrowLeft" || e.code === "ArrowRight" || e.code === "ArrowUp" || e.code === "ArrowDown";
+  // keyboard painting owns the arrows while it is on, so the stickman and the
+  // view keep theirs the rest of the time
+  if (keyPaint) {
+    if (arrow) {
+      e.preventDefault();
+      keyCursorMove(e.code === "ArrowRight" ? 1 : e.code === "ArrowLeft" ? -1 : 0,
+        e.code === "ArrowDown" ? 1 : e.code === "ArrowUp" ? -1 : 0, e.shiftKey);
+      return;
+    }
+    if (e.code === "Enter" || e.code === "NumpadEnter") {
+      e.preventDefault();
+      keyPaintDab(e.shiftKey ? "R" : "L");
+      return;
+    }
+    if (e.code === "Escape") { e.preventDefault(); keyPaintSet(false); return; }
+  }
+  if (e.key === "k" || e.key === "K") { e.preventDefault(); keyPaintSet(!keyPaint); return; }
   if (arrow && e.shiftKey) {
     // shift+arrows drive the view; bare arrows still drive the stickman
     e.preventDefault();

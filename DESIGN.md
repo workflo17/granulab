@@ -852,6 +852,40 @@
 > live counts. The rx-glow BG mode was NOT affected — glowPtr was already
 > exported, so that field has been live all along.
 >
+> AUDIT TAIL 8/11 — the four gaps left over from the last pass, all shipped:
+> (1) GALLERY HARDENED. It was a public endpoint writing to paid blob storage
+> with no ceiling of any kind, and its listing made ONE un-paged list() call, so
+> everything past 1,000 scenes silently did not exist. Now: listAll() walks
+> every cursor page (capped at 20 pages so a pathological store cannot hang the
+> function), the response is the newest 200 plus a `total` so the dialog can say
+> "newest 200 of N" instead of implying it has everything, uploads are capped at
+> 10 a rolling minute and the store at 600 scenes. The rate limit needs NO state
+> of its own — the stamp is base36 milliseconds, so every upload time is already
+> in the pathnames. It refuses at capacity rather than evicting: deleting
+> someone else's scene to make room for yours is not a policy anyone agreed to.
+> The 500 path stopped echoing the raw error to the caller. The Vite dev twin
+> mirrors both ceilings so a 429 is reachable in dev — VERIFIED there: 10
+> accepted, 11th through 13th refused 429 with the retry message, listing shape
+> carries total/shown.
+> (2) THE OBJECT AND FIGHTER CAPS SPOKE UP. 64 objects and 8 fighters were both
+> hard limits that dropped the spawn in silence.
+> (3) NOTEBOOK CLEAR + SORT (latest / most reactions / by name). BUG FOUND
+> WRITING IT: the refresh guard was `if (count === prev && rows.has(k)) continue`
+> — so baselining nbPrev dropped the rows and the very next refresh rebuilt
+> every one of them. The `rows.has(k)` half was the bug; `count === prev` alone
+> is right for both the first row and a cleared page. Clear baselines rather
+> than zeroing, because the engine's tallies are cumulative and shared with the
+> rx-glow field.
+> (4) KEYBOARD PAINTING (K). Every other control could be driven from the
+> keyboard; the canvas — the whole point — could not be touched without a
+> pointer. K puts a cursor on the grid that the brush preview and the cell probe
+> both follow, so the same nib, size and shape apply: arrows move a nib-width at
+> a time, shift+arrows one cell, Enter dabs, shift+Enter dabs the right-hand
+> element, Esc leaves. The mode owns the arrows while it is on and hands them
+> back to the stickman when it is off. VERIFIED: r6 round nib paints 113 cells
+> (pi*36) exactly at the cursor, with an undo snapshot; shift+Enter erases it;
+> the stickman never moves during it.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

@@ -29,6 +29,7 @@ export interface UiHooks {
   onPasteCode(): void;
   onCodeEntered(code: string): void;
   onSetting(key: "cvd" | "minimap" | "engine", value: boolean | string): void;
+  onKeyPaintToggle(): void;
   onTuneOpen(): void;
   onTune(key: string, value: number): void;
   onTuneReset(all: boolean): void;
@@ -164,6 +165,7 @@ export class Ui {
               <option value="rect">pen: rect</option>
             </select>
             <button id="tunebtn" title="Tune the held element's physics (T)">tune</button>
+            <button id="kbdbtn" aria-pressed="false" title="Paint with the keyboard (K)">kbd</button>
           </div>
           <div class="grp" role="group" aria-label="View">
             <select id="bg" title="Background render mode" aria-label="Background render mode">
@@ -273,6 +275,7 @@ export class Ui {
             <button value="upload" class="primary">upload current scene</button>
           </div>
           <div class="gal-status" id="galstatus" aria-live="polite" hidden></div>
+          <div class="gal-count" id="galcount" aria-live="polite"></div>
           <div id="gallist"><div class="gal-empty">loading…</div></div>
           <menu>
             <button value="close" formnovalidate>close</button>
@@ -371,6 +374,7 @@ export class Ui {
                 <div><dt><kbd>[</kbd><kbd>]</kbd></dt><dd>pen size one at a time</dd></div>
                 <div><dt><kbd>/</kbd></dt><dd>filter the elements</dd></div>
                 <div><dt><kbd>T</kbd></dt><dd>tune the held element</dd></div>
+                <div><dt><kbd>K</kbd></dt><dd>paint with the keyboard</dd></div>
                 <div><dt><kbd>?</kbd></dt><dd>this panel</dd></div>
               </dl>
               <h3>View</h3>
@@ -378,6 +382,13 @@ export class Ui {
                 <div><dt><kbd>+</kbd><kbd>-</kbd></dt><dd>zoom in and out</dd></div>
                 <div><dt><kbd>F</kbd></dt><dd>fit the whole grid</dd></div>
                 <div><dt><kbd>⇧</kbd>+arrows</dt><dd>pan the view</dd></div>
+              </dl>
+              <h3>Keyboard painting <kbd>K</kbd></h3>
+              <dl>
+                <div><dt>arrows</dt><dd>move the cursor a nib at a time</dd></div>
+                <div><dt><kbd>⇧</kbd>+arrows</dt><dd>move one cell</dd></div>
+                <div><dt><kbd>Enter</kbd></dt><dd>paint a dab</dd></div>
+                <div><dt><kbd>⇧</kbd><kbd>Enter</kbd></dt><dd>dab the right-hand element</dd></div>
               </dl>
               <h3>Pointer</h3>
               <dl>
@@ -418,7 +429,17 @@ export class Ui {
         </div>
         <div id="toasts" role="status" aria-live="polite"></div>
         <div id="notebook" hidden>
-          <div class="nb-head"><span>LAB NOTEBOOK</span><button id="nbclose" title="Close the notebook" aria-label="Close the notebook">×</button></div>
+          <div class="nb-head">
+            <span>LAB NOTEBOOK</span>
+            <select id="nbsort" aria-label="Sort the notebook" title="Sort the notebook">
+              <option value="recent" selected>latest first</option>
+              <option value="count">most reactions</option>
+              <option value="name">by name</option>
+            </select>
+            <button id="nbclear" title="Start a fresh page — only reactions from now on"
+                    aria-label="Start a fresh page">clear</button>
+            <button id="nbclose" title="Close the notebook" aria-label="Close the notebook">×</button>
+          </div>
           <div id="nbrows"><div class="nb-empty">No reactions witnessed yet — mix something.</div></div>
         </div>
       </main>
@@ -651,6 +672,8 @@ export class Ui {
     this.tuneRows = root.querySelector<HTMLElement>("#tunerows")!;
     this.tuneName = root.querySelector<HTMLElement>("#tunename")!;
     root.querySelector("#tunebtn")!.addEventListener("click", () => this.openTune());
+    this.kbdBtn = root.querySelector<HTMLButtonElement>("#kbdbtn")!;
+    this.kbdBtn.addEventListener("click", () => hooks.onKeyPaintToggle());
     root.querySelector("#tunereset")!.addEventListener("click", () => hooks.onTuneReset(false));
     root.querySelector("#tuneresetall")!.addEventListener("click", () => hooks.onTuneReset(true));
     this.codeDialog = root.querySelector<HTMLDialogElement>("#codedialog")!;
@@ -675,6 +698,11 @@ export class Ui {
       }
     });
     root.querySelector("#nbclose")!.addEventListener("click", () => { this.notebook.hidden = true; });
+    root.querySelector("#nbclear")!.addEventListener("click", () => this.clearNotebook());
+    root.querySelector<HTMLSelectElement>("#nbsort")!.addEventListener("change", (e) => {
+      this.nbSort = (e.target as HTMLSelectElement).value as typeof this.nbSort;
+      this.sortNotebook();
+    });
     this.undoBtn = root.querySelector<HTMLButtonElement>("#undo")!;
     this.undoBtn.addEventListener("click", () => hooks.onUndo());
     this.redoBtn = root.querySelector<HTMLButtonElement>("#redo")!;
@@ -701,6 +729,7 @@ export class Ui {
     this.galDialog = root.querySelector<HTMLDialogElement>("#gallerydialog")!;
     this.galList = root.querySelector<HTMLElement>("#gallist")!;
     this.galStatus = root.querySelector<HTMLElement>("#galstatus")!;
+    this.galCount = root.querySelector<HTMLElement>("#galcount")!;
     this.galName = root.querySelector<HTMLInputElement>("#galname")!;
     this.galAuthor = root.querySelector<HTMLInputElement>("#galauthor")!;
     root.querySelector<HTMLFormElement>("#galleryform")!.addEventListener("submit", (e) => {
@@ -1042,19 +1071,53 @@ export class Ui {
   /** Lab Notebook: diffs the REACT_COUNT table on the stats cadence; new
    *  pairs become entries (flashing if never seen in this browser before) */
   private nbPrev = new Uint32Array(N_IDS * N_IDS);
-  private nbRows = new Map<number, { row: HTMLElement; count: HTMLElement; rate: HTMLElement; last: number }>();
+  private nbRows = new Map<number, { row: HTMLElement; count: HTMLElement; rate: HTMLElement; last: number; total: number; name: string; seq: number }>();
   private nbSeen = new Set<string>(JSON.parse(localStorage.getItem("granulab-seen-rx") ?? "[]"));
   private notebook!: HTMLElement;
   private nbRowsHost!: HTMLElement;
   private nbBtn!: HTMLButtonElement;
   private nbFresh = 0;
 
+  private nbSort: "recent" | "count" | "name" = "recent";
+  /** live tallies per row, so sorting does not have to re-read the table */
+  private nbSeq = 0;
+
+  /** Start a fresh page. The engine's tallies are cumulative and shared with
+   *  the rx-glow field, so this baselines the view rather than zeroing them:
+   *  what you have already witnessed goes away, and only new pairs come back. */
+  private clearNotebook(): void {
+    for (let k = 0; k < REACT_COUNT.length; k++) this.nbPrev[k] = REACT_COUNT[k];
+    this.nbRows.clear();
+    this.nbFresh = 0;
+    this.nbBtn.classList.remove("attn");
+    this.nbBtn.textContent = "log";
+    const empty = document.createElement("div");
+    empty.className = "nb-empty";
+    empty.textContent = "Fresh page — nothing witnessed since you cleared it.";
+    this.nbRowsHost.replaceChildren(empty);
+  }
+
+  private sortNotebook(): void {
+    const rows = [...this.nbRows.values()];
+    if (rows.length === 0) return;
+    const key = this.nbSort;
+    rows.sort((a, b) =>
+      key === "count" ? b.total - a.total
+        : key === "name" ? a.name.localeCompare(b.name)
+          : b.seq - a.seq);
+    this.nbRowsHost.replaceChildren(...rows.map((r) => r.row));
+  }
+
   refreshNotebook(dtMs: number): void {
+    let touched = false;
     for (let k = 0; k < REACT_COUNT.length; k++) {
       const c = REACT_COUNT[k];
       if (c === 0) continue;
       const prev = this.nbPrev[k];
-      if (c === prev && this.nbRows.has(k)) continue;
+      // nothing new for this pair. The "and we already have a row" this used to
+      // carry made `clear` useless: baselining nbPrev drops the rows, and the
+      // very next refresh built every one of them straight back.
+      if (c === prev) continue;
       this.nbPrev[k] = c;
       const a = (k / N_IDS) | 0;
       const b = k % N_IDS;
@@ -1084,6 +1147,9 @@ export class Ui {
           count: row.querySelector<HTMLElement>(".nb-count")!,
           rate: row.querySelector<HTMLElement>(".nb-rate")!,
           last: 0,
+          total: 0,
+          name: title,
+          seq: ++this.nbSeq,
         };
         this.nbRows.set(k, entry);
         if (this.notebook.hidden) {
@@ -1092,17 +1158,22 @@ export class Ui {
           this.nbBtn.textContent = `log ${this.nbFresh}`;
         }
       }
+      entry.total = c;
       entry.count.textContent = c.toLocaleString();
       const perSec = ((c - entry.last) / dtMs) * 1000;
       entry.last = c;
       entry.rate.textContent = perSec > 0.5 ? `${perSec.toFixed(0)}/s` : "";
+      touched = true;
     }
+    // a non-default order has to be re-applied when a row's tally moves
+    if (touched && this.nbSort !== "recent") this.sortNotebook();
   }
 
   // ---- scene gallery -----------------------------------------------------
   private galDialog!: HTMLDialogElement;
   private galList!: HTMLElement;
   private galStatus!: HTMLElement;
+  private galCount!: HTMLElement;
   private galName!: HTMLInputElement;
   private galAuthor!: HTMLInputElement;
 
@@ -1126,15 +1197,20 @@ export class Ui {
 
   /** render the gallery listing; null = fetch failed. Community strings go in
    *  via textContent only — never innerHTML. */
-  setGalleryScenes(scenes: GalleryScene[] | null): void {
+  setGalleryScenes(scenes: GalleryScene[] | null, total = 0): void {
     if (scenes === null) {
       this.galList.replaceChildren(this.galNote("gallery unreachable — try again later"));
       return;
     }
     if (scenes.length === 0) {
       this.galList.replaceChildren(this.galNote("no scenes yet — upload the first one"));
+      this.galCount.textContent = "";
       return;
     }
+    // the endpoint walks the whole store but returns a fixed page, so say what
+    // fraction is on screen rather than implying this is everything
+    this.galCount.textContent = total > scenes.length
+      ? `newest ${scenes.length} of ${total}` : `${scenes.length} scene${scenes.length === 1 ? "" : "s"}`;
     const rows = scenes.map((s) => {
       const row = document.createElement("div");
       row.className = "gal-row";
@@ -1205,6 +1281,14 @@ export class Ui {
         if (sw) sw.dataset.tag = on ? name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() : "";
       }
     }
+  }
+
+  // ---- keyboard painting -------------------------------------------------
+  private kbdBtn!: HTMLButtonElement;
+
+  setKeyPaint(on: boolean): void {
+    this.kbdBtn.classList.toggle("on", on);
+    this.kbdBtn.setAttribute("aria-pressed", String(on));
   }
 
   // ---- element tuning ----------------------------------------------------

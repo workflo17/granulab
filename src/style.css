@@ -804,3 +804,27 @@ kbd {
   footer > span:nth-child(1) { display: none; }
   #probe .what { min-width: 8ch; }
 }
+
+/* notebook header controls */
+#notebook .nb-head { gap: 6px; }
+#notebook .nb-head span { flex: 1; }
+#notebook .nb-head select {
+  font-size: 10px;
+  padding: 2px 4px;
+  background: #1d2026;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  color: var(--text);
+  max-width: 86px;
+}
+#nbclear {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  background: none;
+  color: var(--dim);
+}
+#nbclear:hover { color: var(--text); }
+.gal-count { font-size: 10px; color: var(--dim); margin-bottom: 6px; }
+#kbdbtn.on { border-color: var(--accent-l); color: var(--accent-l); }

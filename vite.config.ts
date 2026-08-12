@@ -63,7 +63,8 @@ function galleryDev(): Plugin {
               return { id: f, stamp: parts[0] ?? "", name: name || "untitled", author, created: st.mtimeMs, size: st.size, url: "/api/gallery/scene/" + f };
             })
             .sort((a, z) => z.created - a.created);
-          res.end(JSON.stringify({ scenes }));
+          // same shape the real handler returns, so the UI QAs honestly here
+          res.end(JSON.stringify({ scenes: scenes.slice(0, 200), total: scenes.length, shown: Math.min(200, scenes.length) }));
           return;
         }
         if (req.method === "POST") {
@@ -81,7 +82,24 @@ function galleryDev(): Plugin {
                 return;
               }
               fs.mkdirSync(dir, { recursive: true });
-              const stamp = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+              // mirror the production ceilings so a 429 is reachable in dev
+              const now = Date.now();
+              const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+              if (files.length >= 600) {
+                res.statusCode = 507;
+                res.end('{"error":"the gallery is full — nothing new can be uploaded right now"}');
+                return;
+              }
+              const recent = files.filter((f) => {
+                const t = parseInt(f.split(".")[0] ?? "", 36);
+                return Number.isFinite(t) && now - t < 60_000;
+              }).length;
+              if (recent >= 10) {
+                res.statusCode = 429;
+                res.end('{"error":"too many uploads in the last minute — try again shortly"}');
+                return;
+              }
+              const stamp = now.toString(36) + Math.random().toString(36).slice(2, 6);
               const id = `${stamp}.${b64u(name)}.${b64u(author) || "0"}.json`;
               const thumb = typeof j.thumb === "string" && j.thumb.startsWith("data:image/") ? j.thumb : "";
               fs.writeFileSync(path.join(dir, id), JSON.stringify({ name, author, code, thumb, created: Date.now() }));
