@@ -181,8 +181,13 @@ export class Renderer {
   pan = { x: 0, y: 0 };
   zoom = 1;
   mode = 0;
+  /** live, so toggling the OS setting takes effect without a reload */
+  private reduceMotion = false;
 
   constructor(private canvas: HTMLCanvasElement, gridW: number, gridH: number) {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    this.reduceMotion = mq.matches;
+    mq.addEventListener("change", (e) => { this.reduceMotion = e.matches; });
     this.gridW = gridW;
     this.gridH = gridH;
     this.windW = gridW >> 2;
@@ -255,6 +260,26 @@ export class Renderer {
     return tex;
   }
 
+  /** true when tempBuf holds this frame's field (the shader modes that sample
+   *  it refill it every draw; the others leave it stale) */
+  tempCurrent = false;
+
+  /** refill the temperature buffer for a probe read in a BG mode that does not
+   *  already sample it. Cheap in the common case: modes 0/1/5 fill it anyway. */
+  refreshTemp(fill: (buf: Uint8Array) => void): void {
+    if (this.tempCurrent) return;
+    fill(this.tempBuf);
+    this.tempCurrent = true;
+  }
+
+  /** °C under a sim cell, decoded from the same byte field the thermography
+   *  shader reads, so it needs no engine surface of its own (~5.6° per step) */
+  tempAt(cellX: number, cellY: number): number {
+    const x = Math.max(0, Math.min(this.tempW - 1, cellX >> 1));
+    const y = Math.max(0, Math.min(this.tempH - 1, cellY >> 1));
+    return (this.tempBuf[y * this.tempW + x] + 0.5) / 0.18 - 60; // bucket centre
+  }
+
   /** re-upload the palette after registering custom elements */
   refreshPalette(): void {
     this.gl.uniform3fv(this.uni.uPalette, PALETTE);
@@ -319,8 +344,10 @@ export class Renderer {
       gl.bindTexture(gl.TEXTURE_2D, this.texWind);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.windW, this.windH, gl.RG, gl.UNSIGNED_BYTE, this.windBuf);
     }
+    this.tempCurrent = false;
     if (this.mode <= 1 || this.mode === 5) {
       fillTemp(this.tempBuf);
+      this.tempCurrent = true;
       gl.activeTexture(gl.TEXTURE3);
       gl.bindTexture(gl.TEXTURE_2D, this.texTemp);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.tempW, this.tempH, gl.RED, gl.UNSIGNED_BYTE, this.tempBuf);
@@ -332,8 +359,10 @@ export class Renderer {
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.windW, this.windH, gl.RED, gl.UNSIGNED_BYTE, this.glowBuf);
     }
     gl.uniform2f(this.uni.uCanvas, canvas.width, canvas.height);
-    // blast feedback: white-hot flash and a decaying screen shake
-    const shake = Math.min(13, fxPower * 0.32);
+    // blast feedback: white-hot flash and a decaying screen shake. Camera shake
+    // is the one effect here that can make somebody ill, so it goes when the OS
+    // says no motion; the flash stays, since it carries the same information.
+    const shake = this.reduceMotion ? 0 : Math.min(13, fxPower * 0.32);
     const sx = shake > 0.3 ? (Math.random() * 2 - 1) * shake : 0;
     const sy = shake > 0.3 ? (Math.random() * 2 - 1) * shake : 0;
     gl.uniform1f(this.uni.uFlash, Math.min(1, fxPower / 34));

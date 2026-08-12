@@ -242,6 +242,7 @@ function toggleRecording(): boolean {
 // back. Snapshots are the same bytes as a save, so this costs no new format.
 const UNDO_MAX = 24;
 const undoStack: Uint8Array[] = [];
+const redoStack: Uint8Array[] = [];
 let undoArmed = true; // one snapshot per stroke, not per painted cell
 
 function pushUndo(): void {
@@ -249,19 +250,25 @@ function pushUndo(): void {
   undoArmed = false;
   undoStack.push(saveAll());
   if (undoStack.length > UNDO_MAX) undoStack.shift();
-  ui.setUndoDepth(undoStack.length);
+  redoStack.length = 0; // a fresh edit abandons the branch you undid away from
+  ui.setHistory(undoStack.length, redoStack.length);
 }
 /** call when a stroke/action finishes so the next one snapshots again */
 function armUndo(): void {
   undoArmed = true;
 }
-function undo(): boolean {
-  const snap = undoStack.pop();
-  ui.setUndoDepth(undoStack.length);
-  if (!snap) return false;
+/** step the history one way; redo is just the same ring run backwards */
+function stepHistory(from: Uint8Array[], to: Uint8Array[]): boolean {
+  const snap = from.pop();
+  if (!snap) { ui.setHistory(undoStack.length, redoStack.length); return false; }
+  to.push(saveAll());
+  if (to.length > UNDO_MAX) to.shift();
   loadAll(snap);
+  ui.setHistory(undoStack.length, redoStack.length);
   return true;
 }
+const undo = (): boolean => stepHistory(undoStack, redoStack);
+const redo = (): boolean => stepHistory(redoStack, undoStack);
 
 const fileInput = document.createElement("input");
 fileInput.type = "file";
@@ -274,11 +281,49 @@ fileInput.addEventListener("change", async () => {
   fileInput.value = "";
 });
 
+// ---- save slots ----------------------------------------------------------
+// One quicksave was fine while a scene took a minute to build. Builders keep
+// several going, so six named slots live in localStorage, each with the same
+// thumbnail the gallery uses.
+const SLOT_KEY = "granulab-slots";
+const SLOT_COUNT = 6;
+type Slot = { name: string; when: number; data: string; thumb?: string } | null;
+
+function readSlots(): Slot[] {
+  let slots: Slot[];
+  try {
+    slots = JSON.parse(localStorage.getItem(SLOT_KEY) ?? "[]");
+  } catch {
+    slots = [];
+  }
+  if (!Array.isArray(slots)) slots = [];
+  slots.length = SLOT_COUNT;
+  for (let i = 0; i < SLOT_COUNT; i++) if (!slots[i]?.data) slots[i] = null;
+  // carry the old single quicksave into slot 1 rather than orphaning it
+  const quick = localStorage.getItem(QUICK_KEY);
+  if (quick && !slots.some((s) => s)) slots[0] = { name: "quicksave", when: Date.now(), data: quick };
+  return slots;
+}
+
+function writeSlots(slots: Slot[]): void {
+  try {
+    localStorage.setItem(SLOT_KEY, JSON.stringify(slots));
+  } catch {
+    alert("This browser is out of local storage. Delete a slot and try again.");
+  }
+  pushSlotsToUi(slots);
+}
+
+function pushSlotsToUi(slots: Slot[]): void {
+  ui.setSlots(slots.map((s) => (s ? { name: s.name, when: s.when, size: s.data.length, thumb: s.thumb } : null)));
+}
+
 let renderer: Renderer;
 const ui = new Ui(root, {
   onStep: () => { ui.setPaused(true); stepOnce(); },
   onClear: () => { pushUndo(); armUndo(); world.clear(); player.remove(); objects.clear(); fighters.length = 0; },
   onUndo: () => { if (!undo()) console.log("[granulab] nothing to undo"); },
+  onRedo: () => { if (!redo()) console.log("[granulab] nothing to redo"); },
   onRecord: () => {
     if (!recordingSupported()) {
       alert("This browser can't record the canvas.");
@@ -288,10 +333,22 @@ const ui = new Ui(root, {
   },
   onFit: () => renderer.fit(),
   onBgMode: (m: number) => { renderer.mode = m; },
-  onSave: () => localStorage.setItem(QUICK_KEY, toB64(saveAll())),
-  onLoad: () => {
-    const b64 = localStorage.getItem(QUICK_KEY);
-    if (b64) { pushUndo(); armUndo(); loadAll(fromB64(b64)); }
+  onSlotSave: (i: number, name: string) => {
+    const slots = readSlots();
+    slots[i] = { name, when: Date.now(), data: toB64(saveAll()), thumb: sceneThumb() };
+    writeSlots(slots);
+  },
+  onSlotLoad: (i: number) => {
+    const slot = readSlots()[i];
+    if (!slot) return;
+    pushUndo();
+    armUndo();
+    loadAll(fromB64(slot.data));
+  },
+  onSlotDelete: (i: number) => {
+    const slots = readSlots();
+    slots[i] = null;
+    writeSlots(slots);
   },
   onExport: () => {
     const blob = new Blob([saveAll() as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" });
@@ -453,6 +510,10 @@ function createCustomElement(spec: CustomSpec): number | null {
 const canvas = document.getElementById("dish") as HTMLCanvasElement;
 renderer = new Renderer(canvas, GRID_W, GRID_H);
 ui.setGalleryAuthor(localStorage.getItem(AUTHOR_KEY) ?? "");
+pushSlotsToUi(readSlots());
+// a first-time visitor meets a blank grid and 106 elements; say the three
+// things that get them painting, once, and never again
+if (!localStorage.getItem("granulab-intro") && location.hash === "") ui.showIntro();
 for (const id of customIds) ui.addElementButton(id); // persisted customs
 const bgHash = location.hash.match(/bg=(\d)/); // shot harness can pick a BG mode
 if (bgHash) renderer.mode = parseInt(bgHash[1]);
@@ -494,15 +555,31 @@ function drawMinimap(): void {
   miniCtx.putImageData(miniImg, 0, 0);
 }
 
+// ---- brush preview -------------------------------------------------------
+// The pen carries five nib shapes and a size from 1 to 48, and a crosshair
+// showed none of it — you found out what a dab covered by committing it. This
+// 2D layer traces the exact footprint of the next dab on top of the glass.
+const nibCanvas = document.createElement("canvas");
+nibCanvas.id = "nibcanvas";
+canvas.parentElement!.appendChild(nibCanvas);
+const nibCtx = nibCanvas.getContext("2d")!;
+let nibDirty: { x: number; y: number; w: number; h: number } | null = null;
+let hoverCell: { x: number; y: number } | null = null;
+
 // ---- canvas sizing -------------------------------------------------------
+let viewDpr = 1; // device px per CSS px, so overlay strokes keep their weight
 function resize(): void {
   const dpr = window.devicePixelRatio || 1;
+  viewDpr = dpr;
   const rect = canvas.getBoundingClientRect();
   const w = Math.round(rect.width * dpr);
   const h = Math.round(rect.height * dpr);
   if (canvas.width !== w || canvas.height !== h) {
     canvas.width = w;
     canvas.height = h;
+    nibCanvas.width = w;
+    nibCanvas.height = h;
+    nibDirty = null;
     renderer.fit();
   }
 }
@@ -571,6 +648,7 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   const tool = e.button === 2 ? ui.state.toolR : ui.state.toolL;
   const c = renderer.toCell(px.x, px.y);
+  hoverCell = c;
   if (tool === TOOL_PLAYER) {
     pushUndo();
     armUndo();
@@ -602,7 +680,7 @@ canvas.addEventListener("pointerdown", (e) => {
 canvas.addEventListener("pointermove", (e) => {
   const px = toCanvasPx(e);
   const c = renderer.toCell(px.x, px.y);
-  ui.setPos(c.x >= 0 && c.x < GRID_W && c.y >= 0 && c.y < GRID_H ? c.x : -1, c.y);
+  probe(c);
   if (panning) {
     renderer.pan.x = panStart.x + (px.x - panStart.px);
     renderer.pan.y = panStart.y + (px.y - panStart.py);
@@ -618,14 +696,18 @@ canvas.addEventListener("pointermove", (e) => {
     stampLine(lastCell.x, lastCell.y, c.x, c.y, ui.state.pen, painting);
     lastCell = c;
   }
-  lastHover = c;
+  hoverCell = c;
 });
-let lastHover: { x: number; y: number } | null = null;
+canvas.addEventListener("pointerleave", () => {
+  // a stroke keeps its anchor: pointer capture goes on delivering moves off the
+  // canvas, and the release still has to commit a line/rect from somewhere
+  if (painting < 0 && !panning) { hoverCell = null; probe(null); }
+});
 canvas.addEventListener("pointerup", () => {
   // line/rect pens stamp on release, from the press cell to the release cell
-  if (painting >= 0 && lastCell && lastHover && ui.state.penMode !== "free") {
+  if (painting >= 0 && lastCell && hoverCell && ui.state.penMode !== "free") {
     const a = lastCell;
-    const b = lastHover;
+    const b = hoverCell;
     const ddx = b.x - a.x;
     const ddy = b.y - a.y;
     if (ddx * ddx + ddy * ddy >= 4) {
@@ -650,6 +732,154 @@ canvas.addEventListener("pointerup", () => {
 });
 canvas.addEventListener("pointercancel", () => { painting = -1; lastCell = null; panning = false; });
 
+// ---- cell probe ----------------------------------------------------------
+// Temperature, breathable air, overpressure and pH are computed for every cell
+// and could only ever be seen as full-screen shaders. Read them out for the one
+// cell the pointer is on. Temperature comes from the renderer's byte field so
+// the readout needs no engine surface of its own.
+let tempFilledAt = 0;
+function probe(c: { x: number; y: number } | null): void {
+  if (!c || c.x < 0 || c.y < 0 || c.x >= GRID_W || c.y >= GRID_H) { ui.setProbe(null); return; }
+  // modes 0/1/5 refill the field every frame anyway; the rest would otherwise
+  // pay a full-field pass per pointermove, so cap those at ~12 Hz
+  if (!renderer.tempCurrent && performance.now() - tempFilledAt > 80) {
+    tempFilledAt = performance.now();
+    renderer.refreshTemp((buf) => world.fillTempTex(buf));
+  }
+  ui.setProbe({
+    x: c.x, y: c.y,
+    id: world.species[c.y * GRID_W + c.x],
+    temp: renderer.tempAt(c.x, c.y),
+    air: world.airAt(c.x, c.y),
+    press: world.pressAt(c.x, c.y),
+  });
+}
+
+// ---- brush preview drawing -----------------------------------------------
+// Rigid objects stamp a fixed footprint (mirrors KIND_R in engine/objects.ts).
+// Seeing it before you drop it is what stops a ball being placed in a bore too
+// narrow to ever let it move.
+const OBJ_R: Record<number, number> = { [E.BALL]: 7, [E.BOX]: 8, [E.WHEEL]: 9, [E.BUBBLE]: 4 };
+
+function nibInk(tool: number): string {
+  if (tool === TOOL_PLAYER) return "#ffe94a";
+  if (tool === TOOL_FIGHTER) return "#c05ac0";
+  if (tool === E.EMPTY) return "#e7e9ee"; // erase has no colour of its own
+  return ELEMENTS[tool]?.color ?? "#e7e9ee";
+}
+
+/** trace one dab's silhouette — the same predicate stamp() fills with */
+function traceNib(cx: number, cy: number, r: number, z: number, shape: string): void {
+  const R = (r + 0.5) * z; // the dab spans cells -r..+r inclusive
+  switch (shape) {
+    case "square":
+      nibCtx.rect(cx - R, cy - R, R * 2, R * 2);
+      break;
+    case "diamond":
+      nibCtx.moveTo(cx, cy - R);
+      nibCtx.lineTo(cx + R, cy);
+      nibCtx.lineTo(cx, cy + R);
+      nibCtx.lineTo(cx - R, cy);
+      nibCtx.closePath();
+      break;
+    case "ring": {
+      nibCtx.arc(cx, cy, R, 0, Math.PI * 2);
+      const inner = (r - 2.5) * z;
+      if (inner > 1) { nibCtx.moveTo(cx + inner, cy); nibCtx.arc(cx, cy, inner, 0, Math.PI * 2); }
+      break;
+    }
+    default:
+      nibCtx.arc(cx, cy, R, 0, Math.PI * 2);
+  }
+}
+
+function drawBrushPreview(): void {
+  if (nibDirty) {
+    nibCtx.clearRect(nibDirty.x, nibDirty.y, nibDirty.w, nibDirty.h);
+    nibDirty = null;
+  }
+  if (!hoverCell || panning) return;
+  const { x: hx, y: hy } = hoverCell;
+  if (hx < -64 || hy < -64 || hx > GRID_W + 64 || hy > GRID_H + 64) return;
+  const tool = painting >= 0 ? painting : ui.state.toolL;
+  const z = renderer.zoom;
+  const s = viewDpr;
+  const px = (cx: number): number => renderer.pan.x + (cx + 0.5) * z;
+  const py = (cy: number): number => renderer.pan.y + (cy + 0.5) * z;
+  const x = px(hx);
+  const y = py(hy);
+  const ink = nibInk(tool);
+  const objR = OBJ_R[tool];
+  const shape = objR !== undefined ? "round" : ui.state.penShape;
+  const r = objR ?? (tool === TOOL_PLAYER || tool === TOOL_FIGHTER ? 2 : ui.state.pen);
+  const mode = objR !== undefined || tool === TOOL_PLAYER || tool === TOOL_FIGHTER ? "free" : ui.state.penMode;
+  const dragging = painting >= 0 && lastCell !== null && mode !== "free";
+
+  let x0 = x, y0 = y, x1 = x, y1 = y;
+  nibCtx.save();
+  nibCtx.lineJoin = "round";
+  nibCtx.beginPath();
+  if (dragging && mode === "rect") {
+    // rect fills cell-by-cell at 1-cell resolution — the pen size does not
+    // apply, so the preview is the exact span between the two corners
+    const ax = px(Math.min(lastCell!.x, hx)) - z / 2;
+    const ay = py(Math.min(lastCell!.y, hy)) - z / 2;
+    const bx = px(Math.max(lastCell!.x, hx)) + z / 2;
+    const by = py(Math.max(lastCell!.y, hy)) + z / 2;
+    nibCtx.rect(ax, ay, bx - ax, by - ay);
+    x0 = ax; y0 = ay; x1 = bx; y1 = by;
+  } else {
+    traceNib(x, y, r, z, shape);
+    const R = (r + 0.5) * z;
+    x0 = x - R; y0 = y - R; x1 = x + R; y1 = y + R;
+    if (dragging) {
+      traceNib(px(lastCell!.x), py(lastCell!.y), r, z, shape);
+      x0 = Math.min(x0, px(lastCell!.x) - R); y0 = Math.min(y0, py(lastCell!.y) - R);
+      x1 = Math.max(x1, px(lastCell!.x) + R); y1 = Math.max(y1, py(lastCell!.y) + R);
+    }
+  }
+  nibCtx.globalAlpha = 0.12;
+  nibCtx.fillStyle = ink;
+  nibCtx.fill("evenodd");
+  nibCtx.globalAlpha = 1;
+  nibCtx.setLineDash(shape === "spray" ? [5 * s, 5 * s] : []);
+  nibCtx.strokeStyle = "rgba(0,0,0,0.72)"; // legible over ice, glass and flash
+  nibCtx.lineWidth = 3.4 * s;
+  nibCtx.stroke();
+  nibCtx.strokeStyle = ink;
+  nibCtx.lineWidth = 1.4 * s;
+  nibCtx.stroke();
+  nibCtx.setLineDash([]);
+  if (dragging && mode === "line") {
+    nibCtx.beginPath();
+    nibCtx.moveTo(px(lastCell!.x), py(lastCell!.y));
+    nibCtx.lineTo(x, y);
+    nibCtx.strokeStyle = "rgba(0,0,0,0.72)";
+    nibCtx.lineWidth = 3 * s;
+    nibCtx.stroke();
+    nibCtx.strokeStyle = ink;
+    nibCtx.lineWidth = 1 * s;
+    nibCtx.stroke();
+  }
+  // a big nib loses its centre; a small one is its own centre mark
+  if ((r + 0.5) * z > 7 * s && !dragging) {
+    const arm = 3.5 * s;
+    nibCtx.beginPath();
+    nibCtx.moveTo(x - arm, y); nibCtx.lineTo(x + arm, y);
+    nibCtx.moveTo(x, y - arm); nibCtx.lineTo(x, y + arm);
+    nibCtx.strokeStyle = ink;
+    nibCtx.lineWidth = 1 * s;
+    nibCtx.stroke();
+  }
+  nibCtx.restore();
+  const pad = 4 * s;
+  const cx0 = Math.max(0, Math.floor(x0 - pad));
+  const cy0 = Math.max(0, Math.floor(y0 - pad));
+  const cx1 = Math.min(nibCanvas.width, Math.ceil(x1 + pad));
+  const cy1 = Math.min(nibCanvas.height, Math.ceil(y1 + pad));
+  if (cx1 > cx0 && cy1 > cy0) nibDirty = { x: cx0, y: cy0, w: cx1 - cx0, h: cy1 - cy0 };
+}
+
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const px = toCanvasPx(e);
@@ -662,11 +892,14 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "ArrowLeft") { keys.left = true; e.preventDefault(); }
   else if (e.code === "ArrowRight") { keys.right = true; e.preventDefault(); }
   else if (e.code === "ArrowUp") { keys.up = true; e.preventDefault(); }
-  else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { e.preventDefault(); undo(); }
+  else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+  else if ((e.ctrlKey || e.metaKey) && e.code === "KeyY") { e.preventDefault(); redo(); }
+  else if (e.key === "?" || e.code === "F1") { e.preventDefault(); ui.openHelp(); }
   else if (e.code === "Space") { e.preventDefault(); ui.setPaused(!ui.state.paused); }
   else if (e.code === "Enter") { ui.setPaused(true); stepOnce(); }
   else if (e.key >= "1" && e.key <= "9") ui.setPen([1, 2, 4, 6, 8, 12, 16, 24, 32][parseInt(e.key) - 1]);
   else if (e.key === "0") ui.setPen(48);
+  else if (e.key === "/") { e.preventDefault(); ui.focusFilter(); }
 });
 window.addEventListener("keyup", (e) => {
   if (e.code === "ArrowLeft") keys.left = false;
@@ -718,6 +951,7 @@ function frame(now: number): void {
     (buf) => world.fillGlowTex(buf),
     now / 1000, world.fxPower, overlays,
   );
+  drawBrushPreview();
   if (!selfChecked && world.frame > 30) {
     selfChecked = true;
     const gl = canvas.getContext("webgl2")!;
@@ -743,6 +977,7 @@ function frame(now: number): void {
     ui.setStats(fpsEma, tickEma, world.dots, world.activeChunkCount());
     if (recorder) ui.setRecording(true, (performance.now() - recStart) / 1000);
     ui.refreshNotebook(statTimer);
+    probe(hoverCell); // the fields keep moving even when the pointer does not
     statTimer = 0;
   }
   requestAnimationFrame(frame);
@@ -1595,7 +1830,10 @@ window.granulab = {
   code: sceneCode,
   loadCode: loadSceneCode,
   undo,
+  redo,
   undoDepth: () => undoStack.length,
+  redoDepth: () => redoStack.length,
+  slots: readSlots,
   record: toggleRecording,
   recording: () => !!recorder,
   galleryList: () => fetch("/api/gallery").then((r) => r.json()),
@@ -1613,6 +1851,11 @@ window.granulab = {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
   },
   tick: (n = 1) => { for (let i = 0; i < n; i++) simTick(); },
+  // rAF is throttled whenever the pane is not displayed, so QA drives the two
+  // frame-side jobs synchronously the same way tick() drives the sim
+  resize,
+  drawPreview: drawBrushPreview,
+  hover: () => hoverCell,
   pause: (p: boolean) => ui.setPaused(p),
   count: (name: string) => {
     const id = byName(name);

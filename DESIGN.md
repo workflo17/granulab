@@ -678,6 +678,75 @@
 > is a milestone, not a patch.
 > Reverted the spike; production still runs the unshared build.
 >
+> INTERFACE PASS 8/11 (owner ask: UI/UX upgrade; engine untouched — no src/engine,
+> asm or parity edits, so every bench hash and all seven gates stand where M5j
+> left them):
+> (1) LIVE BRUSH PREVIEW. A 2D overlay canvas (#nibcanvas, z-index 1 under the
+> minimap) traces the exact footprint of the next dab in the held element's
+> colour: round/square/diamond/ring as real geometry, spray dashed because it
+> scatters, a centre cross once the nib is bigger than the cursor, and the
+> pending line or rect while a line/rect stroke is being dragged. Rigid-object
+> tools preview their true radius (ball 7 / box 8 / wheel 9 / bubble 4, mirrored
+> host-side from KIND_R) — which is the "bore under ~16 cells wedges the shot"
+> lesson made visible before you drop it. Redraw is dirty-rect only.
+> VERIFIED by pixel probe: r=20 span 43px against an expected 41 + stroke, the
+> square inks its corner (alpha 31 = the 12% wash) where the diamond and disc
+> read 0, the ring's hole is empty where the disc's is filled, the stroke RGB
+> equals the held element's swatch exactly, rect preview spans the 201×201 =
+> 40,401 cells the release then paints, and nothing is painted while dragging.
+> (2) CELL PROBE in the status bar. Element, temperature, O₂, overpressure and
+> pH for the cell under the pointer — the four fields that could previously only
+> be seen as full-screen shaders. Temperature is decoded from the renderer's
+> byte field (bucket centre, ~5.6° steps) rather than a new engine surface, so
+> WasmWorld needs no tempAt; modes 0/1/5 already fill that buffer every frame
+> and the other modes refill at most 12 Hz. VERIFIED against engine values:
+> lye pH 13, water pH 7, magma 1148°, ambient 20.6°, a torch sealed in a wall
+> room 51° / O₂ 78% while open air holds 100%, and press 7.2 against a raw
+> pressAt of 7.23 in the #boiler scene.
+> (3) ELEMENT FILTER + RECENT RAIL. "/" or the sticky box at the top of the
+> palette filters by element name OR rail name ("metals" → the 10 metals),
+> folds empty rails away, counts matches, and Esc clears then blurs. A RECENT
+> rail keeps the last 8 bound elements MRU-ordered in localStorage
+> (granulab-recent) — an id can now own two buttons, so `buttons` is a
+> Map<number, HTMLButtonElement[]> and selection marking walks both.
+> (4) TRANSPORT REGROUPED: five hairline-separated clusters (Run / Edit / Pen /
+> View / Scene), 20 controls down to 14 on the face, with files, share codes,
+> slots, gallery and video folded into a "scene ▾" menu (outside-click and Esc
+> close it, Esc returns focus to the trigger). Recording keeps a visible stop
+> button with its elapsed clock on the face — a capture you cannot see is one
+> you forget to stop. Fits 1024px: the wordmark goes at 1240, then the selects
+> ellipsis at 1150.
+> (5) REDO, paired with undo on the same 24-deep ring (Ctrl+Shift+Z / Ctrl+Y);
+> a fresh edit drops the abandoned branch. VERIFIED bit-exact by grid hash
+> across undo→undo→redo→redo, by button and by key.
+> (6) SIX NAMED SAVE SLOTS (granulab-slots) with minimap thumbnails, replacing
+> the single quicksave, which migrates into slot 1 rather than being orphaned.
+> Round-trip verified exact at 211,451 dots including a rigid object.
+> (7) CONTROLS PANEL behind "?" / F1, and a first-run card that names the three
+> things that get someone painting and offers to load a demo (granulab-intro).
+> A11Y PASS (Vercel Web Interface Guidelines). Fixed: every dialog was pinned to
+> the top-left because `* { margin: 0 }` kills the UA's `margin: auto` — a bug
+> since M4; --dim raised #7d828a → #868c95 so the whole chrome clears 4.5:1
+> (worst case now 5.25); the focus ring moved off --accent-l to a fixed --focus
+> (#e7e9ee), because holding Charcoal made the accent #33302c and the ring
+> invisible; a skip link ahead of the 110-button palette; h1/h2/h3 hierarchy;
+> aria-labelledby on all four dialogs; aria-labels on the reaction-row selects,
+> gallery inputs and every × button; aria-pressed on palette buttons; confirm
+> before either destructive delete (slot and gallery upload); prefers-reduced-
+> motion now also kills the blast SCREEN SHAKE in renderer.ts (the flash stays —
+> same information, no vestibular cost); local-time dates via Intl instead of
+> toISOString, which dated an 11pm save as tomorrow; the reagent card is no
+> longer aria-live (it rewrote 30 rows per click); touch-action, overscroll
+> containment, tabular-nums, translate="no" on element names, theme-color.
+> ACCEPTED DEVIATIONS: lowercase control labels (the instrument voice beats the
+> guideline's Title Case), no list virtualisation for the palette (110 tiny
+> buttons, and the filter is the real fix), ISO-ish date shape.
+> QA NOTE (new, and it cost the first probe attempt): a Browser pane that is not
+> displayed composites nothing, so ResizeObserver never fires and the canvas
+> stays 0×0 — window.granulab now exposes `resize` and `drawPreview` so QA can
+> drive the two frame-side jobs synchronously, exactly the way `tick(n)` already
+> drives the sim.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

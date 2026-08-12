@@ -6,9 +6,11 @@
   --well: #0b0d10;
   --hairline: #262a31;
   --text: #c9ccd1;
-  --dim: #7d828a;
+  --dim: #868c95;
   --accent-l: #cfb47c; /* left-held element color, set from JS */
   --accent-r: #3a4049; /* right-held element color, set from JS */
+  --focus: #e7e9ee; /* fixed: an accent-coloured ring vanishes on dark elements */
+  color-scheme: dark;
   --mono: "Cascadia Code", "JetBrains Mono", Consolas, ui-monospace, monospace;
 }
 
@@ -39,12 +41,13 @@ header {
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 14px;
+  gap: 12px;
+  padding: 0 12px;
   background: var(--chassis);
   border-bottom: 1px solid var(--hairline);
 }
 .wordmark {
+  flex: none;
   font-weight: 700;
   letter-spacing: 0.22em;
   font-size: 14px;
@@ -56,7 +59,47 @@ header {
   letter-spacing: 0.08em;
   color: var(--dim);
 }
-.transport { display: flex; gap: 6px; align-items: center; }
+/* the transport reads as clusters of related controls, hairline-separated the
+   way the panels on a bench instrument are, instead of one undifferentiated row */
+.transport { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.transport .grp {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding-right: 10px;
+  border-right: 1px solid var(--hairline);
+}
+.transport .grp:last-child { padding-right: 0; border-right: none; }
+#helpbtn { padding: 5px 9px; font-weight: 700; }
+
+/* scene menu: the jobs you reach for once a session, not once a minute */
+.menuwrap { position: relative; }
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 190px;
+  padding: 4px;
+  background: var(--chassis);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.menu[hidden] { display: none; }
+.menu button {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  text-align: left;
+  padding: 6px 8px;
+  width: 100%;
+}
+.menu button:hover { background: #262a31; }
+.menu hr { border: none; border-top: 1px solid var(--hairline); margin: 4px 2px; }
 button {
   font-family: var(--mono);
   font-size: 12px;
@@ -66,11 +109,41 @@ button {
   border-radius: 4px;
   padding: 5px 10px;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
 button:hover { background: #262a31; }
-button:focus-visible { outline: 2px solid var(--accent-l); outline-offset: 1px; }
+button:disabled { color: var(--dim); cursor: default; }
+button:disabled:hover { background: #1d2026; }
+/* one focus ring, on everything that can take focus */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 button.primary { border-color: var(--accent-l); }
 select, input[type="range"] { font-family: var(--mono); accent-color: var(--accent-l); }
+
+/* tabbing in lands on this before the 110-button palette */
+.skip {
+  position: absolute;
+  left: 8px;
+  top: -60px;
+  z-index: 40;
+  padding: 7px 12px;
+  color: var(--text);
+  background: var(--chassis);
+  border: 1px solid var(--focus);
+  border-radius: 4px;
+  font-size: 12px;
+  text-decoration: none;
+  transition: top 140ms ease-out;
+}
+.skip:focus { top: 8px; }
 select {
   background: #1d2026;
   color: var(--text);
@@ -78,8 +151,25 @@ select {
   border-radius: 4px;
   padding: 4px 6px;
 }
-.pen { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--dim); }
+.pen { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--dim); flex: none; }
+.pen input { width: 108px; }
 .pen output { color: var(--text); min-width: 2ch; text-align: right; }
+
+/* the chassis sheds its lettering before it sheds a control */
+@media (max-width: 1400px) { .wordmark small { display: none; } }
+@media (max-width: 1240px) {
+  .wordmark { display: none; }
+  .transport { gap: 8px; }
+  .transport .grp { padding-right: 8px; }
+}
+@media (max-width: 1150px) {
+  /* the dropdowns give up the tail of their labels before a control is dropped */
+  .transport select { max-width: 98px; text-overflow: ellipsis; }
+}
+@media (max-width: 1080px) {
+  .pen input { width: 72px; }
+  header { gap: 8px; padding: 0 8px; }
+}
 
 /* ---- ink wells: what each mouse button holds ---- */
 .wells { display: flex; gap: 8px; align-items: center; }
@@ -102,17 +192,48 @@ select {
 /* ---- element palette ---- */
 aside {
   grid-area: side;
+  overscroll-behavior: contain;
   background: var(--chassis);
   border-right: 1px solid var(--hairline);
   padding: 10px 8px;
   overflow-y: auto;
 }
+/* filter box: 106 elements over nine rails is a lot of scrolling to type past */
+.railsearch {
+  position: sticky;
+  top: -10px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -10px -8px 2px;
+  padding: 10px 8px 8px;
+  background: var(--chassis);
+  border-bottom: 1px solid var(--hairline);
+}
+.railsearch input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+.railsearch input::placeholder { color: var(--dim); }
+.railsearch input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+#elcount { font-size: 10px; color: var(--dim); flex: none; font-variant-numeric: tabular-nums; }
+#elcount.none { color: #e8705a; }
+#norail { font-size: 11px; color: var(--dim); padding: 10px 4px; line-height: 1.5; }
 .rail-label {
   font-size: 9px;
   letter-spacing: 0.18em;
   color: var(--dim);
   margin: 8px 4px 6px;
 }
+.rail-label[hidden], .palette[hidden], .el[hidden] { display: none; }
 .palette { display: grid; grid-template-columns: 1fr; gap: 5px; }
 .el {
   display: flex;
@@ -127,6 +248,7 @@ aside {
   color: var(--text);
   text-align: left;
 }
+.el { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .el .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .el:hover { background: #262a31; }
 .el.sel-l { border-color: var(--accent-l); box-shadow: 0 0 0 1px var(--accent-l) inset; }
@@ -138,8 +260,13 @@ main {
   position: relative;
   background: var(--well);
 }
-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: none; }
+canvas:focus-visible { outline: none; }
+header, aside, footer { user-select: none; }
+/* the pen's footprint, traced on the glass over the sim */
+#nibcanvas { z-index: 1; pointer-events: none; }
 #minimap {
+  z-index: 2;
   inset: auto 10px 10px auto;
   width: 160px;
   height: 90px;
@@ -153,6 +280,12 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 
 /* ---- element maker dialog ---- */
 dialog {
+  /* the `* { margin: 0 }` reset kills the UA's `margin: auto`, which is what
+     centres a modal — every dialog had been pinned to the top-left corner */
+  margin: auto;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  overscroll-behavior: contain;
   background: var(--chassis);
   color: var(--text);
   border: 1px solid var(--hairline);
@@ -163,7 +296,7 @@ dialog {
   max-width: 440px;
 }
 dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
-dialog h3 { font-size: 13px; letter-spacing: 0.12em; margin-bottom: 12px; }
+dialog h2 { font-size: 13px; letter-spacing: 0.12em; margin-bottom: 12px; }
 dialog .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 dialog label { display: flex; flex-direction: column; gap: 3px; color: var(--dim); }
 dialog input, dialog select {
@@ -231,6 +364,7 @@ dialog .rxdel {
 #gallist {
   max-height: 300px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--hairline);
   border-radius: 4px;
   background: var(--well);
@@ -274,6 +408,7 @@ dialog .rxdel {
 /* ---- reagent datasheet card ---- */
 #reagent {
   position: absolute;
+  z-index: 3;
   left: 10px;
   bottom: 10px;
   max-width: 270px;
@@ -292,8 +427,8 @@ dialog .rxdel {
   color: var(--text);
 }
 #reagent .rx { display: flex; gap: 6px; align-items: baseline; color: var(--dim); }
-#reagent .rx .arr { opacity: 0.6; }
-#reagent .rx.flags { margin-top: 3px; font-style: italic; opacity: 0.85; }
+#reagent .rx .arr { color: var(--dim); }
+#reagent .rx.flags { margin-top: 3px; font-style: italic; }
 #reagent .rsw {
   display: inline-block;
   width: 7px;
@@ -306,6 +441,8 @@ dialog .rxdel {
 /* ---- lab notebook ---- */
 #notebook {
   position: absolute;
+  z-index: 4;
+  overscroll-behavior: contain;
   right: 10px;
   top: 10px;
   width: 250px;
@@ -373,9 +510,129 @@ footer {
   font-size: 11px;
   color: var(--dim);
 }
-footer b { color: var(--text); font-weight: 400; }
+footer b { color: var(--text); font-weight: 400; font-variant-numeric: tabular-nums; }
 footer .spacer { margin-left: auto; }
+
+/* ---- cell probe: the per-cell fields, read out one cell at a time ---- */
+/* CODE-PROBE-CHANNELS (stale-guard literal) */
+#probe {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  font-variant-numeric: tabular-nums;
+}
+#probe .ch { color: var(--dim); white-space: nowrap; }
+#probe .pos { min-width: 8ch; color: var(--text); }
+#probe .what { display: inline-flex; align-items: center; gap: 5px; min-width: 12ch; }
+#probe .what b { color: var(--text); font-weight: 400; }
+#probe .what b.void { color: var(--dim); }
+#probe .rsw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+#probe #s-temp { min-width: 6ch; }
+#probe #s-air { min-width: 9ch; }
+#probe .hot { color: #e8935a; }
+#probe .cold { color: #6ab8e8; }
+#probe .warn { color: #e8705a; }
+
+/* ---- save slots ---- */
+#slotdialog { width: 430px; }
+.dlg-note { color: var(--dim); font-size: 11px; line-height: 1.6; margin-bottom: 10px; }
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.slot:last-child { border-bottom: none; }
+.slot-thumb {
+  width: 40px;
+  height: 23px;
+  flex: none;
+  object-fit: cover;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: var(--well);
+  image-rendering: pixelated;
+}
+.slot-name { flex: 1; min-width: 0; }
+.slot.empty .slot-name { color: var(--dim); }
+.slot-meta { color: var(--dim); font-size: 10px; white-space: nowrap; flex: none; }
+.slot button { padding: 3px 8px; font-size: 11px; flex: none; }
+.slot-del { color: var(--dim); }
+.slot-del:hover { color: #e8705a; border-color: #e8705a; }
+
+/* ---- controls panel ---- */
+#helpdialog { width: 520px; max-width: calc(100vw - 32px); }
+.keycols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 22px; }
+.keycols h3 {
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+  margin: 10px 0 5px;
+}
+.keycols section > h3:first-child { margin-top: 0; }
+.keycols dl > div { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.keycols dt { flex: 0 0 92px; color: var(--dim); font-size: 10px; }
+.keycols dd { color: var(--text); font-size: 11px; }
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin-right: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  background: #1d2026;
+  border: 1px solid var(--hairline);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+}
+
+/* ---- first-run card ---- */
+#intro {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  width: min(430px, calc(100% - 32px));
+  padding: 16px 18px;
+  background: color-mix(in srgb, var(--chassis) 96%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  animation: introin 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+#intro h2 { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 10px; }
+#intro ul { list-style: none; }
+#intro li {
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.85;
+  padding-left: 14px;
+  position: relative;
+}
+#intro li::before { content: "·"; position: absolute; left: 3px; color: var(--accent-l); }
+#intro .introbtns { display: flex; gap: 6px; margin-top: 14px; }
+#intro .introbtns button:last-child { margin-left: auto; }
+@keyframes introin {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 8px)); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #intro { animation: none; }
+}
 
 /* thermochemistry tags on the reagent card */
 #reagent .exo { color: #e8935a; font-style: normal; }
 #reagent .endo { color: #6ab8e8; font-style: normal; }
+
+/* Motion: the blast shake and every transition come off for anyone who asked
+   the OS not to be moved. The renderer reads the same query for screen shake. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
