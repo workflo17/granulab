@@ -274,9 +274,10 @@ header, aside, footer { user-select: none; }
   background: var(--well);
   image-rendering: pixelated;
   opacity: 0.92;
-  cursor: default;
-  pointer-events: none;
+  cursor: crosshair;
+  touch-action: none;
 }
+#minimap:hover { opacity: 1; border-color: var(--focus); }
 
 /* ---- element maker dialog ---- */
 dialog {
@@ -308,6 +309,20 @@ dialog input, dialog select {
   font-family: var(--mono);
 }
 dialog input[type="color"] { padding: 1px; height: 26px; }
+dialog textarea {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 6px 8px;
+  resize: vertical;
+  word-break: break-all;
+}
+#codedialog { width: 430px; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 dialog .rxhead {
   display: flex;
@@ -412,6 +427,11 @@ dialog .rxdel {
   left: 10px;
   bottom: 10px;
   max-width: 270px;
+  /* Acid alone is 12 reaction rows; without a cap a busy element runs off the
+     top of the canvas on a short window */
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: color-mix(in srgb, var(--chassis) 90%, transparent);
   border: 1px solid var(--hairline);
   border-radius: 6px;
@@ -436,6 +456,38 @@ dialog .rxdel {
   border-radius: 2px;
   margin-right: 4px;
   vertical-align: baseline;
+}
+
+/* ---- toasts: outcomes in the corner of the glass, not in a modal ---- */
+#toasts {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.toast {
+  padding: 7px 14px;
+  font-size: 11px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--chassis) 96%, transparent);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--accent-l);
+  border-radius: 5px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  animation: toastin 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 60ch;
+}
+.toast.err { border-left-color: #e8705a; }
+.toast.out { opacity: 0; transform: translateY(4px); transition: opacity 200ms, transform 200ms; }
+@keyframes toastin {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* ---- lab notebook ---- */
@@ -534,7 +586,9 @@ footer .spacer { margin-left: auto; }
 #probe .warn { color: #e8705a; }
 
 /* ---- save slots ---- */
-#slotdialog { width: 430px; }
+#slotdialog, #customdialog { width: 430px; }
+.rsw.big { width: 14px; height: 14px; flex: none; border-radius: 3px; }
+.el.manage .sw { border: 1px solid var(--dim); }
 .dlg-note { color: var(--dim); font-size: 11px; line-height: 1.6; margin-bottom: 10px; }
 .slot {
   display: flex;
@@ -635,4 +689,118 @@ kbd {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- element tuning panel ---- */
+#tunedialog { width: 420px; }
+#tunerows { display: flex; flex-direction: column; gap: 2px; }
+.tune-row {
+  display: grid;
+  grid-template-columns: 96px 1fr 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+.tune-row:hover { background: #1d2026; }
+.tune-label { color: var(--dim); font-size: 11px; }
+.tune-val {
+  color: var(--text);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tune-row.tuned .tune-label { color: var(--text); }
+.tune-row.tuned .tune-val { color: var(--accent-l); }
+#tunedialog menu { justify-content: space-between; }
+#tunereset, #tuneresetall { font-size: 11px; }
+#tunetitle span { color: var(--accent-l); }
+
+/* ---- settings ---- */
+#setdialog { width: 420px; }
+.setrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--hairline);
+  cursor: pointer;
+}
+.setrow:last-of-type { border-bottom: none; }
+.setrow input[type="checkbox"] { margin-top: 2px; accent-color: var(--accent-l); flex: none; }
+.setrow b { font-weight: 400; color: var(--text); display: block; }
+.setrow em { font-style: normal; color: var(--dim); font-size: 11px; line-height: 1.5; display: block; }
+.setrow .setsel { flex: 1; }
+.setrow select { flex: none; align-self: center; }
+
+/* ---- colour-blind assist: the swatch carries a letter, not just a hue ---- */
+.cvd .el .sw {
+  position: relative;
+  width: 16px;
+  height: 14px;
+  border-radius: 2px;
+}
+.cvd .el .sw::after {
+  content: attr(data-tag);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0b0d10;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.75);
+}
+
+/* ---- small screens ---- */
+/* Below 900px a 148px column and a 20-control row do not fit: the palette
+   becomes a slide-over, the transport scrolls sideways instead of dropping
+   controls, and the wells give up their text for their colour dots. */
+#railtoggle { display: none; flex: none; }
+@media (max-width: 900px) {
+  #app {
+    /* minmax(0,…) or the column takes its min-content width from the toolbar
+       and the whole page ends up 1370px wide inside a 375px viewport */
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "top" "canvas" "status";
+  }
+  #railtoggle { display: block; }
+  aside {
+    position: fixed;
+    z-index: 30;
+    top: 44px;
+    bottom: 28px;
+    left: -200px;
+    width: 190px;
+    transition: left 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 8px 0 26px rgba(0, 0, 0, 0.55);
+  }
+  aside.open { left: 0; }
+  /* the whole bar swipes rather than any control being dropped from it */
+  header {
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  header::-webkit-scrollbar { display: none; }
+  .transport { min-width: 0; }
+  .transport .grp { flex: none; }
+  .wells { flex: none; }
+  .well b, .well { font-size: 10px; }
+  .pen { margin-left: 8px; }
+  .pen input { width: 64px; }
+  #minimap { width: 104px; height: 59px; }
+  #reagent { max-width: 190px; max-height: 34vh; font-size: 10px; }
+  #notebook { width: 190px; }
+  footer { gap: 10px; font-size: 10px; }
+  /* the probe keeps the two channels that need a pointer to be worth reading */
+  footer > span:nth-child(2), footer > span:nth-child(4), #s-air, #s-press { display: none; }
+}
+@media (max-width: 560px) {
+  .wells .well.right { display: none; }
+  footer > span:nth-child(1) { display: none; }
+  #probe .what { min-width: 8ch; }
 }

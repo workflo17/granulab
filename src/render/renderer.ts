@@ -30,11 +30,22 @@ uniform float uZoom;
 uniform float uTime;
 uniform int uMode; // 0 none, 1 air, 2 gray, 3 dark, 4 silhouette, 5 thermography
 uniform float uFlash; // blast flash 0..1
+uniform int uCvd;  // colour-blind assist: swap the pH ramp for a CVD-safe one
 in vec2 vUv;
 out vec4 frag;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// CVD-safe pH ramp: blue -> teal -> yellow, monotonic in luminance, so it
+// survives deuteranopia and protanopia where red-green does not
+vec3 phColorCvd(float p) {
+  vec3 c = mix(vec3(0.10, 0.12, 0.42), vec3(0.10, 0.42, 0.62), smoothstep(0.0, 4.0, p));
+  c = mix(c, vec3(0.20, 0.66, 0.62), smoothstep(4.0, 7.0, p));
+  c = mix(c, vec3(0.62, 0.80, 0.36), smoothstep(7.0, 10.0, p));
+  c = mix(c, vec3(0.98, 0.92, 0.32), smoothstep(10.0, 14.0, p));
+  return c;
 }
 
 // universal indicator ramp: pH 0 red -> 7 green -> 14 violet
@@ -85,7 +96,7 @@ void main() {
       vec3 g8 = uPalette[id] * 0.18 + vec3(0.05);
       frag = vec4(vec3(dot(g8, vec3(0.299, 0.587, 0.114))), 1.0);
     } else {
-      frag = vec4(phColor(p8), 1.0);
+      frag = vec4(uCvd == 1 ? phColorCvd(p8) : phColor(p8), 1.0);
     }
     return;
   }
@@ -131,7 +142,7 @@ void main() {
   uint shade = texelFetch(uShade, cell, 0).r;
   vec3 col = uPalette[id] * (0.82 + float(shade) * 0.0014);
   if (id == ${E.LITMUS}u && shade <= 14u) {
-    col = phColor(float(shade)); // stained indicator paper
+    col = uCvd == 1 ? phColorCvd(float(shade)) : phColor(float(shade)); // stained indicator paper
   }
   if (id == ${E.FIRE}u) {
     float f = hash(vec2(cell) + floor(uTime * 20.0));
@@ -181,6 +192,8 @@ export class Renderer {
   pan = { x: 0, y: 0 };
   zoom = 1;
   mode = 0;
+  /** colour-blind assist: a pH ramp that does not rely on red vs green */
+  cvd = false;
   /** live, so toggling the OS setting takes effect without a reload */
   private reduceMotion = false;
 
@@ -227,7 +240,7 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uPh", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode", "uFlash"]) {
+    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uPh", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode", "uFlash", "uCvd"]) {
       this.uni[name] = gl.getUniformLocation(prog, name);
     }
     gl.uniform3fv(this.uni.uPalette, PALETTE);
@@ -370,6 +383,7 @@ export class Renderer {
     gl.uniform1f(this.uni.uZoom, this.zoom);
     gl.uniform1f(this.uni.uTime, timeSec);
     gl.uniform1i(this.uni.uMode, this.mode);
+    gl.uniform1i(this.uni.uCvd, this.cvd ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }

@@ -747,6 +747,69 @@
 > drive the two frame-side jobs synchronously, exactly the way `tick(n)` already
 > drives the sim.
 >
+> INTERFACE PASS 2 — "DO IT ALL" 8/11 (owner picked the whole proposal list). Nine
+> shipped, six of them fixing things that were plainly broken:
+> (1) DEMO RESTART. A native select fires no change event when you re-pick the
+> option it already holds, and #demosel kept its value — so a scene you were
+> already in could never be reloaded. It now snaps back to the placeholder.
+> (2) CUSTOM ELEMENTS CAN BE EDITED AND DELETED (a "Manage…" entry in the CUSTOM
+> rail). registerElement only appends, and unpicking a registry entry by hand
+> means clearing two dozen flat arrays plus a row and a column of REACT — so
+> instead the edit rewrites granulab-custom and RELOADS, which rebuilds the
+> registry correctly by construction. The scene rides across in a raw v1
+> snapshot (granulab-pending): NOT the v2 format, because v2 carries the custom
+> specs and would re-adopt the very element you just changed or removed.
+> BUG FOUND IN TESTING AND FIXED: deleting one invention slides every later one
+> down an id, so the parked grid must be REMAPPED, not just have the deleted
+> element erased — the first cut left Fizzite's 20,301 cells pointing at an id
+> that no longer existed. Verified: delete the first of three, the other two
+> keep every cell and the grid holds no phantom ids.
+> (3) PAN WITHOUT A MIDDLE BUTTON. Held Space drags the view (a trackpad has no
+> middle button at all); Space still toggles pause, decided on keyup, and only
+> when the key was never used to drag. Shift+arrows pan, bare arrows still walk
+> the stickman. +/- zoom, F fits, and the footer finally shows the zoom.
+> (4) FILTER + ENTER binds the first match, so /thermite⏎ never touches a mouse.
+> (5) TOASTS replace every alert(), the prompt() for share codes, and the
+> silence after a successful copy. Share codes now get a real dialog, which also
+> covers the clipboard-blocked case by showing the code to copy by hand.
+> (6) DATASHEET CAPPED (Acid is 12 rows / 289px and had no max-height).
+> (7) EYEDROPPER on Alt+click, either button. (8) LIVE MINIMAP: it was
+> pointer-events:none; click or drag to move the view, with a viewport rectangle
+> drawn on it. Verified the mapping cell-for-cell. (9) [ and ] step the pen size
+> one at a time (keys 1-9 only reach nine of 48).
+> PER-ELEMENT SLIDERS (DESIGN pillar 2, finally): a tune panel (T) over 14
+> registry properties — density, spread, flammability, burn time, lifespan,
+> blast radius, own temp, heat output, heat conduction, melting/freezing/ignition
+> points, slipperiness, bounciness — gated so an element is only offered what
+> means something for it. Tuning is keyed by element NAME (a deleted invention
+> shifts ids), persists in granulab-tuning, and is APPLIED BEFORE the world is
+> built so the WASM engine takes the tuned tables at init. Live edits need
+> WasmWorld.refreshTables(), the ONLY engine-directory change in this pass: a
+> public alias for the copy init already does, provably behaviour-neutral.
+> VERIFIED ON WASM: drop Powder's density under water's and its settled mean row
+> goes 477 -> 419 (it floats), reset puts it back to 477 exactly.
+> ROVING TABINDEX: the palette was 119 tab stops, now one, with arrows/Home/End
+> walking it (role=toolbar). COLOUR-BLIND ASSIST (scene → settings): letters on
+> the palette swatches and a CVD-safe blue→teal→yellow pH ramp beside the
+> red→green one, plus a minimap toggle and an engine picker that no longer needs
+> a URL parameter.
+> TOUCH + MOBILE: below 900px the palette becomes a slide-over drawer, the
+> header scrolls sideways instead of dropping controls, and the probe sheds its
+> optional channels. One finger paints; a second finger converts the stroke into
+> a gesture (pinch zoom + two-finger pan) without smearing what it interrupted.
+> At 375px the body overflowed by 1,002px until #app got minmax(0, 1fr) — a bare
+> 1fr takes its min-content width from the toolbar.
+> QA TRAPS (both cost real debugging time, both are the SAME family as the known
+> rAF one): a Browser pane that is not displayed composites nothing, so (a) CSS
+> TRANSITIONS NEVER ADVANCE — a drawer measured mid-transition reads as if the
+> rule never applied, and the way to check is to set `transition: none` first;
+> and (b) a stale-guard that greps for COMMENT text always reports stale, because
+> Vite strips comments — grep a CODE literal (this is written down twice now).
+> PARITY: all gates re-run green after the engine-directory edit — churn bench
+> byte-identical (e009494c / a884374c), thermal / firezoo / devzoo / pressure all
+> bit-exact TS vs WASM, shelf zoo 10/10 checkpoints, latency gate max 3.4ms
+> against a 60ms limit.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

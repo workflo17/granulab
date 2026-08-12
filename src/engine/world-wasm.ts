@@ -182,6 +182,13 @@ export class WasmWorld {
     this.refreshViews();
   }
 
+  /** Re-push the registry tables after a live edit (the element tuning panel).
+   *  Exactly the copy init already does, run again — the sim reads these tables
+   *  every tick, so nothing else has to change for a tweak to take effect. */
+  refreshTables(): void {
+    this.copyTables();
+  }
+
   /** copy the elements.ts registry tables into WASM memory (init contract) */
   private copyTables(): void {
     const buf = this.ex.memory.buffer;

@@ -6,7 +6,11 @@ import { Player, Fighter } from "./engine/player";
 import { ObjectSystem } from "./engine/objects";
 import { Renderer } from "./render/renderer";
 import { Ui, TOOL_PLAYER, TOOL_FIGHTER, type GalleryScene } from "./ui/ui";
-import { E, ELEMENTS, PALETTE, registerElement, type CustomSpec } from "./engine/elements";
+import {
+  E, ELEMENTS, PALETTE, registerElement, type CustomSpec,
+  DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0, EXPLODE_R, TEMP0, HEAT_PUMP,
+  HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, HEAT_COND, SLICK, BOUNCE,
+} from "./engine/elements";
 
 const GRID_W = 1280;
 const GRID_H = 720;
@@ -22,6 +26,60 @@ for (const s of customSpecs) {
   const id = registerElement(s);
   if (id !== null) customIds.push(id);
 }
+
+// ---- element tuning ------------------------------------------------------
+// DESIGN pillar 2 promised per-element sliders — gravity, flammability,
+// viscosity, lifespan — live. The registry is flat arrays the sim reads every
+// tick, so a tweak IS the edit; the only extra work is re-pushing the tables to
+// the WASM engine, which copies them at init. Tuning is keyed by element NAME,
+// because a deleted invention slides every later id down.
+interface Tunable {
+  key: string;
+  label: string;
+  arr: Uint8Array | Int16Array | Float32Array;
+  min: number;
+  max: number;
+  step: number;
+  /** only offer it where it means something (a melting point on stone does not) */
+  when?: (id: number) => boolean;
+}
+const TUNABLES: Tunable[] = [
+  { key: "density", label: "density", arr: DENSITY, min: 1, max: 255, step: 1 },
+  { key: "disperse", label: "spread", arr: DISPERSE, min: 0, max: 16, step: 1 },
+  { key: "flammable", label: "flammability", arr: FLAMMABLE, min: 0, max: 255, step: 1 },
+  { key: "burnLife", label: "burn time", arr: BURNLIFE, min: 0, max: 255, step: 1 },
+  { key: "life0", label: "lifespan", arr: LIFE0, min: 0, max: 255, step: 1 },
+  { key: "explodeR", label: "blast radius", arr: EXPLODE_R, min: 0, max: 16, step: 1 },
+  { key: "temp0", label: "own temp °C", arr: TEMP0, min: -273, max: 1500, step: 1 },
+  { key: "heatPump", label: "heat output", arr: HEAT_PUMP, min: 0, max: 0.35, step: 0.01 },
+  { key: "heatCond", label: "conducts heat", arr: HEAT_COND, min: 0, max: 1, step: 0.01 },
+  { key: "hotAt", label: "melts at °C", arr: HOT_AT, min: -273, max: 1500, step: 5, when: (id) => HOT_TO[id] !== 0 },
+  { key: "coldAt", label: "freezes at °C", arr: COLD_AT, min: -273, max: 1500, step: 5, when: (id) => COLD_TO[id] !== 0 },
+  { key: "ignitesAt", label: "ignites at °C", arr: IGNITES_AT, min: 0, max: 1500, step: 5, when: (id) => IGNITES_AT[id] < 32767 },
+  { key: "slick", label: "slipperiness", arr: SLICK, min: 0, max: 1, step: 0.05 },
+  { key: "bounce", label: "bounciness", arr: BOUNCE, min: 0, max: 2, step: 0.05 },
+];
+const TUNE_KEY = "granulab-tuning";
+/** every tunable's shipped value, captured before any override lands */
+const TUNE_DEFAULTS = new Map(TUNABLES.map((t) => [t.key, Array.from(t.arr)]));
+const tuning: Record<string, Record<string, number>> =
+  JSON.parse(localStorage.getItem(TUNE_KEY) ?? "{}");
+
+const idOfName = (name: string): number =>
+  ELEMENTS.findIndex((el) => el.name === name);
+
+function applyTuning(): void {
+  for (const [name, props] of Object.entries(tuning)) {
+    const id = idOfName(name);
+    if (id < 0) continue;
+    for (const t of TUNABLES) {
+      const v = props[t.key];
+      if (v !== undefined) t.arr[id] = v;
+    }
+  }
+}
+// before the world is built, so the WASM engine takes the tuned tables at init
+applyTuning();
 
 // ---- engine select: ?engine=wasm|ts beats localStorage granulab-engine ----
 // The WASM engine is bit-exact with the TS one (tools/parity.ts, 5 gates) and
@@ -277,7 +335,7 @@ fileInput.addEventListener("change", async () => {
   const f = fileInput.files?.[0];
   if (!f) return;
   const ok = loadAll(new Uint8Array(await f.arrayBuffer()));
-  if (!ok) alert("Not a Granulab scene for this grid size.");
+  ui.toast(ok ? `Opened ${f.name}` : "That file is not a Granulab scene for this grid size.", ok ? "ok" : "err");
   fileInput.value = "";
 });
 
@@ -309,7 +367,7 @@ function writeSlots(slots: Slot[]): void {
   try {
     localStorage.setItem(SLOT_KEY, JSON.stringify(slots));
   } catch {
-    alert("This browser is out of local storage. Delete a slot and try again.");
+    ui.toast("This browser is out of local storage. Delete a slot and try again.", "err");
   }
   pushSlotsToUi(slots);
 }
@@ -318,25 +376,58 @@ function pushSlotsToUi(slots: Slot[]): void {
   ui.setSlots(slots.map((s) => (s ? { name: s.name, when: s.when, size: s.data.length, thumb: s.thumb } : null)));
 }
 
+// ---- settings ------------------------------------------------------------
+const SET_KEY = "granulab-settings";
+const settings: { cvd: boolean; minimap: boolean; engine: string } = {
+  cvd: false, minimap: true, engine: engineChoice,
+  ...JSON.parse(localStorage.getItem(SET_KEY) ?? "{}"),
+};
+
+/** the TS engine reads the registry arrays directly; the WASM one holds a copy */
+function refreshEngineTables(): void {
+  (world as unknown as { refreshTables?: () => void }).refreshTables?.();
+}
+
+function pushTunablesToUi(): void {
+  const id = ui.state.toolL;
+  const el = ELEMENTS[id];
+  if (!el || id <= E.WALL) { ui.setTunables(null); return; }
+  ui.setTunables({
+    name: el.name,
+    color: el.color,
+    tuned: !!tuning[el.name],
+    rows: TUNABLES.filter((t) => !t.when || t.when(id)).map((t) => ({
+      key: t.key,
+      label: t.label,
+      min: t.min,
+      max: t.max,
+      step: t.step,
+      value: t.arr[id],
+      isDefault: t.arr[id] === TUNE_DEFAULTS.get(t.key)![id],
+    })),
+  });
+}
+
 let renderer: Renderer;
 const ui = new Ui(root, {
   onStep: () => { ui.setPaused(true); stepOnce(); },
   onClear: () => { pushUndo(); armUndo(); world.clear(); player.remove(); objects.clear(); fighters.length = 0; },
-  onUndo: () => { if (!undo()) console.log("[granulab] nothing to undo"); },
-  onRedo: () => { if (!redo()) console.log("[granulab] nothing to redo"); },
+  onUndo: () => { if (!undo()) ui.toast("Nothing left to undo", "err"); },
+  onRedo: () => { if (!redo()) ui.toast("Nothing to redo", "err"); },
   onRecord: () => {
     if (!recordingSupported()) {
-      alert("This browser can't record the canvas.");
+      ui.toast("This browser cannot record the canvas.", "err");
       return;
     }
-    toggleRecording();
+    ui.toast(toggleRecording() ? "Recording — press stop to download the clip" : "Recording saved");
   },
-  onFit: () => renderer.fit(),
+  onFit: () => { renderer.fit(); ui.setZoom(renderer.zoom); },
   onBgMode: (m: number) => { renderer.mode = m; },
   onSlotSave: (i: number, name: string) => {
     const slots = readSlots();
     slots[i] = { name, when: Date.now(), data: toB64(saveAll()), thumb: sceneThumb() };
     writeSlots(slots);
+    ui.toast(`Saved "${name}" to slot ${i + 1}`);
   },
   onSlotLoad: (i: number) => {
     const slot = readSlots()[i];
@@ -344,13 +435,17 @@ const ui = new Ui(root, {
     pushUndo();
     armUndo();
     loadAll(fromB64(slot.data));
+    ui.toast(`Loaded "${slot.name}"`);
   },
   onSlotDelete: (i: number) => {
     const slots = readSlots();
+    const gone = slots[i]?.name;
     slots[i] = null;
     writeSlots(slots);
+    ui.toast(`Deleted "${gone ?? `slot ${i + 1}`}"`);
   },
   onExport: () => {
+    ui.toast("Exported granulab-scene.grn");
     const blob = new Blob([saveAll() as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -363,15 +458,64 @@ const ui = new Ui(root, {
     const code = await sceneCode();
     try {
       await navigator.clipboard.writeText(code);
+      ui.toast(`Share code copied — ${code.length} characters`);
     } catch {
-      prompt("Copy this scene code:", code);
+      // clipboard blocked (no gesture, no permission): hand the code over anyway
+      ui.showCode(code);
     }
   },
-  onPasteCode: async () => {
-    const code = prompt("Paste a scene code:");
-    if (code && !(await loadSceneCode(code))) alert("Not a valid Granulab scene code.");
+  onPasteCode: () => ui.askCode(),
+  onCodeEntered: async (code: string) => {
+    if (!code.trim()) return;
+    pushUndo();
+    armUndo();
+    const ok = await loadSceneCode(code);
+    ui.toast(ok ? "Scene loaded from code" : "That is not a Granulab scene code.", ok ? "ok" : "err");
   },
-  onCreateElement: createCustomElement,
+  onSetting: (key: "cvd" | "minimap" | "engine", value: boolean | string) => {
+    settings[key] = value as never;
+    localStorage.setItem(SET_KEY, JSON.stringify(settings));
+    if (key === "cvd") renderer.cvd = !!value;
+    else if (key === "minimap") mini.hidden = !value;
+    else if (key === "engine") {
+      localStorage.setItem("granulab-engine", String(value));
+      ui.toast("Engine switched — reload to run on it");
+    }
+  },
+  onTuneOpen: () => pushTunablesToUi(),
+  onTune: (key: string, value: number) => {
+    const id = ui.state.toolL;
+    const el = ELEMENTS[id];
+    const t = TUNABLES.find((x) => x.key === key);
+    if (!el || !t) return;
+    t.arr[id] = value;
+    (tuning[el.name] ??= {})[key] = value;
+    localStorage.setItem(TUNE_KEY, JSON.stringify(tuning));
+    refreshEngineTables();
+  },
+  onTuneReset: (all: boolean) => {
+    const el = ELEMENTS[ui.state.toolL];
+    for (const name of all ? Object.keys(tuning) : el ? [el.name] : []) {
+      const id = idOfName(name);
+      if (id >= 0) for (const t of TUNABLES) t.arr[id] = TUNE_DEFAULTS.get(t.key)![id];
+      delete tuning[name];
+    }
+    localStorage.setItem(TUNE_KEY, JSON.stringify(tuning));
+    refreshEngineTables();
+    pushTunablesToUi();
+    ui.toast(all ? "All elements back to their shipped values" : `${el?.name ?? "Element"} reset`);
+  },
+  onSaveElement: (index: number, spec: CustomSpec) => {
+    if (index < 0) { createCustomElement(spec); return; }
+    const next = customSpecs.slice();
+    next[index] = spec;
+    rebuildCustoms(next, null);
+  },
+  onDeleteElement: (index: number) => {
+    const next = customSpecs.slice();
+    next.splice(index, 1);
+    rebuildCustoms(next, customIds[index] ?? null);
+  },
   onGalleryOpen: () => { void refreshGallery(); },
   onGalleryUpload: (name: string, author: string) => { void uploadToGallery(name, author); },
   onGalleryLoad: (scene) => { pushUndo(); armUndo(); void loadFromGallery(scene.url); },
@@ -487,15 +631,64 @@ async function loadFromGallery(url: string): Promise<boolean> {
     if (!(await loadSceneCode(String(j.code ?? "")))) throw new Error("bad code");
     return true;
   } catch {
-    alert("Could not load that scene.");
+    ui.toast("Could not load that scene.", "err");
     return false;
   }
+}
+
+// ---- rebuilding the invented-element list --------------------------------
+// registerElement only ever appends, and unpicking a registry entry by hand
+// means clearing two dozen flat arrays plus a row and a column of the reaction
+// table — easy to get subtly wrong, and wrong here means a corrupted element.
+// A fresh boot builds the list correctly by construction, so edits and deletes
+// rewrite localStorage and reload, carrying the scene across in a raw v1
+// snapshot (no custom block: ids must land on the freshly-registered list, not
+// re-adopt the very spec that was just changed or removed).
+const PENDING_KEY = "granulab-pending";
+
+function saveRaw(): Uint8Array {
+  const w = world.serialize();
+  const o = objects.serialize();
+  const buf = new Uint8Array(4 + w.length + o.length);
+  buf.set(u32(w.length), 0);
+  buf.set(w, 4);
+  buf.set(o, 4 + w.length);
+  return buf;
+}
+
+function rebuildCustoms(next: CustomSpec[], eraseId: number | null): void {
+  // Removing one entry slides every later invention down an id, so the parked
+  // grid has to be rewritten to the ids the next boot will hand out — erasing
+  // the deleted element alone left the ones after it pointing at nothing.
+  const remap = new Map<number, number>();
+  for (let j = 0; j < next.length; j++) {
+    const old = customSpecs.indexOf(next[j]);
+    const oldId = old >= 0 ? customIds[old] : -1;
+    const newId = FIRST_CUSTOM_ID + j;
+    if (oldId >= 0 && oldId !== newId) remap.set(oldId, newId);
+  }
+  const sp = world.species;
+  for (let i = 0; i < sp.length; i++) {
+    const id = sp[i];
+    if (id === eraseId) sp[i] = E.EMPTY;
+    else {
+      const to = remap.get(id);
+      if (to !== undefined) sp[i] = to;
+    }
+  }
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(next));
+  try {
+    localStorage.setItem(PENDING_KEY, toB64(saveRaw()));
+  } catch {
+    /* a scene too big to park is not worth blocking the edit over */
+  }
+  location.reload();
 }
 
 function createCustomElement(spec: CustomSpec): number | null {
   const id = registerElement(spec);
   if (id === null) {
-    alert("Element limit reached (21 custom slots).");
+    ui.toast("No custom element slots left — delete one first.", "err");
     return null;
   }
   customSpecs.push(spec);
@@ -503,7 +696,9 @@ function createCustomElement(spec: CustomSpec): number | null {
   localStorage.setItem(CUSTOM_KEY, JSON.stringify(customSpecs));
   renderer.refreshPalette();
   ui.addElementButton(id);
+  ui.setCustomElements(customSpecs);
   ui.bind("L", id);
+  ui.toast(`Created ${spec.name}`);
   return id;
 }
 
@@ -511,6 +706,15 @@ const canvas = document.getElementById("dish") as HTMLCanvasElement;
 renderer = new Renderer(canvas, GRID_W, GRID_H);
 ui.setGalleryAuthor(localStorage.getItem(AUTHOR_KEY) ?? "");
 pushSlotsToUi(readSlots());
+ui.setCustomElements(customSpecs);
+ui.setSettings({ ...settings, engine: engineActive });
+renderer.cvd = settings.cvd;
+// a rebuild parked the scene one reload ago; put it back and drop the key
+const pending = localStorage.getItem(PENDING_KEY);
+if (pending) {
+  localStorage.removeItem(PENDING_KEY);
+  try { loadAll(fromB64(pending)); } catch { /* a bad park is not worth a boot failure */ }
+}
 // a first-time visitor meets a blank grid and 106 elements; say the three
 // things that get them painting, once, and never again
 if (!localStorage.getItem("granulab-intro") && location.hash === "") ui.showIntro();
@@ -553,7 +757,42 @@ function drawMinimap(): void {
     }
   }
   miniCtx.putImageData(miniImg, 0, 0);
+  // where you are looking, so the minimap is a map and not just a thumbnail
+  const x0 = -renderer.pan.x / renderer.zoom / 8;
+  const y0 = -renderer.pan.y / renderer.zoom / 8;
+  const w = canvas.width / renderer.zoom / 8;
+  const h = canvas.height / renderer.zoom / 8;
+  if (w < MINI_W - 0.5 || h < MINI_H - 0.5) {
+    miniCtx.strokeStyle = "rgba(0,0,0,0.7)";
+    miniCtx.lineWidth = 2;
+    miniCtx.strokeRect(x0, y0, w, h);
+    miniCtx.strokeStyle = "#e7e9ee";
+    miniCtx.lineWidth = 1;
+    miniCtx.strokeRect(x0, y0, w, h);
+  }
 }
+
+// the minimap was inert; once you are zoomed in it is the fastest way across
+// the grid, so clicking or dragging it centres the view on that spot
+function miniLookAt(e: PointerEvent): void {
+  const r = mini.getBoundingClientRect();
+  const cx = ((e.clientX - r.left) / r.width) * GRID_W;
+  const cy = ((e.clientY - r.top) / r.height) * GRID_H;
+  renderer.pan.x = canvas.width / 2 - cx * renderer.zoom;
+  renderer.pan.y = canvas.height / 2 - cy * renderer.zoom;
+  drawMinimap();
+}
+mini.addEventListener("pointerdown", (e) => {
+  mini.setPointerCapture(e.pointerId);
+  miniLookAt(e);
+  e.preventDefault();
+  e.stopPropagation();
+});
+mini.addEventListener("pointermove", (e) => {
+  if (e.buttons & 1) miniLookAt(e);
+});
+mini.addEventListener("contextmenu", (e) => e.preventDefault());
+mini.hidden = !settings.minimap;
 
 // ---- brush preview -------------------------------------------------------
 // The pen carries five nib shapes and a size from 1 to 48, and a crosshair
@@ -581,6 +820,7 @@ function resize(): void {
     nibCanvas.height = h;
     nibDirty = null;
     renderer.fit();
+    ui.setZoom(renderer.zoom);
   }
 }
 new ResizeObserver(resize).observe(canvas);
@@ -636,19 +876,61 @@ let lastCell: { x: number; y: number } | null = null;
 let panning = false;
 let panStart = { x: 0, y: 0, px: 0, py: 0 };
 
+// ---- touch: one finger paints, two fingers move the view ------------------
+// Painting already works through pointer events, but a touch screen has no
+// wheel and no middle button, so without this you can paint and never navigate.
+const touches = new Map<number, { x: number; y: number }>();
+let pinch: { dist: number; cx: number; cy: number } | null = null;
+
+function pinchState(): { dist: number; cx: number; cy: number } | null {
+  if (touches.size < 2) return null;
+  const [a, b] = [...touches.values()];
+  return {
+    dist: Math.hypot(a.x - b.x, a.y - b.y),
+    cx: (a.x + b.x) / 2,
+    cy: (a.y + b.y) / 2,
+  };
+}
+
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 canvas.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "touch") {
+    const px0 = toCanvasPx(e);
+    touches.set(e.pointerId, px0);
+    if (touches.size === 2) {
+      // the second finger converts the stroke in progress into a gesture
+      painting = -1;
+      lastCell = null;
+      armUndo();
+      pinch = pinchState();
+      return;
+    }
+  }
   canvas.setPointerCapture(e.pointerId);
   const px = toCanvasPx(e);
-  if (e.button === 1) {
+  // Middle-drag is the only pan a three-button mouse needs; a trackpad has no
+  // middle button at all, so held Space drags the view the way every other
+  // canvas tool does.
+  if (e.button === 1 || spaceHeld) {
     panning = true;
+    spaceDragged = true;
     panStart = { x: renderer.pan.x, y: renderer.pan.y, px: px.x, py: px.y };
     e.preventDefault();
     return;
   }
-  const tool = e.button === 2 ? ui.state.toolR : ui.state.toolL;
   const c = renderer.toCell(px.x, px.y);
   hoverCell = c;
+  // eyedropper: take what is already there instead of hunting the rails for it
+  if (e.altKey) {
+    e.preventDefault();
+    if (c.x >= 0 && c.y >= 0 && c.x < GRID_W && c.y < GRID_H) {
+      const id = world.species[c.y * GRID_W + c.x];
+      ui.bind(e.button === 2 ? "R" : "L", id);
+      ui.toast(`Picked up ${id === E.EMPTY ? "Erase" : ELEMENTS[id].name}`);
+    }
+    return;
+  }
+  const tool = e.button === 2 ? ui.state.toolR : ui.state.toolL;
   if (tool === TOOL_PLAYER) {
     pushUndo();
     armUndo();
@@ -679,6 +961,20 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 canvas.addEventListener("pointermove", (e) => {
   const px = toCanvasPx(e);
+  if (e.pointerType === "touch" && touches.has(e.pointerId)) {
+    touches.set(e.pointerId, px);
+    if (pinch) {
+      const now = pinchState();
+      if (now) {
+        renderer.zoomAt(now.cx, now.cy, now.dist / Math.max(1, pinch.dist));
+        renderer.pan.x += now.cx - pinch.cx;
+        renderer.pan.y += now.cy - pinch.cy;
+        ui.setZoom(renderer.zoom);
+        pinch = now;
+      }
+      return;
+    }
+  }
   const c = renderer.toCell(px.x, px.y);
   probe(c);
   if (panning) {
@@ -686,6 +982,7 @@ canvas.addEventListener("pointermove", (e) => {
     renderer.pan.y = panStart.y + (px.y - panStart.py);
     return;
   }
+  if (panning) return;
   if (painting >= 0 && lastCell && ui.state.penMode === "free") {
     const ddx = c.x - lastCell.x;
     const ddy = c.y - lastCell.y;
@@ -703,7 +1000,12 @@ canvas.addEventListener("pointerleave", () => {
   // canvas, and the release still has to commit a line/rect from somewhere
   if (painting < 0 && !panning) { hoverCell = null; probe(null); }
 });
-canvas.addEventListener("pointerup", () => {
+canvas.addEventListener("pointerup", (e) => {
+  if (e.pointerType === "touch") {
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
+    if (touches.size >= 1) { painting = -1; lastCell = null; return; } // still gesturing
+  }
   // line/rect pens stamp on release, from the press cell to the release cell
   if (painting >= 0 && lastCell && hoverCell && ui.state.penMode !== "free") {
     const a = lastCell;
@@ -730,7 +1032,13 @@ canvas.addEventListener("pointerup", () => {
   panning = false;
   armUndo();
 });
-canvas.addEventListener("pointercancel", () => { painting = -1; lastCell = null; panning = false; });
+canvas.addEventListener("pointercancel", (e) => {
+  touches.delete(e.pointerId);
+  if (touches.size < 2) pinch = null;
+  painting = -1;
+  lastCell = null;
+  panning = false;
+});
 
 // ---- cell probe ----------------------------------------------------------
 // Temperature, breathable air, overpressure and pH are computed for every cell
@@ -883,20 +1191,60 @@ function drawBrushPreview(): void {
 canvas.addEventListener("wheel", (e) => {
   e.preventDefault();
   const px = toCanvasPx(e);
-  renderer.zoomAt(px.x, px.y, Math.pow(1.0015, -e.deltaY));
+  // a trackpad pinch arrives as ctrl+wheel, and it needs a finer step than a
+  // mouse notch or the zoom lurches
+  renderer.zoomAt(px.x, px.y, Math.pow(e.ctrlKey ? 1.008 : 1.0015, -e.deltaY));
+  ui.setZoom(renderer.zoom);
 }, { passive: false });
 
+/** zoom about the middle of the view, for the keyboard and the zoom buttons */
+function zoomStep(factor: number): void {
+  renderer.zoomAt(canvas.width / 2, canvas.height / 2, factor);
+  ui.setZoom(renderer.zoom);
+}
+function panBy(dx: number, dy: number): void {
+  renderer.pan.x += dx;
+  renderer.pan.y += dy;
+}
+
 // ---- keyboard ------------------------------------------------------------
+// Space does double duty: held it is the pan modifier, tapped it is play/pause.
+// Which one it was is only knowable on release, so the toggle waits for keyup
+// and only fires if the key was never used to drag.
+let spaceHeld = false;
+let spaceDragged = false;
+const PAN_STEP = 90;
+
 window.addEventListener("keydown", (e) => {
-  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement ||
+      e.target instanceof HTMLTextAreaElement) return;
+  const arrow = e.code === "ArrowLeft" || e.code === "ArrowRight" || e.code === "ArrowUp" || e.code === "ArrowDown";
+  if (arrow && e.shiftKey) {
+    // shift+arrows drive the view; bare arrows still drive the stickman
+    e.preventDefault();
+    panBy(e.code === "ArrowLeft" ? PAN_STEP : e.code === "ArrowRight" ? -PAN_STEP : 0,
+      e.code === "ArrowUp" ? PAN_STEP : e.code === "ArrowDown" ? -PAN_STEP : 0);
+    return;
+  }
   if (e.code === "ArrowLeft") { keys.left = true; e.preventDefault(); }
   else if (e.code === "ArrowRight") { keys.right = true; e.preventDefault(); }
   else if (e.code === "ArrowUp") { keys.up = true; e.preventDefault(); }
   else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
   else if ((e.ctrlKey || e.metaKey) && e.code === "KeyY") { e.preventDefault(); redo(); }
   else if (e.key === "?" || e.code === "F1") { e.preventDefault(); ui.openHelp(); }
-  else if (e.code === "Space") { e.preventDefault(); ui.setPaused(!ui.state.paused); }
+  else if (e.code === "Space") {
+    e.preventDefault();
+    if (!e.repeat) spaceDragged = false;
+    spaceHeld = true;
+    canvas.style.cursor = "grab";
+  }
   else if (e.code === "Enter") { ui.setPaused(true); stepOnce(); }
+  else if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomStep(1.25); }
+  else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomStep(1 / 1.25); }
+  else if (e.key === "f" || e.key === "F") { renderer.fit(); ui.setZoom(renderer.zoom); }
+  else if (e.key === "t" || e.key === "T") { e.preventDefault(); ui.openTune(); }
+  else if (e.key === "[") ui.setPen(ui.state.pen - 1);
+  else if (e.key === "]") ui.setPen(ui.state.pen + 1);
   else if (e.key >= "1" && e.key <= "9") ui.setPen([1, 2, 4, 6, 8, 12, 16, 24, 32][parseInt(e.key) - 1]);
   else if (e.key === "0") ui.setPen(48);
   else if (e.key === "/") { e.preventDefault(); ui.focusFilter(); }
@@ -905,6 +1253,12 @@ window.addEventListener("keyup", (e) => {
   if (e.code === "ArrowLeft") keys.left = false;
   else if (e.code === "ArrowRight") keys.right = false;
   else if (e.code === "ArrowUp") keys.up = false;
+  else if (e.code === "Space") {
+    spaceHeld = false;
+    canvas.style.cursor = "";
+    if (!spaceDragged) ui.setPaused(!ui.state.paused);
+    spaceDragged = false;
+  }
 });
 
 // ---- loop ----------------------------------------------------------------

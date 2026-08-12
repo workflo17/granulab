@@ -27,7 +27,13 @@ export interface UiHooks {
   onImport(): void;
   onCopyCode(): void;
   onPasteCode(): void;
-  onCreateElement(spec: CustomSpec): void;
+  onCodeEntered(code: string): void;
+  onSetting(key: "cvd" | "minimap" | "engine", value: boolean | string): void;
+  onTuneOpen(): void;
+  onTune(key: string, value: number): void;
+  onTuneReset(all: boolean): void;
+  onSaveElement(index: number, spec: CustomSpec): void;
+  onDeleteElement(index: number): void;
   onDemo(name: string): void;
   onUndo(): void;
   onRedo(): void;
@@ -111,6 +117,7 @@ export class Ui {
   private statDots!: HTMLElement;
   private statChunks!: HTMLElement;
   private statPos!: HTMLElement;
+  private statZoom!: HTMLElement;
   private probeWhat!: HTMLElement;
   private probeSw!: HTMLElement;
   private probeName!: HTMLElement;
@@ -125,6 +132,8 @@ export class Ui {
       <a class="skip" href="#dish">Skip the palette, go to the canvas</a>
       <header>
         <h1 class="wordmark">GRANULAB<small>granular matter laboratory</small></h1>
+        <button id="railtoggle" aria-expanded="false" aria-controls="side"
+                aria-label="Show the element palette">elements</button>
         <div class="transport">
           <div class="grp" role="group" aria-label="Run">
             <button id="play" class="primary" title="Play or pause (Space)">pause</button>
@@ -154,6 +163,7 @@ export class Ui {
               <option value="line">pen: line</option>
               <option value="rect">pen: rect</option>
             </select>
+            <button id="tunebtn" title="Tune the held element's physics (T)">tune</button>
           </div>
           <div class="grp" role="group" aria-label="View">
             <select id="bg" title="Background render mode" aria-label="Background render mode">
@@ -194,6 +204,8 @@ export class Ui {
                 <hr>
                 <button type="button" role="menuitem" data-act="gallery">Scene gallery…</button>
                 <button type="button" role="menuitem" data-act="rec" id="recitem">Record video</button>
+                <hr>
+                <button type="button" role="menuitem" data-act="settings">Settings…</button>
               </div>
             </div>
             <button id="rec" title="Stop recording and download the clip" hidden>stop</button>
@@ -222,6 +234,7 @@ export class Ui {
       <dialog id="eldialog" aria-labelledby="eltitle">
         <form method="dialog" id="elform">
           <h2 id="eltitle">New element</h2>
+          <p class="dlg-note" id="elnote" hidden></p>
           <div class="grid2">
             <label>name <input name="name" maxlength="12" required></label>
             <label>color <input name="color" type="color" value="#8ad0c0"></label>
@@ -247,7 +260,7 @@ export class Ui {
           <div id="rxrows"></div>
           <menu>
             <button value="cancel" formnovalidate>cancel</button>
-            <button value="ok" class="primary">create</button>
+            <button value="ok" class="primary" id="elsave">create</button>
           </menu>
         </form>
       </dialog>
@@ -275,6 +288,64 @@ export class Ui {
           <menu><button value="close" formnovalidate>close</button></menu>
         </form>
       </dialog>
+      <dialog id="setdialog" aria-labelledby="settitle">
+        <form method="dialog">
+          <h2 id="settitle">Settings</h2>
+          <label class="setrow">
+            <input type="checkbox" id="setcvd">
+            <span><b>Colour-blind assist</b><em>Letters on the palette swatches, and a blue-to-yellow
+              pH scale instead of red-to-green.</em></span>
+          </label>
+          <label class="setrow">
+            <input type="checkbox" id="setmini" checked>
+            <span><b>Minimap</b><em>The overview in the corner. Click it to jump the view.</em></span>
+          </label>
+          <label class="setrow">
+            <span class="setsel"><b>Engine</b><em>WASM is the default and about twice as fast. Both
+              produce identical simulations.</em></span>
+            <select id="setengine" aria-label="Simulation engine">
+              <option value="wasm">WASM</option>
+              <option value="ts">TypeScript</option>
+            </select>
+          </label>
+          <menu><button value="close" class="primary" formnovalidate>done</button></menu>
+        </form>
+      </dialog>
+      <dialog id="tunedialog" aria-labelledby="tunetitle">
+        <form method="dialog">
+          <h2 id="tunetitle">Tune <span id="tunename"></span></h2>
+          <p class="dlg-note">Changes take effect immediately and stick in this browser. They are not
+            carried by saves or share codes — a scene you send someone runs on their settings.</p>
+          <div id="tunerows"></div>
+          <menu>
+            <button type="button" id="tunereset">reset this element</button>
+            <button type="button" id="tuneresetall">reset everything</button>
+            <button value="close" class="primary" formnovalidate>done</button>
+          </menu>
+        </form>
+      </dialog>
+      <dialog id="customdialog" aria-labelledby="customtitle">
+        <form method="dialog">
+          <h2 id="customtitle">Your elements</h2>
+          <p class="dlg-note">Editing or deleting reloads the page so the registry rebuilds cleanly.
+            The scene on the grid is kept.</p>
+          <div id="customlist"></div>
+          <menu><button value="close" formnovalidate>close</button></menu>
+        </form>
+      </dialog>
+      <dialog id="codedialog" aria-labelledby="codetitle">
+        <form method="dialog" id="codeform">
+          <h2 id="codetitle">Share code</h2>
+          <p class="dlg-note" id="codenote">Paste a code someone sent you. It carries the whole
+            scene, including any elements they invented.</p>
+          <textarea id="codebox" rows="4" spellcheck="false" autocomplete="off"
+                    aria-label="Scene share code" placeholder="GLAB1.…"></textarea>
+          <menu>
+            <button value="cancel" formnovalidate>cancel</button>
+            <button value="load" class="primary" id="codego">load scene</button>
+          </menu>
+        </form>
+      </dialog>
       <dialog id="helpdialog" aria-labelledby="helptitle">
         <form method="dialog">
           <h2 id="helptitle">Controls</h2>
@@ -297,21 +368,34 @@ export class Ui {
               <dl>
                 <div><dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>pen size 1 to 32</dd></div>
                 <div><dt><kbd>0</kbd></dt><dd>pen size 48</dd></div>
+                <div><dt><kbd>[</kbd><kbd>]</kbd></dt><dd>pen size one at a time</dd></div>
                 <div><dt><kbd>/</kbd></dt><dd>filter the elements</dd></div>
+                <div><dt><kbd>T</kbd></dt><dd>tune the held element</dd></div>
                 <div><dt><kbd>?</kbd></dt><dd>this panel</dd></div>
               </dl>
-              <h3>Mouse</h3>
+              <h3>View</h3>
+              <dl>
+                <div><dt><kbd>+</kbd><kbd>-</kbd></dt><dd>zoom in and out</dd></div>
+                <div><dt><kbd>F</kbd></dt><dd>fit the whole grid</dd></div>
+                <div><dt><kbd>⇧</kbd>+arrows</dt><dd>pan the view</dd></div>
+              </dl>
+              <h3>Pointer</h3>
               <dl>
                 <div><dt>left</dt><dd>paint the left-hand element</dd></div>
                 <div><dt>right</dt><dd>paint the right-hand one</dd></div>
+                <div><dt><kbd>Alt</kbd>+click</dt><dd>pick up what is already there</dd></div>
+                <div><dt>space drag</dt><dd>pan, on any mouse or trackpad</dd></div>
                 <div><dt>middle drag</dt><dd>pan the view</dd></div>
                 <div><dt>wheel</dt><dd>zoom</dd></div>
+                <div><dt>two fingers</dt><dd>pinch to zoom, drag to pan</dd></div>
               </dl>
             </section>
           </div>
           <p class="dlg-note">In the palette, click an element to hold it on the left button and
-            right-click to hold it on the right. Fans, cannons and lasers aim along the direction you
-            drag while painting them.</p>
+            right-click to hold it on the right; the arrow keys walk the rails once one is focused.
+            Fans, cannons and lasers aim along the direction you drag while painting them. Click the
+            minimap to jump the view. Colour-blind assist and the engine choice live under
+            scene → settings.</p>
           <menu><button value="close" class="primary">close</button></menu>
         </form>
       </dialog>
@@ -332,6 +416,7 @@ export class Ui {
             <button type="button" id="introclose">Dismiss</button>
           </div>
         </div>
+        <div id="toasts" role="status" aria-live="polite"></div>
         <div id="notebook" hidden>
           <div class="nb-head"><span>LAB NOTEBOOK</span><button id="nbclose" title="Close the notebook" aria-label="Close the notebook">×</button></div>
           <div id="nbrows"><div class="nb-empty">No reactions witnessed yet — mix something.</div></div>
@@ -342,6 +427,7 @@ export class Ui {
         <span>tick <b id="s-tick">–</b> ms</span>
         <span>dots <b id="s-dots">0</b></span>
         <span>chunks <b id="s-chunks">–</b></span>
+        <span>zoom <b id="s-zoom">1.0×</b></span>
         <span class="spacer"></span>
         <div id="probe" aria-live="off" translate="no">
           <span id="s-pos" class="ch pos">–</span>
@@ -426,11 +512,21 @@ export class Ui {
       rxRows.appendChild(row);
     };
     dialog.querySelector("#addrx")!.addEventListener("click", addRxRow);
-    newBtn.addEventListener("click", () => {
-      rxRows.replaceChildren();
-      addRxRow();
-      dialog.showModal();
-    });
+    this.elDialog = dialog;
+    this.rxRows = rxRows;
+    this.addRxRow = addRxRow;
+    newBtn.addEventListener("click", () => this.openMaker(null, -1));
+    // a rail you can only ever add to is a dead end: 19 slots, and no way back
+    // out of an element that turned out wrong
+    const manageBtn = document.createElement("button");
+    manageBtn.className = "el manage";
+    manageBtn.dataset.name = "manage";
+    manageBtn.innerHTML = `<span class="sw" style="background:var(--hairline)"></span>Manage…`;
+    manageBtn.addEventListener("click", () => this.customDialog.showModal());
+    this.customHost.appendChild(manageBtn);
+    this.manageBtn = manageBtn;
+    this.customDialog = root.querySelector<HTMLDialogElement>("#customdialog")!;
+    this.customList = root.querySelector<HTMLElement>("#customlist")!;
     // create on submit, not on dialog "close" — embedded browsers can drop the
     // close event entirely; submit + e.submitter is reliable everywhere
     const elform = root.querySelector<HTMLFormElement>("#elform")!;
@@ -454,7 +550,7 @@ export class Ui {
           p: Number(row.querySelector<HTMLInputElement>("[data-rp]")!.value) || 60,
         });
       }
-      hooks.onCreateElement({
+      hooks.onSaveElement(this.makerIndex, {
         name: String(f.get("name")),
         color: String(f.get("color")),
         state: String(f.get("state")) as CustomSpec["state"],
@@ -482,6 +578,7 @@ export class Ui {
     this.statDots = root.querySelector("#s-dots")!;
     this.statChunks = root.querySelector("#s-chunks")!;
     this.statPos = root.querySelector("#s-pos")!;
+    this.statZoom = root.querySelector("#s-zoom")!;
     this.probeWhat = root.querySelector("#s-what")!;
     this.probeSw = this.probeWhat.querySelector("i")!;
     this.probeName = this.probeWhat.querySelector("b")!;
@@ -517,6 +614,7 @@ export class Ui {
       else if (act === "paste") hooks.onPasteCode();
       else if (act === "gallery") this.openGallery();
       else if (act === "rec") hooks.onRecord();
+      else if (act === "settings") this.setDialog.showModal();
     });
     document.addEventListener("pointerdown", (e) => {
       const inMenu = (e.target as Element | null)?.closest?.(".menuwrap");
@@ -532,7 +630,37 @@ export class Ui {
       this.state.penMode = (e.target as HTMLSelectElement).value as PenMode;
     });
     root.querySelector<HTMLSelectElement>("#demosel")!.addEventListener("change", (e) => {
-      hooks.onDemo((e.target as HTMLSelectElement).value);
+      const sel = e.target as HTMLSelectElement;
+      const name = sel.value;
+      // snap back to the placeholder: a native select fires no change when you
+      // re-pick the option it already holds, so leaving it set meant a scene you
+      // were already in could never be restarted
+      sel.value = "";
+      if (name) hooks.onDemo(name);
+    });
+    this.setDialog = root.querySelector<HTMLDialogElement>("#setdialog")!;
+    const cvd = root.querySelector<HTMLInputElement>("#setcvd")!;
+    const miniBox = root.querySelector<HTMLInputElement>("#setmini")!;
+    const engineSel = root.querySelector<HTMLSelectElement>("#setengine")!;
+    cvd.addEventListener("change", () => { this.setCvd(cvd.checked); hooks.onSetting("cvd", cvd.checked); });
+    miniBox.addEventListener("change", () => hooks.onSetting("minimap", miniBox.checked));
+    engineSel.addEventListener("change", () => hooks.onSetting("engine", engineSel.value));
+    this.setBoxes = { cvd, minimap: miniBox, engine: engineSel };
+    this.toastHost = root.querySelector<HTMLElement>("#toasts")!;
+    this.tuneDialog = root.querySelector<HTMLDialogElement>("#tunedialog")!;
+    this.tuneRows = root.querySelector<HTMLElement>("#tunerows")!;
+    this.tuneName = root.querySelector<HTMLElement>("#tunename")!;
+    root.querySelector("#tunebtn")!.addEventListener("click", () => this.openTune());
+    root.querySelector("#tunereset")!.addEventListener("click", () => hooks.onTuneReset(false));
+    root.querySelector("#tuneresetall")!.addEventListener("click", () => hooks.onTuneReset(true));
+    this.codeDialog = root.querySelector<HTMLDialogElement>("#codedialog")!;
+    this.codeBox = root.querySelector<HTMLTextAreaElement>("#codebox")!;
+    this.codeNote = root.querySelector<HTMLElement>("#codenote")!;
+    this.codeGo = root.querySelector<HTMLButtonElement>("#codego")!;
+    // submit + e.submitter, never the dialog "close" event (M4.3 rule)
+    root.querySelector<HTMLFormElement>("#codeform")!.addEventListener("submit", (e) => {
+      if ((e.submitter as HTMLButtonElement | null)?.value !== "load") return;
+      hooks.onCodeEntered(this.codeBox.value);
     });
     this.reagentCard = root.querySelector<HTMLElement>("#reagent")!;
     this.notebook = root.querySelector<HTMLElement>("#notebook")!;
@@ -586,10 +714,34 @@ export class Ui {
     this.noMatch = root.querySelector<HTMLElement>("#norail")!;
     this.filterInput.addEventListener("input", () => this.applyFilter());
     this.filterInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        // otherwise filtering down to one element still ends in a mouse trip
+        e.preventDefault();
+        const first = this.firstMatch();
+        if (first) { first.click(); this.filterInput.select(); }
+        return;
+      }
       if (e.key !== "Escape") return;
       if (this.filterInput.value === "") this.filterInput.blur();
       else { this.filterInput.value = ""; this.applyFilter(); }
     });
+
+    // small screens: the palette slides over the canvas instead of stealing a
+    // column from it, and picking an element closes it again
+    const side = root.querySelector<HTMLElement>("#side")!;
+    const railToggle = root.querySelector<HTMLButtonElement>("#railtoggle")!;
+    const showRail = (on: boolean): void => {
+      side.classList.toggle("open", on);
+      railToggle.setAttribute("aria-expanded", String(on));
+    };
+    railToggle.addEventListener("click", () => showRail(!side.classList.contains("open")));
+    aside.addEventListener("click", (e) => {
+      if (window.innerWidth <= 900 && (e.target as Element).closest(".el")) showRail(false);
+    });
+    aside.addEventListener("keydown", (e) => this.paletteKeys(e));
+    aside.setAttribute("role", "toolbar");
+    aside.setAttribute("aria-orientation", "vertical");
+    aside.setAttribute("aria-label", "Elements");
 
     this.renderRecent();
     this.bind("L", E.POWDER);
@@ -623,6 +775,46 @@ export class Ui {
         btn.setAttribute("aria-pressed", String(l || r));
       }
     }
+    this.setRoving();
+  }
+
+  /** every visible palette entry, in the order they sit on screen */
+  private paletteOrder(): HTMLButtonElement[] {
+    const out: HTMLButtonElement[] = [];
+    for (const rail of this.rails) {
+      if (rail.host.hidden) continue;
+      for (const b of rail.host.children) {
+        if (!(b as HTMLElement).hidden) out.push(b as HTMLButtonElement);
+      }
+    }
+    return out;
+  }
+
+  /** Roving tabindex: 110 buttons were 110 tab stops between the filter and the
+   *  canvas. Now the palette is one stop and the arrows walk it. */
+  private setRoving(): void {
+    const list = this.paletteOrder();
+    const active = list.find((b) => b.classList.contains("sel-l")) ?? list[0];
+    for (const rail of this.rails) {
+      for (const b of rail.host.children) (b as HTMLButtonElement).tabIndex = -1;
+    }
+    if (active) active.tabIndex = 0;
+  }
+
+  private paletteKeys(e: KeyboardEvent): void {
+    const keys = ["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft", "Home", "End"];
+    if (!keys.includes(e.key)) return;
+    const list = this.paletteOrder();
+    const here = list.indexOf(document.activeElement as HTMLButtonElement);
+    if (here < 0) return;
+    e.preventDefault();
+    const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "Home" || e.key === "End" ? 0 : -1;
+    const next = e.key === "Home" ? 0
+      : e.key === "End" ? list.length - 1
+      : Math.max(0, Math.min(list.length - 1, here + step));
+    list[here].tabIndex = -1;
+    list[next].tabIndex = 0;
+    list[next].focus();
   }
 
   /** RECENT rail: with 106 elements across nine rails, the handful you are
@@ -650,6 +842,7 @@ export class Ui {
     }
     this.markSelection();
     this.applyFilter();
+    this.setCvd(this.cvdOn); // the rebuilt buttons need their letters back
   }
 
   /** name/group filter over the whole palette; empty rails fold away */
@@ -679,6 +872,18 @@ export class Ui {
     this.filterCount.textContent = q === "" ? `${total}` : `${shown}/${total}`;
     this.filterCount.classList.toggle("none", q !== "" && shown === 0);
     this.noMatch.hidden = shown > 0 || q === "";
+    this.setRoving(); // what is reachable by arrow key changed with the filter
+  }
+
+  /** the first still-visible palette entry, skipping the RECENT duplicates */
+  private firstMatch(): HTMLButtonElement | null {
+    for (const rail of this.rails) {
+      if (rail.host === this.recentHost || rail.host.hidden) continue;
+      for (const btn of rail.host.children) {
+        if (!(btn as HTMLElement).hidden && btn !== this.newElBtn) return btn as HTMLButtonElement;
+      }
+    }
+    return null;
   }
 
   /** focus the palette filter (the "/" shortcut) */
@@ -740,8 +945,98 @@ export class Ui {
   /** add a palette button for a freshly registered custom element */
   addElementButton(id: number): void {
     this.addButtonFn(this.customHost, id);
-    this.customHost.appendChild(this.newElBtn); // keep "+ New…" last
+    this.customHost.append(this.newElBtn, this.manageBtn); // keep the two actions last
     this.applyFilter();
+    this.setCvd(this.cvdOn);
+  }
+
+  // ---- the element maker, in create and edit mode -------------------------
+  private elDialog!: HTMLDialogElement;
+  private rxRows!: HTMLElement;
+  private addRxRow!: () => void;
+  private manageBtn!: HTMLButtonElement;
+  private customDialog!: HTMLDialogElement;
+  private customList!: HTMLElement;
+  /** index into the saved custom list, or -1 when inventing a new one */
+  private makerIndex = -1;
+
+  /** open the maker blank, or filled in with an element you already made */
+  openMaker(spec: CustomSpec | null, index: number): void {
+    this.makerIndex = index;
+    const f = this.elDialog.querySelector<HTMLFormElement>("#elform")!;
+    const set = (name: string, v: string | number | undefined): void => {
+      const el = f.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
+      if (el) el.value = v === undefined || v === null ? "" : String(v);
+    };
+    this.elDialog.querySelector("#eltitle")!.textContent = spec ? "Edit element" : "New element";
+    const note = this.elDialog.querySelector<HTMLElement>("#elnote")!;
+    note.hidden = !spec;
+    note.textContent = spec ? "Saving reloads the page so the registry rebuilds cleanly. The scene is kept." : "";
+    this.elDialog.querySelector("#elsave")!.textContent = spec ? "save changes" : "create";
+    set("name", spec?.name ?? "");
+    set("color", spec?.color ?? "#8ad0c0");
+    set("state", spec?.state ?? "powder");
+    set("density", spec?.density ?? 60);
+    set("flammable", spec?.flammable ?? 0);
+    set("explodeR", spec?.explodeR ?? 0);
+    set("temp0", spec?.temp0 ?? 20);
+    set("pump", spec?.pump ?? 0);
+    set("hotAt", spec?.hotAt);
+    set("hotTo", spec?.hotTo ?? 0);
+    set("coldAt", spec?.coldAt);
+    set("coldTo", spec?.coldTo ?? 0);
+    set("ignitesAt", spec?.ignitesAt);
+    this.rxRows.replaceChildren();
+    const rows = spec?.reactions ?? [];
+    for (const r of rows) {
+      this.addRxRow();
+      const row = this.rxRows.lastElementChild!;
+      row.querySelector<HTMLSelectElement>("[data-rw]")!.value = String(r.with);
+      row.querySelector<HTMLSelectElement>("[data-rs]")!.value = String(r.becomeSelf);
+      row.querySelector<HTMLSelectElement>("[data-ro]")!.value = String(r.becomeOther);
+      row.querySelector<HTMLInputElement>("[data-rp]")!.value = String(r.p);
+    }
+    if (rows.length === 0) this.addRxRow();
+    this.elDialog.showModal();
+  }
+
+  /** render the invented-element list; main.ts owns the storage */
+  setCustomElements(specs: CustomSpec[]): void {
+    this.manageBtn.hidden = specs.length === 0;
+    if (specs.length === 0) {
+      this.customList.replaceChildren(this.galNote("You have not invented anything yet."));
+      return;
+    }
+    this.customList.replaceChildren(...specs.map((spec, i) => {
+      const row = document.createElement("div");
+      row.className = "slot";
+      const sw = document.createElement("i");
+      sw.className = "rsw big";
+      sw.style.background = spec.color;
+      const name = document.createElement("span");
+      name.className = "gal-name";
+      name.textContent = spec.name;
+      const meta = document.createElement("span");
+      meta.className = "slot-meta";
+      meta.textContent = `${spec.state} · ${spec.reactions?.length ?? 0} rx`;
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "edit";
+      edit.addEventListener("click", () => { this.customDialog.close(); this.openMaker(spec, i); });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "slot-del";
+      del.textContent = "×";
+      del.title = `Delete ${spec.name}`;
+      del.setAttribute("aria-label", `Delete ${spec.name}`);
+      del.addEventListener("click", () => {
+        if (confirm(`Delete "${spec.name}"? Anything already painted with it is erased, and the page reloads.`)) {
+          this.hooks.onDeleteElement(i);
+        }
+      });
+      row.append(sw, name, meta, edit, del);
+      return row;
+    }));
   }
 
   /** Lab Notebook: diffs the REACT_COUNT table on the stats cadence; new
@@ -883,6 +1178,126 @@ export class Ui {
     this.galList.replaceChildren(...rows);
   }
 
+  // ---- settings ----------------------------------------------------------
+  private setDialog!: HTMLDialogElement;
+  private setBoxes!: { cvd: HTMLInputElement; minimap: HTMLInputElement; engine: HTMLSelectElement };
+
+  /** put the stored settings into the dialog at boot */
+  setSettings(s: { cvd: boolean; minimap: boolean; engine: string }): void {
+    this.setBoxes.cvd.checked = s.cvd;
+    this.setBoxes.minimap.checked = s.minimap;
+    this.setBoxes.engine.value = s.engine;
+    this.setCvd(s.cvd);
+  }
+
+  /** Colour-blind assist on the palette: 106 swatches carry the whole meaning
+   *  of the sidebar, and several pairs collapse under deuteranopia. Letters
+   *  survive any colour vision. */
+  private cvdOn = false;
+  private setCvd(on: boolean): void {
+    this.cvdOn = on;
+    document.documentElement.classList.toggle("cvd", on);
+    for (const [id, list] of this.buttons) {
+      const name = id === TOOL_PLAYER ? "Player" : id === TOOL_FIGHTER ? "Fighter"
+        : id === E.EMPTY ? "Erase" : ELEMENTS[id]?.name ?? "?";
+      for (const btn of list) {
+        const sw = btn.querySelector<HTMLElement>(".sw");
+        if (sw) sw.dataset.tag = on ? name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() : "";
+      }
+    }
+  }
+
+  // ---- element tuning ----------------------------------------------------
+  private tuneDialog!: HTMLDialogElement;
+  private tuneRows!: HTMLElement;
+  private tuneName!: HTMLElement;
+
+  openTune(): void {
+    this.hooks.onTuneOpen();
+    if (!this.tuneDialog.open) this.tuneDialog.showModal();
+  }
+
+  /** null = nothing tunable is held (empty, wall, or a placement tool) */
+  setTunables(spec: {
+    name: string; color: string; tuned: boolean;
+    rows: { key: string; label: string; min: number; max: number; step: number; value: number; isDefault: boolean }[];
+  } | null): void {
+    if (!spec) {
+      this.tuneName.textContent = "—";
+      this.tuneRows.replaceChildren(this.galNote("Hold an element on the left button to tune it."));
+      return;
+    }
+    this.tuneName.textContent = spec.name;
+    this.tuneRows.replaceChildren(...spec.rows.map((r) => {
+      const row = document.createElement("label");
+      row.className = "tune-row" + (r.isDefault ? "" : " tuned");
+      const label = document.createElement("span");
+      label.className = "tune-label";
+      label.textContent = r.label;
+      const input = document.createElement("input");
+      input.type = "range";
+      input.min = String(r.min);
+      input.max = String(r.max);
+      input.step = String(r.step);
+      input.value = String(r.value);
+      const out = document.createElement("output");
+      out.className = "tune-val";
+      out.value = String(r.value);
+      input.addEventListener("input", () => {
+        out.value = input.value;
+        row.classList.add("tuned");
+        this.hooks.onTune(r.key, Number(input.value));
+      });
+      row.append(label, input, out);
+      return row;
+    }));
+  }
+
+  // ---- share codes -------------------------------------------------------
+  private codeDialog!: HTMLDialogElement;
+  private codeBox!: HTMLTextAreaElement;
+  private codeNote!: HTMLElement;
+  private codeGo!: HTMLButtonElement;
+
+  /** ask for a code to load (replaces prompt(), which cannot be styled, cannot
+   *  be pasted into on some mobile browsers, and blocks the frame loop) */
+  askCode(): void {
+    this.codeBox.value = "";
+    this.codeBox.readOnly = false;
+    this.codeNote.textContent = "Paste a code someone sent you. It carries the whole scene, including any elements they invented.";
+    this.codeGo.hidden = false;
+    this.codeDialog.showModal();
+    this.codeBox.focus();
+  }
+
+  /** clipboard write was refused: show the code so it can be copied by hand */
+  showCode(code: string): void {
+    this.codeBox.value = code;
+    this.codeBox.readOnly = true;
+    this.codeNote.textContent = "This browser blocked the clipboard. Select the code and copy it.";
+    this.codeGo.hidden = true;
+    this.codeDialog.showModal();
+    this.codeBox.select();
+  }
+
+  // ---- toasts ------------------------------------------------------------
+  // Copying a share code used to succeed in total silence and a bad file used
+  // to stop the whole app with alert(). Both are the same event — something
+  // finished — and both belong in the corner of the glass, not in a modal.
+  private toastHost!: HTMLElement;
+
+  toast(message: string, kind: "ok" | "err" = "ok"): void {
+    const t = document.createElement("div");
+    t.className = `toast ${kind}`;
+    t.textContent = message;
+    this.toastHost.append(t);
+    while (this.toastHost.children.length > 3) this.toastHost.firstElementChild!.remove();
+    setTimeout(() => {
+      t.classList.add("out");
+      setTimeout(() => t.remove(), 220);
+    }, kind === "err" ? 5200 : 2800);
+  }
+
   // ---- scene menu --------------------------------------------------------
   private sceneBtn!: HTMLButtonElement;
   private sceneMenu!: HTMLElement;
@@ -1017,6 +1432,11 @@ export class Ui {
 
   setPos(x: number, y: number): void {
     this.statPos.textContent = x >= 0 ? `${x},${y}` : "–";
+  }
+
+  /** zoom was invisible state: you could not tell 1× from 1.4× without a ruler */
+  setZoom(z: number): void {
+    this.statZoom.textContent = z >= 10 ? `${z.toFixed(0)}×` : `${z.toFixed(1)}×`;
   }
 
   /** Cell probe: the fields the engine has always computed but only ever showed
