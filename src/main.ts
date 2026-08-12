@@ -112,6 +112,21 @@ const fighters: Fighter[] = [];
 const keys = { left: false, right: false, up: false };
 const root = document.getElementById("app")!;
 
+// The renderer throws if WebGL2 is missing, but it is built ~300 lines after the
+// UI is — so without this check the toolbar, palette and footer all appear and
+// then every control that touches the renderer throws on click: a dead lab that
+// looks alive. Check before anything is drawn, and say what happened.
+if (!(() => { try { return !!document.createElement("canvas").getContext("webgl2"); } catch { return false; } })()) {
+  root.innerHTML = `<div class="fatal">
+    <h1>Granulab needs WebGL2</h1>
+    <p>This browser cannot give the page a WebGL2 canvas, and the simulation is drawn entirely on
+      one. Nothing here will work without it.</p>
+    <p>Usually that means hardware acceleration is switched off, or the browser is a few versions
+      behind. Turning acceleration back on in the browser's settings, or updating it, fixes it.</p>
+  </div>`;
+  throw new Error("[granulab] WebGL2 unavailable — halted before building the UI");
+}
+
 /** one full simulation tick: cells, rigid objects, stickmen */
 function simTick(): void {
   world.step();

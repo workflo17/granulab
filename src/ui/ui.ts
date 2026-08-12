@@ -4,6 +4,7 @@
 import {
   E, B, ELEMENTS, REACT, REACT_COUNT, REACT_NAME, REACT_DT, PH, CONDUCTS,
   N_IDS, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, FLAMMABLE, EXPLODE_R,
+  REACT_BYPRODUCT, HAS_REACT,
   pairKey, type CustomSpec,
 } from "../engine/elements";
 
@@ -91,6 +92,76 @@ for (const el of ELEMENTS) {
 const shortDate = (t: number): string =>
   new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(new Date(t));
 
+/** every reaction in the table, once per pair (react() writes both directions) */
+export interface Recipe {
+  a: number;
+  b: number;
+  /** what each side turns into; equal to the reactant when it is unchanged */
+  newA: number;
+  newB: number;
+  /** third product vented to a free neighbour, 0 = none */
+  extra: number;
+  p: number;
+  dT: number;
+  name: string;
+}
+
+let recipeCache: Recipe[] | null = null;
+
+/** Walk REACT once and keep one entry per unordered pair. Custom elements can
+ *  add rows at runtime, so the cache is dropped whenever one is registered. */
+export function allRecipes(): Recipe[] {
+  if (recipeCache) return recipeCache;
+  const out: Recipe[] = [];
+  for (let a = E.WALL + 1; a < ELEMENTS.length; a++) {
+    for (let b = a; b < ELEMENTS.length; b++) {
+      const r = REACT[a * N_IDS + b];
+      if (r === 0) continue;
+      const k = pairKey(a, b);
+      out.push({
+        a, b,
+        newA: (r >>> 8) & 255,
+        newB: r & 255,
+        extra: REACT_BYPRODUCT[k] ?? 0,
+        p: (r >>> 16) & 255,
+        dT: REACT_DT[k],
+        name: REACT_NAME[k] ?? `${ELEMENTS[a]?.name ?? a} + ${ELEMENTS[b]?.name ?? b}`,
+      });
+    }
+  }
+  out.sort((x, z) => x.name.localeCompare(z.name));
+  recipeCache = out;
+  return out;
+}
+
+export function dropRecipeCache(): void {
+  recipeCache = null;
+}
+
+/** everything that yields `id`: reaction rows, third products, and the thermal
+ *  transitions, which is how Glass and Steam and Stone actually come about */
+function makersOf(id: number): { parts: (number | string)[] }[] {
+  const out: { parts: (number | string)[] }[] = [];
+  const seen = new Set<string>();
+  const add = (parts: (number | string)[]): void => {
+    const key = parts.join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ parts });
+  };
+  for (const r of allRecipes()) {
+    // a row that merely leaves the element alone is not a recipe for it
+    const makesA = r.newA === id && r.a !== id;
+    const makesB = r.newB === id && r.b !== id;
+    if (makesA || makesB || r.extra === id) add([r.a, r.b]);
+  }
+  for (let x = E.WALL + 1; x < ELEMENTS.length; x++) {
+    if (HOT_TO[x] === id) add([x, `≥ ${HOT_AT[x]}°`]);
+    if (COLD_TO[x] === id) add([x, `≤ ${COLD_AT[x]}°`]);
+  }
+  return out;
+}
+
 export class Ui {
   state: UiState & { penMode: PenMode; penShape: PenShape } = {
     toolL: E.POWDER, toolR: E.EMPTY, pen: 6, speed: 1, paused: false,
@@ -105,6 +176,7 @@ export class Ui {
   private filterInput!: HTMLInputElement;
   private filterCount!: HTMLElement;
   private noMatch!: HTMLElement;
+  private propHint!: HTMLElement;
   private addButtonFn!: (host: HTMLElement, id: number) => void;
   private customHost!: HTMLElement;
   private newElBtn!: HTMLButtonElement;
@@ -231,7 +303,9 @@ export class Ui {
           <span id="elcount" aria-live="polite"></span>
         </div>
         <div id="rails" translate="no"></div>
-        <p id="norail" hidden>Nothing matches. Clear the filter with Esc.</p>
+        <p id="prophint" hidden></p>
+        <p id="norail" hidden>Nothing matches. Try a name, a rail, or a property
+          — burns, conducts, explodes, melts, freezes, acid, base, reacts, inert.</p>
       </aside>
       <dialog id="eldialog" aria-labelledby="eltitle">
         <form method="dialog" id="elform">
@@ -289,6 +363,20 @@ export class Ui {
             .grn file or copy a share code.</p>
           <div id="slotlist"></div>
           <menu><button value="close" formnovalidate>close</button></menu>
+        </form>
+      </dialog>
+      <dialog id="rxdialog" aria-labelledby="rxtitle">
+        <form method="dialog">
+          <h2 id="rxtitle">Reaction index</h2>
+          <p class="dlg-note">Every reaction the simulation knows, whether or not you have made it
+            happen. The notebook tracks the ones you have.</p>
+          <div class="railsearch rxsearch">
+            <input id="rxfilter" type="text" placeholder="filter by element or reaction…"
+                   aria-label="Filter reactions" autocomplete="off" spellcheck="false">
+            <span id="rxcount"></span>
+          </div>
+          <div id="rxlist"></div>
+          <menu><button value="close" class="primary" formnovalidate>close</button></menu>
         </form>
       </dialog>
       <dialog id="setdialog" aria-labelledby="settitle">
@@ -407,6 +495,11 @@ export class Ui {
             Fans, cannons and lasers aim along the direction you drag while painting them. Click the
             minimap to jump the view. Colour-blind assist and the engine choice live under
             scene → settings.</p>
+          <p class="dlg-note">The palette filter takes properties as well as names —
+            <b>burns</b>, <b>conducts</b>, <b>explodes</b>, <b>melts</b>, <b>freezes</b>, <b>acid</b>,
+            <b>base</b>, <b>reacts</b>, <b>inert</b> — and the card in the corner says both what the
+            held element does and what it is made from. For everything the simulation can react,
+            open the lab notebook and hit <b>index</b>.</p>
           <menu><button value="close" class="primary">close</button></menu>
         </form>
       </dialog>
@@ -436,6 +529,7 @@ export class Ui {
               <option value="count">most reactions</option>
               <option value="name">by name</option>
             </select>
+            <button id="nbindex" title="Every reaction in the table, not just the ones you have seen">index</button>
             <button id="nbclear" title="Start a fresh page — only reactions from now on"
                     aria-label="Start a fresh page">clear</button>
             <button id="nbclose" title="Close the notebook" aria-label="Close the notebook">×</button>
@@ -470,6 +564,7 @@ export class Ui {
       btn.title = `${label} — click to hold on the left button, right-click for the right`;
       btn.setAttribute("aria-label", label);
       btn.dataset.name = label.toLowerCase();
+      btn.dataset.id = String(id);
       btn.addEventListener("click", () => this.bind("L", id));
       btn.addEventListener("contextmenu", (e) => { e.preventDefault(); this.bind("R", id); });
       host.appendChild(btn);
@@ -699,6 +794,12 @@ export class Ui {
     });
     root.querySelector("#nbclose")!.addEventListener("click", () => { this.notebook.hidden = true; });
     root.querySelector("#nbclear")!.addEventListener("click", () => this.clearNotebook());
+    this.rxDialog = root.querySelector<HTMLDialogElement>("#rxdialog")!;
+    this.rxList = root.querySelector<HTMLElement>("#rxlist")!;
+    this.rxFilter = root.querySelector<HTMLInputElement>("#rxfilter")!;
+    this.rxCount = root.querySelector<HTMLElement>("#rxcount")!;
+    this.rxFilter.addEventListener("input", () => this.renderRecipeIndex());
+    root.querySelector("#nbindex")!.addEventListener("click", () => this.openRecipeIndex());
     root.querySelector<HTMLSelectElement>("#nbsort")!.addEventListener("change", (e) => {
       this.nbSort = (e.target as HTMLSelectElement).value as typeof this.nbSort;
       this.sortNotebook();
@@ -741,6 +842,7 @@ export class Ui {
     this.filterInput = root.querySelector<HTMLInputElement>("#elfilter")!;
     this.filterCount = root.querySelector<HTMLElement>("#elcount")!;
     this.noMatch = root.querySelector<HTMLElement>("#norail")!;
+    this.propHint = root.querySelector<HTMLElement>("#prophint")!;
     this.filterInput.addEventListener("input", () => this.applyFilter());
     this.filterInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -874,9 +976,26 @@ export class Ui {
     this.setCvd(this.cvdOn); // the rebuilt buttons need their letters back
   }
 
-  /** name/group filter over the whole palette; empty rails fold away */
+  /** Property words the filter understands. The registry has always known which
+   *  elements burn, conduct, explode or melt; none of it was askable, so with
+   *  106 elements "what can I set on fire" had no answer but scrolling. */
+  private static PROPS: { words: string[]; test: (id: number) => boolean }[] = [
+    { words: ["burns", "flammable", "fuel"], test: (id) => FLAMMABLE[id] > 0 || IGNITES_AT[id] < 32767 },
+    { words: ["conducts", "conductor", "wire"], test: (id) => CONDUCTS[id] > 0 },
+    { words: ["explodes", "explosive", "blast"], test: (id) => EXPLODE_R[id] > 0 },
+    { words: ["melts"], test: (id) => HOT_TO[id] !== 0 },
+    { words: ["freezes"], test: (id) => COLD_TO[id] !== 0 },
+    { words: ["acid", "acidic"], test: (id) => PH[id] !== 255 && PH[id] < 7 },
+    { words: ["alkali", "base", "basic"], test: (id) => PH[id] !== 255 && PH[id] > 7 },
+    { words: ["ph", "aqueous"], test: (id) => PH[id] !== 255 },
+    { words: ["reacts", "reactive"], test: (id) => HAS_REACT[id] === 1 },
+    { words: ["inert"], test: (id) => HAS_REACT[id] !== 1 && HOT_TO[id] === 0 && COLD_TO[id] === 0 },
+  ];
+
+  /** name/group/property filter over the whole palette; empty rails fold away */
   private applyFilter(): void {
     const q = (this.filterInput?.value ?? "").trim().toLowerCase();
+    const prop = (q === "" ? undefined : Ui.PROPS.find((p) => p.words.some((w) => w.startsWith(q) && q.length >= 3))) ?? null;
     let shown = 0;
     let total = 0;
     for (const rail of this.rails) {
@@ -887,7 +1006,9 @@ export class Ui {
         const el = btn as HTMLElement;
         const isNew = el === this.newElBtn;
         const name = el.dataset.name ?? "";
-        const hit = q === "" ? true : !isNew && (railHit || name.includes(q));
+        const eid = Number(el.dataset.id ?? NaN);
+        const propHit = prop !== null && Number.isFinite(eid) && eid > E.WALL && prop.test(eid);
+        const hit = q === "" ? true : !isNew && (railHit || propHit || name.includes(q));
         el.hidden = !hit;
         if (hit) visible++;
         if (rail.host !== this.recentHost && !isNew) {
@@ -901,6 +1022,8 @@ export class Ui {
     this.filterCount.textContent = q === "" ? `${total}` : `${shown}/${total}`;
     this.filterCount.classList.toggle("none", q !== "" && shown === 0);
     this.noMatch.hidden = shown > 0 || q === "";
+    this.propHint.hidden = prop === null;
+    if (prop) this.propHint.textContent = `matching “${prop.words[0]}”`;
     this.setRoving(); // what is reachable by arrow key changed with the filter
   }
 
@@ -966,6 +1089,20 @@ export class Ui {
     if (PH[id] !== 255) flags.push(`pH ${PH[id]}`);
     if (CONDUCTS[id] > 0) flags.push("conducts");
     if (flags.length) rows.push(`<div class="rx flags">${flags.join(" · ")}</div>`);
+
+    // WHERE IT COMES FROM. The card only ever said what an element does to other
+    // things; for 27 of them it said nothing at all, because they are products —
+    // Glass, Smoke, Nitrogen, Litmus. "How do I make this" is the question a
+    // chemistry set has to answer, so scan the table backwards for the answer.
+    const sources = makersOf(id);
+    if (sources.length) {
+      rows.push(`<div class="rx made">made from</div>`);
+      for (const m of sources.slice(0, 6)) {
+        rows.push(`<div class="rx"><span>${m.parts.map((p) =>
+          typeof p === "number" ? sw(p) + nm(p) : p).join(" + ")}</span><span class="arr">→</span><span>${sw(id)}${nm(id)}</span></div>`);
+      }
+      if (sources.length > 6) rows.push(`<div class="rx flags">+ ${sources.length - 6} more — see the reaction index</div>`);
+    }
     if (rows.length === 0) { card.hidden = true; return; }
     card.innerHTML = `<div class="rhead">${sw(id)}${ELEMENTS[id].name}</div>` + rows.join("");
     card.hidden = false;
@@ -974,6 +1111,7 @@ export class Ui {
   /** add a palette button for a freshly registered custom element */
   addElementButton(id: number): void {
     this.addButtonFn(this.customHost, id);
+    dropRecipeCache(); // a new element can add reaction rows
     this.customHost.append(this.newElBtn, this.manageBtn); // keep the two actions last
     this.applyFilter();
     this.setCvd(this.cvdOn);
@@ -1077,6 +1215,54 @@ export class Ui {
   private nbRowsHost!: HTMLElement;
   private nbBtn!: HTMLButtonElement;
   private nbFresh = 0;
+
+  // ---- reaction index ----------------------------------------------------
+  // The notebook is a record of what you have witnessed. That is the wrong tool
+  // for "what can I make" — a hundred rows were discoverable only by accident.
+  private rxDialog!: HTMLDialogElement;
+  private rxList!: HTMLElement;
+  private rxFilter!: HTMLInputElement;
+  private rxCount!: HTMLElement;
+
+  openRecipeIndex(): void {
+    this.renderRecipeIndex();
+    if (!this.rxDialog.open) this.rxDialog.showModal();
+    this.rxFilter.focus();
+  }
+
+  private renderRecipeIndex(): void {
+    const q = this.rxFilter.value.trim().toLowerCase();
+    const all = allRecipes();
+    const hits = q === "" ? all : all.filter((r) =>
+      r.name.toLowerCase().includes(q) ||
+      (ELEMENTS[r.a]?.name ?? "").toLowerCase().includes(q) ||
+      (ELEMENTS[r.b]?.name ?? "").toLowerCase().includes(q) ||
+      (ELEMENTS[r.newA]?.name ?? "").toLowerCase().includes(q) ||
+      (ELEMENTS[r.newB]?.name ?? "").toLowerCase().includes(q) ||
+      (ELEMENTS[r.extra]?.name ?? "").toLowerCase().includes(q));
+    this.rxCount.textContent = q === "" ? `${all.length}` : `${hits.length}/${all.length}`;
+    this.rxCount.classList.toggle("none", hits.length === 0);
+    if (hits.length === 0) {
+      this.rxList.replaceChildren(this.galNote("Nothing matches that."));
+      return;
+    }
+    const chip = (eid: number): string =>
+      `<i class="rsw" style="background:${ELEMENTS[eid]?.color ?? "#888"}"></i>${ELEMENTS[eid]?.name ?? "∅"}`;
+    this.rxList.replaceChildren(...hits.map((r) => {
+      const row = document.createElement("div");
+      row.className = "rx-row";
+      const prods: string[] = [];
+      if (r.newA !== r.a) prods.push(r.newA === E.EMPTY ? "∅" : chip(r.newA));
+      if (r.newB !== r.b) prods.push(r.newB === E.EMPTY ? "∅" : chip(r.newB));
+      if (r.extra) prods.push(chip(r.extra));
+      const heat = r.dT > 0 ? `<em class="exo">+${r.dT}°</em>` : r.dT < 0 ? `<em class="endo">${r.dT}°</em>` : "";
+      row.innerHTML =
+        `<div class="rx-name">${r.name}${heat}</div>` +
+        `<div class="rx-eq">${chip(r.a)} + ${chip(r.b)} <span class="arr">→</span> ${prods.join(" + ") || "∅"}` +
+        `<span class="rx-p">${((r.p / 256) * 100).toFixed(r.p < 3 ? 1 : 0)}%</span></div>`;
+      return row;
+    }));
+  }
 
   private nbSort: "recent" | "count" | "name" = "recent";
   /** live tallies per row, so sorting does not have to re-read the table */

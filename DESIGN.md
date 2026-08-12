@@ -886,6 +886,44 @@
 > (pi*36) exactly at the cursor, with an undo snapshot; shift+Enter erases it;
 > the stickman never moves during it.
 >
+> THE CHEMISTRY TEACHES ITSELF 8/11 — the biggest remaining gap was that none of
+> it was knowable from inside the game. The datasheet said what an element DOES
+> and never how to MAKE it: hold Bleach and you got its three reactions and its
+> pH, not "Lye + Chlorine -> Bleach", which is the thing you need. MEASURED: of
+> 109 palette entries, 27 had a COMPLETELY BLANK datasheet — Glass, Smoke,
+> Nitrogen, Litmus and 23 others — because they are products, and the card only
+> ever looked forwards.
+> (1) MADE FROM. The card now scans the table backwards: REACT rows whose
+> product is the held element (ignoring rows that merely leave it alone), third
+> products via REACT_BYPRODUCT, and the thermal transitions, which is how Glass
+> and Stone and Steam actually come about. Blank datasheets 27 -> 24, and the 24
+> left are Wall, Clone, Fan, Laser, Ball, Box and friends — mechanisms, not
+> substances, correctly silent. Verified: Bleach reads "Lye + Chlorine",
+> Thermite "Rust + Aluminum", Glass "Sand + >= 1100 deg", Smoke "Fire + Rubber".
+> (2) REACTION INDEX (lab notebook -> "index"): all 92 reactions with their
+> names, equations, heat tags and per-tick chance, filterable by any element or
+> reaction name. The notebook is a record of what you have WITNESSED, which is
+> the wrong tool for "what can I make" — a hundred rows were discoverable only
+> by accident or by reading this file. allRecipes() dedupes by unordered pair
+> (react() writes both directions) and the cache drops when a custom element
+> registers, since that can add rows.
+> (3) PROPERTY SEARCH in the palette filter. The registry has always known what
+> burns, conducts, explodes, melts, freezes, and what is acidic — none of it was
+> askable. Words (>=3 chars, prefix-matched): burns/flammable/fuel,
+> conducts/conductor/wire, explodes/explosive/blast, melts, freezes,
+> acid/acidic, alkali/base/basic, ph/aqueous, reacts/reactive, inert. Verified:
+> "conducts" -> exactly Metal/Copper/Gold/Tungsten, "explodes" -> Nitro/
+> Gunpowder/Bomb, "base" -> the 8 alkaline elements, "burns" -> 28, and a plain
+> name still searches by name.
+> (4) WEBGL2 GUARD. Renderer throws if there is no WebGL2 context, but it is
+> built ~300 lines AFTER the Ui — so on a machine without it the toolbar,
+> palette and footer all appeared and then every control that touched the
+> renderer threw on click: a dead lab that looked alive. The check now runs
+> before anything is drawn and replaces the page with what happened and how to
+> fix it. Verified the asymmetric risk: it does NOT false-positive on a working
+> browser (the app boots normally), and the message is styled rather than raw
+> text on black.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
