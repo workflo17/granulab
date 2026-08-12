@@ -1104,6 +1104,38 @@
 > ever starts passing it flips to a hard FAILURE telling you to delete the
 > marker. Doom's magazine is the first entry.
 >
+> DOOMSDAY FIXED 8/12 — 10 runs out of 10, boom at t≈55, peak blast 40.
+> WHAT IT ACTUALLY WAS, after a long and repeatedly-wrong hunt: NOT distance.
+> The 233-cell train was the obvious suspect and it is a real problem, but the
+> measurements killed that theory — a 12-cell lead fired 3 runs in 5, a 20-cell
+> lead 2 in 5, and a 50-cell lead fired where 30 and 40 did not. The burn DIES
+> OUT STOCHASTICALLY, so no fixture length is safe.
+> THE FIX: a torch re-lights its neighbour every tick, so backing a SHORT lead
+> with one converts a coin flip into a certainty. Three torch cells carved in at
+> (566, 691-693), against the magazine's own lead. 10/10, t≈55, versus 0/10
+> before. The long train from the volcano's foot stays as set dressing.
+> RULED OUT ALONG THE WAY, each by measurement, none of them the cause: oxygen
+> (air 1.0 at the front), cold (409°C at the front), the dry-ice glacier
+> (deleting every cell changes nothing), the volcano, the town, the heaters and
+> the torches (removing each in turn: front still stalls at 351-356), and
+> distance (233 cells burn clean through in a bare world). One trace showed fire
+> cells whose life bytes did not decrement for 14 ticks — a sleeping chunk —
+> but a later run decremented normally, so the underlying stochastic die-out is
+> STILL UNEXPLAINED at engine level. The fixture is now robust against it; the
+> engine question is open.
+> THREE WRONG CALLS IN ONE INVESTIGATION, all from trusting a rig rather than
+> the result: (1) "12x slower than documented" — the test had carved an open
+> shaft above the ignition point so the flame rose away; a clean tunnel runs
+> 0.26 cells/tick, FASTER than the recorded 0.1. (2) "the dry-ice glacier
+> freezes it" — the -57°C reading is the FLOOR of the temp byte encoding, i.e.
+> an all-zero buffer, because renderer.tempAt reads a texture only filled while
+> the renderer DRAWS and a hidden pane never draws. (3) "it is a distance
+> problem" — killed by the 50-vs-30 result above. The habit that caught all
+> three: repeat the measurement with the variable changed, never reason from a
+> single reading.
+> The suite's known-failure entry is now a real passing gate: 58 checks green,
+> 0 known-failing.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

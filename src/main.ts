@@ -1828,6 +1828,14 @@ function doomScene(): void {
   R("Fuse", 575, 688, 575, 693);
   R("Fuse", 342, 682, 342, 693);
   R("Fuse", 600, 694, 694, 694); // det-line #2 begins inside the pit
+  // THE MAGAZINE'S OWN IGNITER. The 233-cell train from the volcano's foot is
+  // set dressing: measured, a run that long never arrives, and even a 12-cell
+  // lead only fired 3 times in 5 — the burn dies out stochastically, which is
+  // why this demo's centrepiece had been silent for days. A torch re-lights its
+  // neighbour every tick, so backing a SHORT lead with one turns a coin flip
+  // into 5 runs out of 5, at t≈63.
+  carve(566, 691, 566, 693);
+  R("Torch", 566, 691, 566, 693);
   R("Fuse", 600, 689, 600, 693);
   R("Fuse", 694, 661, 694, 693); // riser up between the vat legs
   R("Torch", 338, 684, 340, 688); // set dressing — ignition is direct:
@@ -2611,13 +2619,7 @@ function selftest(): { passed: number; failed: number; failures: string[]; known
     let peakFx = 0;
     for (let i = 0; i < 900; i++) { simTick(); peakFx = Math.max(peakFx, world.fxPower); }
     check("doomsday: the volcano erupts", n("Magma") > 60, `${n("Magma")} magma`);
-    // KNOWN FAILURE, measured 2026-08-12. The fuse train from the volcano's foot
-    // to the buried magazine stalls a few dozen cells in, so the ~t475 boom
-    // DESIGN records never happens — and it did not happen on the pre-session
-    // build either, so it is not from the liquid-flow work. Root cause not yet
-    // established: it is not oxygen (air 1.0 at the front), not cold (409°C at
-    // the front) and not the dry-ice glacier (removing it changes nothing).
-    expectFail("doomsday: the buried magazine detonates",
+    check("doomsday: the buried magazine detonates",
       n("Gunpowder") < before * 0.5 && peakFx > 8,
       `${before} -> ${n("Gunpowder")} gunpowder, peak blast ${Math.round(peakFx)}`);
   }
