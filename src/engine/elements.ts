@@ -540,13 +540,13 @@ react(E.MAGMA, E.SEAWATER, E.STONE, E.STEAM, 220, "Quenching");
 react(E.MAGMA, E.STONE, E.MAGMA, E.MAGMA, 3, "Remelting"); // magma slowly melts stone
 react(E.MAGMA, E.METAL, E.MAGMA, E.MAGMA, 2, "Foundry melt"); // ...and metal
 react(E.WATER, E.ICE, E.ICE, E.ICE, 1, "Ice creep"); // ice creeps through still water
-react(E.ANT, E.WATER, E.EMPTY, E.WATER, 200); // ants drown
-react(E.ANT, E.SEAWATER, E.EMPTY, E.SEAWATER, 200);
+react(E.ANT, E.WATER, E.EMPTY, E.WATER, 200, "Drowning"); // ants drown
+react(E.ANT, E.SEAWATER, E.EMPTY, E.SEAWATER, 200, "Drowning");
 react(E.SAND, E.WATER, E.MUD, E.EMPTY, 12, "Mudding"); // wet sand muddies
 react(E.MUD, E.FIRE, E.SAND, E.FIRE, 30, "Kiln drying"); // fire dries mud back to sand
 react(E.MUD, E.MAGMA, E.SAND, E.MAGMA, 60, "Kiln drying");
 react(E.STEAM, E.CLOUD, E.CLOUD, E.CLOUD, 120, "Cloud seeding"); // clouds grow from steam
-react(E.BIRD, E.WATER, E.EMPTY, E.WATER, 200); // birds drown too
+react(E.BIRD, E.WATER, E.EMPTY, E.WATER, 200, "Drowning"); // birds drown too
 
 // ---- M4.5 chemistry set --------------------------------------------------
 react(E.LYE, E.OIL, E.SOAPY, E.SOAPY, 40, "Saponification", 25); // saponification: fat + lye = soap

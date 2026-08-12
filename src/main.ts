@@ -5,7 +5,7 @@ import wasmUrl from "../asm/build/engine.wasm?url";
 import { Player, Fighter } from "./engine/player";
 import { ObjectSystem } from "./engine/objects";
 import { Renderer } from "./render/renderer";
-import { Ui, TOOL_PLAYER, TOOL_FIGHTER, type GalleryScene } from "./ui/ui";
+import { Ui, readJson, TOOL_PLAYER, TOOL_FIGHTER, type GalleryScene } from "./ui/ui";
 import {
   E, ELEMENTS, PALETTE, registerElement, type CustomSpec,
   DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0, EXPLODE_R, TEMP0, HEAT_PUMP,
@@ -20,7 +20,7 @@ const GRID_H = 720;
 // therefore has to travel inside a shared scene rather than being assumed.
 const FIRST_CUSTOM_ID = ELEMENTS.length;
 const CUSTOM_KEY = "granulab-custom";
-const customSpecs: CustomSpec[] = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? "[]");
+const customSpecs: CustomSpec[] = readJson<CustomSpec[]>(CUSTOM_KEY, [], Array.isArray);
 const customIds: number[] = [];
 for (const s of customSpecs) {
   const id = registerElement(s);
@@ -62,8 +62,7 @@ const TUNABLES: Tunable[] = [
 const TUNE_KEY = "granulab-tuning";
 /** every tunable's shipped value, captured before any override lands */
 const TUNE_DEFAULTS = new Map(TUNABLES.map((t) => [t.key, Array.from(t.arr)]));
-const tuning: Record<string, Record<string, number>> =
-  JSON.parse(localStorage.getItem(TUNE_KEY) ?? "{}");
+const tuning: Record<string, Record<string, number>> = readJson(TUNE_KEY, {});
 
 const idOfName = (name: string): number =>
   ELEMENTS.findIndex((el) => el.name === name);
@@ -186,6 +185,12 @@ function saveAll(): Uint8Array {
 /** adopt the scene's custom elements, reusing an identical local one where it
  *  exists and registering a fresh id otherwise, then rewrite the grid so the
  *  cells point at whatever id they ended up with here */
+/** how many NEW elements one incoming scene may add to your permanent list.
+ *  There are only ~22 slots, and a scene carrying a dozen used to fill them
+ *  silently, one "Created X" toast at a time, and leave your pen holding the
+ *  last of them. A scene that genuinely needs more than this is not a scene. */
+const MAX_ADOPT = 6;
+
 function adoptCustoms(json: string): void {
   let carried: { id: number; spec: CustomSpec }[];
   try {
@@ -193,18 +198,34 @@ function adoptCustoms(json: string): void {
   } catch {
     return;
   }
+  if (!Array.isArray(carried)) return;
   const remap = new Map<number, number>();
+  let adopted = 0;
+  let refused = 0;
   for (const c of carried) {
     if (!c || typeof c.id !== "number" || !c.spec) continue;
     const sig = JSON.stringify(c.spec);
     const existing = customSpecs.findIndex((s) => JSON.stringify(s) === sig);
     let local = existing >= 0 ? customIds[existing] : -1;
     if (local < 0) {
-      const made = createCustomElement(c.spec);
-      if (made === null) continue; // out of slots: leave those cells as-is
+      // over the ceiling, or out of slots: blank those cells rather than let
+      // them read as whatever element happens to hold that id here
+      const made = adopted < MAX_ADOPT ? registerAndPersist(c.spec) : null;
+      if (made === null) {
+        refused++;
+        remap.set(c.id, E.EMPTY);
+        continue;
+      }
+      adopted++;
       local = made;
     }
     if (local !== c.id) remap.set(c.id, local);
+  }
+  if (adopted > 0) {
+    ui.toast(`Adopted ${adopted} element${adopted === 1 ? "" : "s"} from this scene`);
+  }
+  if (refused > 0) {
+    ui.toast(`${refused} more element${refused === 1 ? " was" : "s were"} left out — those cells are empty.`, "err");
   }
   if (remap.size === 0) return;
   const sp = world.species;
@@ -363,13 +384,7 @@ const SLOT_COUNT = 6;
 type Slot = { name: string; when: number; data: string; thumb?: string } | null;
 
 function readSlots(): Slot[] {
-  let slots: Slot[];
-  try {
-    slots = JSON.parse(localStorage.getItem(SLOT_KEY) ?? "[]");
-  } catch {
-    slots = [];
-  }
-  if (!Array.isArray(slots)) slots = [];
+  let slots: Slot[] = readJson<Slot[]>(SLOT_KEY, [], Array.isArray);
   slots.length = SLOT_COUNT;
   for (let i = 0; i < SLOT_COUNT; i++) if (!slots[i]?.data) slots[i] = null;
   // carry the old single quicksave into slot 1 rather than orphaning it
@@ -395,7 +410,7 @@ function pushSlotsToUi(slots: Slot[]): void {
 const SET_KEY = "granulab-settings";
 const settings: { cvd: boolean; minimap: boolean; engine: string } = {
   cvd: false, minimap: true, engine: engineChoice,
-  ...JSON.parse(localStorage.getItem(SET_KEY) ?? "{}"),
+  ...readJson<Record<string, unknown>>(SET_KEY, {}),
 };
 
 /** the TS engine reads the registry arrays directly; the WASM one holds a copy */
@@ -584,7 +599,7 @@ async function refreshGallery(): Promise<void> {
 
 /** tokens for scenes THIS browser uploaded — what lets it delete them later */
 const OWNED_KEY = "granulab-owned";
-const owned: Record<string, string> = JSON.parse(localStorage.getItem(OWNED_KEY) ?? "{}");
+const owned: Record<string, string> = readJson(OWNED_KEY, {});
 
 /** a small picture of the scene, drawn from the same sampler as the minimap */
 function sceneThumb(): string {
@@ -702,18 +717,30 @@ function rebuildCustoms(next: CustomSpec[], eraseId: number | null): void {
   location.reload();
 }
 
-function createCustomElement(spec: CustomSpec): number | null {
+/** register + persist, with none of the "you just made this" ceremony — the
+ *  path a shared scene takes when it brings its own chemistry along */
+function registerAndPersist(spec: CustomSpec): number | null {
   const id = registerElement(spec);
+  if (id === null) return null;
+  customSpecs.push(spec);
+  customIds.push(id);
+  try {
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(customSpecs));
+  } catch {
+    ui.toast("Out of local storage — this element will not survive a reload.", "err");
+  }
+  renderer.refreshPalette();
+  ui.addElementButton(id);
+  ui.setCustomElements(customSpecs);
+  return id;
+}
+
+function createCustomElement(spec: CustomSpec): number | null {
+  const id = registerAndPersist(spec);
   if (id === null) {
     ui.toast("No custom element slots left — delete one first.", "err");
     return null;
   }
-  customSpecs.push(spec);
-  customIds.push(id);
-  localStorage.setItem(CUSTOM_KEY, JSON.stringify(customSpecs));
-  renderer.refreshPalette();
-  ui.addElementButton(id);
-  ui.setCustomElements(customSpecs);
   ui.bind("L", id);
   ui.toast(`Created ${spec.name}`);
   return id;

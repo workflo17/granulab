@@ -924,6 +924,55 @@
 > browser (the app boots normally), and the message is styled rather than raw
 > text on black.
 >
+> ROBUSTNESS DEEP DIVE 8/12 — went looking for real failure modes rather than
+> features. Four found, all fixed, all hashes unchanged (every gate re-run).
+> (1) A 16-BYTE PAYLOAD FROZE THE TAB. deserialize read the RLE length straight
+> out of untrusted input and looped on it: `unrle(12, 12 + sLen, species)` with
+> sLen attacker-controlled. MEASURED on production before the fix: sLen 3M =
+> 21ms, 30M = 191ms, 2^31 = ~14 SECONDS of unkillable main thread — and it
+> returned TRUE, so the app reported the load succeeded. TypedArray.fill clamps,
+> so no memory corruption; it is purely denial of service, but a reliable one.
+> Two ways in: pasting a code from a stranger, and — worse — ANY GALLERY SCENE,
+> since loadFromGallery feeds a community blob's code straight down this path
+> and uploads are unauthenticated. One bad upload froze every visitor who
+> clicked it. Fixed with `if (sLen < 0 || 12 + sLen > buf.length) return false`
+> plus a `w < target.length` bound on the unrle cursor, in BOTH engines (both
+> copies are host-side TS outside the tick loop, so no AssemblyScript work).
+> After: 2^31 rejected in 0.1ms, honest scenes byte-identical round-trip.
+> (2) ONE CORRUPT localStorage KEY BRICKED THE APP PERMANENTLY. Seven
+> JSON.parse(localStorage...) calls ran at boot unguarded; only readSlots had a
+> try. VERIFIED by corrupting granulab-custom: #app innerHTML 0 bytes, no text
+> on the page, window.granulab undefined — and the bad value persists, so every
+> reload repeats it. No recovery short of devtools. (The WebGL2 guard cannot
+> help: this throws earlier.) Added readJson(key, fallback, shapeCheck) which
+> drops and warns on a bad value, and also survives storage being disabled
+> outright. VERIFIED with all seven keys corrupted at once: boots clean, 111
+> palette buttons, painting works, every bad key reset.
+> (3) A SHARED SCENE COULD FILL YOUR ELEMENT LIST. Adoption is by design, but it
+> was uncapped and used the same createCustomElement the maker does — so loading
+> one scene persisted 12 of someone else's elements as if you had invented them,
+> fired 12 "Created X" toasts, and left your pen holding the last one. With ~22
+> slots, two hostile scenes exhausted them. Split registerAndPersist() out of
+> the "you just made this" ceremony, capped at MAX_ADOPT = 6 per scene, and
+> cells belonging to refused elements are now blanked rather than left reading
+> as whatever holds that id locally. VERIFIED: 12 carried -> 6 adopted with all
+> 441 cells each intact, 6 refused with their cells emptied, two plain toasts,
+> pen untouched.
+> (4) Three reactions had no name and read as "Water + Ant" in the notebook and
+> index; they are Drowning.
+> RULED OUT BY MEASUREMENT (so nobody re-investigates): no memory leak — 7,000
+> ticks of the chem lab holds heap flat at 3MB with tick cost 2.73 -> 2.90ms and
+> both queues draining; the reaction table has no no-op and no zero-probability
+> rows (17 names are shared across pairs, which is correct chemistry, not
+> duplication); no XSS in the gallery (textContent everywhere, thumbnails are
+> data:image in an <img> where SVG script cannot run, capped at 120KB); and the
+> GLC2 wrapper's own length fields were already bounds-checked — it was only the
+> inner GRN1 one that was not.
+> QA LESSON (cost a wrong conclusion mid-test): a fixture that paints custom
+> elements into a region that already has matter carries only the ones that
+> landed — paint() fills EMPTY only, and saveAll only carries customs the grid
+> actually uses. The cap looked broken when the test scene was the problem.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

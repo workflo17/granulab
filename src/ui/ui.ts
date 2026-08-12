@@ -87,6 +87,30 @@ for (const el of ELEMENTS) {
   RAILS.get(railOf(el))?.push(el.id);
 }
 
+/** Read a JSON value out of localStorage without letting a bad one kill the app.
+ *  Seven call sites used to parse straight at boot, so a half-written value — a
+ *  quota failure mid-write, a crashed tab, a stray extension — threw before the
+ *  UI existed and left a permanently blank page with no way back short of
+ *  devtools. A corrupt key is now dropped and reported instead. */
+export function readJson<T>(key: string, fallback: T, ok?: (v: unknown) => boolean): T {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(key);
+  } catch {
+    return fallback; // storage disabled entirely (private mode, blocked cookies)
+  }
+  if (raw === null) return fallback;
+  try {
+    const v = JSON.parse(raw) as T;
+    if (v === null || v === undefined || (ok && !ok(v))) throw new Error("unusable shape");
+    return v;
+  } catch {
+    console.warn(`[granulab] ${key} was unreadable and has been reset`);
+    try { localStorage.removeItem(key); } catch { /* nothing else to try */ }
+    return fallback;
+  }
+}
+
 /** dates in the viewer's own locale and timezone — toISOString dated an
  *  11pm save as tomorrow */
 const shortDate = (t: number): string =>
@@ -172,7 +196,7 @@ export class Ui {
   private buttons = new Map<number, HTMLButtonElement[]>();
   private rails: { label: HTMLElement; host: HTMLElement }[] = [];
   private recentHost!: HTMLElement;
-  private recent: number[] = JSON.parse(localStorage.getItem("granulab-recent") ?? "[]");
+  private recent: number[] = readJson<number[]>("granulab-recent", [], Array.isArray);
   private filterInput!: HTMLInputElement;
   private filterCount!: HTMLElement;
   private noMatch!: HTMLElement;
@@ -1210,7 +1234,7 @@ export class Ui {
    *  pairs become entries (flashing if never seen in this browser before) */
   private nbPrev = new Uint32Array(N_IDS * N_IDS);
   private nbRows = new Map<number, { row: HTMLElement; count: HTMLElement; rate: HTMLElement; last: number; total: number; name: string; seq: number }>();
-  private nbSeen = new Set<string>(JSON.parse(localStorage.getItem("granulab-seen-rx") ?? "[]"));
+  private nbSeen = new Set<string>(readJson<string[]>("granulab-seen-rx", [], Array.isArray));
   private notebook!: HTMLElement;
   private nbRowsHost!: HTMLElement;
   private nbBtn!: HTMLButtonElement;

@@ -395,9 +395,14 @@ export class WasmWorld {
     if (buf[0] !== 0x47 || buf[1] !== 0x52 || buf[2] !== 0x4e || buf[3] !== 0x31) return false;
     if ((buf[4] | (buf[5] << 8)) !== this.W || (buf[6] | (buf[7] << 8)) !== this.H) return false;
     const sLen = buf[8] | (buf[9] << 8) | (buf[10] << 16) | (buf[11] << 24);
+    // The length field is attacker-controlled: a pasted share code or a scene
+    // from the gallery reaches here as raw bytes. Unchecked, a 16-byte payload
+    // claiming 2^31 froze the main thread for ~14 seconds and still returned
+    // true. Anything that does not fit the buffer is simply not a scene.
+    if (sLen < 0 || 12 + sLen > buf.length) return false;
     const unrle = (from: number, to: number, target: Uint8Array): void => {
       let w = 0;
-      for (let p = from; p < to; p += 3) {
+      for (let p = from; p < to && w < target.length; p += 3) {
         const v = buf[p];
         const run = buf[p + 1] | (buf[p + 2] << 8);
         target.fill(v, w, w + run);
