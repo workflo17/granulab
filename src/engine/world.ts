@@ -1215,30 +1215,37 @@ export class World {
     }
     // settled-liquid hysteresis: a calm cell stops dispersing and goes to sleep
     if (hyst && this.life[i] > SETTLE) return;
+    // LATERAL FLOW. This used to advance only into EMPTY cells and stop at the
+    // first thing that was not empty — which, inside a pool, is immediately. So
+    // the body of a fluid could not move at all: only the exposed surface crept
+    // outward, and a poured column kept its mound forever (measured: still 64
+    // cells out of level after 5,040 ticks in a sealed tank). A fluid carries
+    // pressure THROUGH itself, so the scan now passes over cells of the same
+    // liquid and lands on the first opening it reaches, preferring one it can
+    // drop out of. One cell moves per tick; the hole it leaves is what the
+    // matter above falls into, and that is what levels a surface.
     const disp = DISPERSE[id];
     const dir = this.rng.bool() ? 1 : -1;
-    let moved = 0;
-    let from = i;
-    let fx = x;
-    for (let s = 0; s < disp; s++) {
-      const nx = fx + dir;
-      if (nx < 0 || nx >= W) break;
-      const j = from + dir;
-      if (this.species[j] !== E.EMPTY) break;
-      this.swap(from, j, fx, y, nx, y);
-      from = j;
-      fx = nx;
-      moved++;
-    }
-    if (moved > 0) {
-      if (hyst) this.life[from] = 0;
-      return;
-    }
-    const nx = x - dir;
-    if (nx >= 0 && nx < W && this.species[i - dir] === E.EMPTY) {
-      this.swap(i, i - dir, x, y, nx, y);
-      if (hyst) this.life[i - dir] = 0;
-      return;
+    for (let k = 0; k < 2; k++) {
+      const d = k === 0 ? dir : -dir;
+      let target = -1;
+      let tx = 0;
+      for (let s = 1; s <= disp; s++) {
+        const nx = x + d * s;
+        if (nx < 0 || nx >= W) break;
+        const j = i + d * s;
+        const sp = this.species[j];
+        if (sp === id) continue; // pressure travels through our own kind
+        if (sp !== E.EMPTY) break; // wall, powder, another substance: blocked
+        target = j;
+        tx = nx;
+        if (y + 1 < H && this.sinksInto(id, j + W)) break; // downhill: take it now
+      }
+      if (target >= 0) {
+        this.swap(i, target, x, y, tx, y);
+        if (hyst) this.life[target] = 0;
+        return;
+      }
     }
     // nothing moved: count toward settling, stay briefly awake, then sleep
     if (hyst) {

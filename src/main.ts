@@ -1330,6 +1330,9 @@ function frame(now: number): void {
   if (statTimer > 250) {
     ui.setStats(fpsEma, tickEma, world.dots, world.activeChunkCount());
     if (recorder) ui.setRecording(true, (performance.now() - recStart) / 1000);
+    // the WASM engine tallies reactions in its own memory; pull them across
+    // before the notebook diffs them (the TS engine writes REACT_COUNT direct)
+    (world as unknown as { syncReactCounts?: () => void }).syncReactCounts?.();
     ui.refreshNotebook(statTimer);
     probe(hoverCell); // the fields keep moving even when the pointer does not
     statTimer = 0;

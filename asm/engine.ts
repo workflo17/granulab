@@ -526,6 +526,10 @@ export function syncQueueLens(blastLen: i32, bubbleLen: i32): void {
 export function windVxPtr(): usize { return windVxP; }
 export function windVyPtr(): usize { return windVyP; }
 export function glowPtr(): usize { return glowP; }
+/** per-pair reaction tallies. The engine has always kept these; without a
+ *  pointer out, the host-side REACT_COUNT the Lab Notebook reads stayed at
+ *  zero for the whole time WASM has been the default engine. */
+export function reactCountPtr(): usize { return reactCountP; }
 export function tempPtr(): usize { return tempP; }
 
 /** direct cell write for rigid-object footprints — bypasses paint rules */
@@ -1762,32 +1766,35 @@ function doLiquid(i: i32, x: i32, y: i32, id: i32): void {
   }
   // settled-liquid hysteresis: a calm cell stops dispersing and goes to sleep
   if (hyst && life(i) > SETTLE) return;
+  // LATERAL FLOW — mirrors World.doLiquid exactly. The scan passes over cells
+  // of the same liquid (a fluid carries pressure through itself) and lands on
+  // the first opening, preferring one it can drop out of. The old version only
+  // entered EMPTY cells and stopped at the first that was not, so the inside of
+  // a pool was rigid and a poured column never levelled.
   const disp = DISPERSE(id);
   cntLiquidDisp++;
   dbgLog(5, x, y);
   const dir = rngBool() ? 1 : -1;
-  let moved = 0;
-  let from = i;
-  let fx = x;
-  for (let s = 0; s < disp; s++) {
-    const nx = fx + dir;
-    if (nx < 0 || nx >= W) break;
-    const j = from + dir;
-    if (species(j) !== E_EMPTY) break;
-    swap(from, j, fx, y, nx, y);
-    from = j;
-    fx = nx;
-    moved++;
-  }
-  if (moved > 0) {
-    if (hyst) lifeSet(from, 0);
-    return;
-  }
-  const nx = x - dir;
-  if (nx >= 0 && nx < W && species(i - dir) === E_EMPTY) {
-    swap(i, i - dir, x, y, nx, y);
-    if (hyst) lifeSet(i - dir, 0);
-    return;
+  for (let k = 0; k < 2; k++) {
+    const d = k === 0 ? dir : -dir;
+    let target = -1;
+    let tx = 0;
+    for (let s = 1; s <= disp; s++) {
+      const nx = x + d * s;
+      if (nx < 0 || nx >= W) break;
+      const j = i + d * s;
+      const sp = species(j);
+      if (sp === id) continue;
+      if (sp !== E_EMPTY) break;
+      target = j;
+      tx = nx;
+      if (y + 1 < H && sinksInto(id, j + W)) break;
+    }
+    if (target >= 0) {
+      swap(i, target, x, y, tx, y);
+      if (hyst) lifeSet(target, 0);
+      return;
+    }
   }
   // nothing moved: count toward settling, stay briefly awake, then sleep
   if (hyst) {

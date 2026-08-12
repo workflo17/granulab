@@ -810,6 +810,48 @@
 > bit-exact TS vs WASM, shelf zoo 10/10 checkpoints, latency gate max 3.4ms
 > against a 60ms limit.
 >
+> LIQUIDS ACTUALLY FLOW 8/11 (owner: "liquids should have flow mechanics and not
+> like a solid"). THE BUG: doLiquid's lateral pass advanced only into EMPTY and
+> `break`ed at the first cell that was not — which, inside a pool, is the very
+> first one. So the BODY of a fluid could not move at all; only the exposed
+> surface crept outward. MEASURED before the fix: an 81x280 water column poured
+> into an 800-wide sealed tank still had 64 cells of surface unevenness after
+> 5,040 ticks and had stopped changing entirely, while burning 1.48ms/tick — a
+> mound that churns without levelling, which is exactly "behaves like a solid".
+> THE FIX: a fluid carries pressure THROUGH itself, so the disperse scan now
+> passes over cells of the same liquid and lands on the first opening it
+> reaches, preferring one it can immediately drop out of. One cell moves per
+> tick; the hole it leaves is what the matter above falls into, and that is what
+> levels a surface. Anything that is not our own liquid or empty still stops the
+> scan, so walls hold. Same single rng draw as before.
+> MEASURED after: unevenness 272 -> 133 (t600) -> 34 (t2400) -> 8 (t4800) -> 2
+> (t9600), and the tank is fully wet by t1200 instead of 48% wet forever.
+> COST: churn bench 7.82 -> 7.96 ms/tick on WASM, about 2%. An earlier reading
+> of 11.7 was the machine under load from a parallel browser session — the
+> "time on a quiet machine" rule from M5i applies to the parity suite too.
+> REGRESSIONS CHECKED: sealed vessel holds 32,220 water with ZERO escaped over
+> 2,000 ticks; chem lab keeps water/seawater/magma/soapy in their vessels;
+> doom's lake holds; the pressure-gun demo still fires (ball lofted to y=458).
+> Mirrored line-for-line into asm/engine.ts; all gates PASS with TS and WASM
+> identical. Churn hashes UNCHANGED (e009494c / a884374c — the churn scene is
+> full-width bands with no free surface, so neither algorithm finds anywhere to
+> go). Re-baselined: thermal 4bccdfb2/507680fb/ffcaa4ef, firezoo abd8cbaa/
+> 609ae3e7/f6f9a780, devzoo e25b006d/ed7996b9/4bc2acb4, pressure 14120514/
+> e0978c16/6df8c396. Latency gate max 3.4ms.
+> NOTE: levelling is visible flow, not instant — a poured column takes ~40s of
+> sim to get near flat, because only cells within `disperse` of an opening can
+> move. The tune panel exposes "spread" per element if you want it faster.
+>
+> LAB NOTEBOOK WAS DEAD ON WASM 8/11 (found while auditing, fixed same change).
+> REACT_COUNT is a host-side table the TS engine increments directly; the WASM
+> engine has kept its own tallies since stage 3 but never exported a pointer, so
+> from the 8/08 default flip to WASM the notebook showed zero rows and the "log"
+> badge never lit — three days of a shipped M5c feature silently doing nothing.
+> Added reactCountPtr() + WasmWorld.syncReactCounts(), pulled on the stats
+> cadence. Verified: chem lab at t500 on WASM now lists 13 named reactions with
+> live counts. The rx-glow BG mode was NOT affected — glowPtr was already
+> exported, so that field has been live all along.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

@@ -19,7 +19,7 @@
 
 import {
   E, N_IDS, BEHAVIOR, DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0,
-  EXPLODE_R, REACT, REACT_DT, HAS_REACT, CONDUCTS, HEAT_PUMP,
+  EXPLODE_R, REACT, REACT_DT, REACT_COUNT, HAS_REACT, CONDUCTS, HEAT_PUMP,
   TEMP0, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
   PH, CONDUCT_IDX, CONDUCTOR_IDS, PRESSURIZES,
   HEAT_COND, SELF_OXIDIZING, REACT_BYPRODUCT,
@@ -95,6 +95,7 @@ interface EngineExports {
   windVxPtr(): number;
   windVyPtr(): number;
   glowPtr(): number;
+  reactCountPtr(): number;
   tempPtr(): number;
   pressurizesPtr(): number;
   pressPtr(): number;
@@ -180,6 +181,13 @@ export class WasmWorld {
     this.ex.init(w, h, seed >>> 0);
     this.copyTables();
     this.refreshViews();
+  }
+
+  /** Copy the engine's reaction tallies into the host REACT_COUNT the Lab
+   *  Notebook diffs. The TS engine increments that array directly; WASM keeps
+   *  its own, so without this the notebook stays empty on the default engine. */
+  syncReactCounts(): void {
+    REACT_COUNT.set(new Uint32Array(this.ex.memory.buffer, this.ex.reactCountPtr(), REACT_COUNT.length));
   }
 
   /** Re-push the registry tables after a live edit (the element tuning panel).
