@@ -408,8 +408,8 @@ function pushSlotsToUi(slots: Slot[]): void {
 
 // ---- settings ------------------------------------------------------------
 const SET_KEY = "granulab-settings";
-const settings: { cvd: boolean; minimap: boolean; engine: string } = {
-  cvd: false, minimap: true, engine: engineChoice,
+const settings: { cvd: boolean; minimap: boolean; engine: string; telemetry: boolean } = {
+  cvd: false, minimap: true, telemetry: true, engine: engineChoice,
   ...readJson<Record<string, unknown>>(SET_KEY, {}),
 };
 
@@ -502,7 +502,7 @@ const ui = new Ui(root, {
     const ok = await loadSceneCode(code);
     ui.toast(ok ? "Scene loaded from code" : "That is not a Granulab scene code.", ok ? "ok" : "err");
   },
-  onSetting: (key: "cvd" | "minimap" | "engine", value: boolean | string) => {
+  onSetting: (key: "cvd" | "minimap" | "engine" | "telemetry", value: boolean | string) => {
     settings[key] = value as never;
     localStorage.setItem(SET_KEY, JSON.stringify(settings));
     if (key === "cvd") renderer.cvd = !!value;
@@ -513,6 +513,7 @@ const ui = new Ui(root, {
     }
   },
   onKeyPaintToggle: () => keyPaintSet(!keyPaint),
+  onHighlight: (id: number) => { renderer.highlight = id; },
   onTuneOpen: () => pushTunablesToUi(),
   onTune: (key: string, value: number) => {
     const id = ui.state.toolL;
@@ -1165,6 +1166,7 @@ canvas.addEventListener("pointercancel", (e) => {
 // and could only ever be seen as full-screen shaders. Read them out for the one
 // cell the pointer is on. Temperature comes from the renderer's byte field so
 // the readout needs no engine surface of its own.
+const legendCounts = new Uint32Array(N_IDS);
 let tempFilledAt = 0;
 function probe(c: { x: number; y: number } | null): void {
   if (!c || c.x < 0 || c.y < 0 || c.x >= GRID_W || c.y >= GRID_H) { ui.setProbe(null); return; }
@@ -1529,6 +1531,17 @@ function frame(now: number): void {
     (world as unknown as { syncReactCounts?: () => void }).syncReactCounts?.();
     ui.refreshNotebook(statTimer);
     probe(hoverCell); // the fields keep moving even when the pointer does not
+    ui.setEmpty(world.dots === 0 && objects.list.length === 0 && !player.alive);
+    if (ui.legendVisible()) {
+      legendCounts.fill(0);
+      const sp = world.species;
+      let total = 0;
+      for (let i = 0; i < sp.length; i++) {
+        const id = sp[i];
+        if (id !== E.EMPTY) { legendCounts[id]++; total++; }
+      }
+      ui.setLegend(legendCounts, total);
+    }
     statTimer = 0;
   }
   requestAnimationFrame(frame);
@@ -2380,6 +2393,10 @@ function selftest(): { passed: number; failed: number; failures: string[] } {
   ui.setPaused(true);
   resize();
   const q = <T extends Element>(sel: string): T => document.querySelector<T>(sel)!;
+  const fillRect = (name: string, x0: number, y0: number, x1: number, y1: number): void => {
+    const id = ELEMENTS.find((d) => d.name === name)!.id;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
 
   // FIRST, before the suite touches anything: filtering and binding both rebuild
   // the roving tabindex, so measuring this later only ever proves that the test
@@ -2462,6 +2479,55 @@ function selftest(): { passed: number; failed: number; failures: string[] } {
   for (let i = 0; i < world.species.length; i++) if (world.species[i] === glass) glassAfter++;
   check("stirring conserves every dot", world.dots === dotsBefore, `${world.dots} vs ${dotsBefore}`);
   check("stirring leaves the container standing", glassAfter === glassBefore, `${glassAfter} vs ${glassBefore}`);
+
+  // the lab panel's header once overflowed its own width by 68px, and the
+  // legend has to tell you what a loaded scene is actually made of
+  {
+    const nb = q<HTMLElement>("#notebook");
+    const wasHidden = nb.hidden;
+    nb.hidden = false;
+    const head = nb.querySelector<HTMLElement>(".nb-head")!;
+    const nbTools = q<HTMLElement>("#nbtools");
+    check("the lab panel header fits inside the panel", head.scrollWidth <= head.clientWidth,
+      `${head.scrollWidth} in ${head.clientWidth}`);
+    check("and so does its tool row", nbTools.scrollWidth <= nbTools.clientWidth);
+    q<HTMLButtonElement>("#tab-legend").click();
+    check("the contents tab hides the reaction tools", nbTools.hidden && q<HTMLElement>("#nbrows").hidden);
+    world.clear();
+    fillRect("Sand", 100, 100, 300, 200);
+    fillRect("Water", 400, 100, 600, 200);
+    legendCounts.fill(0);
+    let total = 0;
+    for (let i = 0; i < world.species.length; i++) {
+      const id = world.species[i];
+      if (id !== E.EMPTY) { legendCounts[id]++; total++; }
+    }
+    ui.setLegend(legendCounts, total);
+    const names = [...document.querySelectorAll("#nblegend .lg-name")].map((n) => n.textContent);
+    check("the legend lists what is on the grid", names.includes("Sand") && names.includes("Water"), names.join(","));
+    q<HTMLButtonElement>("#tab-rx").click();
+    nb.hidden = wasHidden;
+  }
+
+  // an empty grid should invite rather than sit there
+  world.clear();
+  objects.clear();
+  player.remove();
+  ui.setEmpty(true);
+  check("an empty grid says what to do with it", !q<HTMLElement>("#emptyhint").hidden);
+  fillRect("Sand", 10, 10, 20, 20);
+  ui.setEmpty(world.dots === 0);
+  check("and the invitation goes the moment anything is painted", q<HTMLElement>("#emptyhint").hidden);
+
+  // the pointer reflects the tool it is holding
+  const cursorFor = (id: number): string => {
+    ui.bind("L", id);
+    return document.documentElement.dataset.tool ?? "";
+  };
+  check("stir has its own pointer", cursorFor(TOOL_STIR) === "stir");
+  check("placement has its own pointer", cursorFor(TOOL_PLAYER) === "place");
+  check("erase has its own pointer", cursorFor(E.EMPTY) === "erase");
+  check("painting keeps the crosshair", cursorFor(E.POWDER) === "paint");
 
   // the datasheet has to answer "how do I make this", not just "what does it do"
   const bleach = ELEMENTS.find((d) => d.name === "Bleach");

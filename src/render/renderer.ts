@@ -31,6 +31,8 @@ uniform float uTime;
 uniform int uMode; // 0 none, 1 air, 2 gray, 3 dark, 4 silhouette, 5 thermography
 uniform float uFlash; // blast flash 0..1
 uniform int uCvd;  // colour-blind assist: swap the pH ramp for a CVD-safe one
+uniform int uHighlight; // scene legend: pick one element out of the crowd, -1 = none
+uniform float uPulse;   // 0 when the OS asks for no motion — the lift stays, the throb goes
 in vec2 vUv;
 out vec4 frag;
 
@@ -168,6 +170,15 @@ void main() {
     col = floor(col * 5.0 + 0.5) / 5.0; // toon: posterized bands
   }
   col += vec3(1.0, 0.82, 0.55) * uFlash * 0.6;
+  // legend highlight: lift the chosen element and dim everything else, so you
+  // can see where it actually is rather than hunting for its colour
+  if (uHighlight >= 0) {
+    if (int(id) == uHighlight) {
+      col = mix(col, vec3(1.0), 0.35 + 0.25 * uPulse * sin(uTime * 6.0));
+    } else {
+      col *= 0.30;
+    }
+  }
   frag = vec4(col, 1.0);
 }`;
 
@@ -194,6 +205,8 @@ export class Renderer {
   mode = 0;
   /** colour-blind assist: a pH ramp that does not rely on red vs green */
   cvd = false;
+  /** element id the scene legend is picking out, -1 = show everything */
+  highlight = -1;
   /** live, so toggling the OS setting takes effect without a reload */
   private reduceMotion = false;
 
@@ -240,7 +253,7 @@ export class Renderer {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uPh", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode", "uFlash", "uCvd"]) {
+    for (const name of ["uSpecies", "uShade", "uWind", "uTemp", "uGlow", "uPalette", "uPh", "uCanvas", "uGrid", "uPan", "uZoom", "uTime", "uMode", "uFlash", "uCvd", "uHighlight", "uPulse"]) {
       this.uni[name] = gl.getUniformLocation(prog, name);
     }
     gl.uniform3fv(this.uni.uPalette, PALETTE);
@@ -384,6 +397,8 @@ export class Renderer {
     gl.uniform1f(this.uni.uTime, timeSec);
     gl.uniform1i(this.uni.uMode, this.mode);
     gl.uniform1i(this.uni.uCvd, this.cvd ? 1 : 0);
+    gl.uniform1i(this.uni.uHighlight, this.highlight);
+    gl.uniform1f(this.uni.uPulse, this.reduceMotion ? 0 : 1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 }

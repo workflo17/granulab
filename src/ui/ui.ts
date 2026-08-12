@@ -29,8 +29,9 @@ export interface UiHooks {
   onCopyCode(): void;
   onPasteCode(): void;
   onCodeEntered(code: string): void;
-  onSetting(key: "cvd" | "minimap" | "engine", value: boolean | string): void;
+  onSetting(key: "cvd" | "minimap" | "engine" | "telemetry", value: boolean | string): void;
   onKeyPaintToggle(): void;
+  onHighlight(id: number): void;
   onTuneOpen(): void;
   onTune(key: string, value: number): void;
   onTuneReset(all: boolean): void;
@@ -238,6 +239,8 @@ export class Ui {
             <button id="play" class="primary" title="Play or pause (Space)">pause</button>
             <button id="stepb" title="Advance one frame (Enter)">step</button>
             <select id="speed" title="Simulation speed" aria-label="Simulation speed">
+              <option value="0.1">0.1×</option>
+              <option value="0.25">0.25×</option>
               <option value="0.5">0.5×</option>
               <option value="1" selected>1×</option>
               <option value="2">2×</option>
@@ -262,7 +265,6 @@ export class Ui {
               <option value="line">pen: line</option>
               <option value="rect">pen: rect</option>
             </select>
-            <button id="tunebtn" title="Tune the held element's physics (T)">tune</button>
             <button id="kbdbtn" aria-pressed="false" title="Paint with the keyboard (K)">kbd</button>
           </div>
           <div class="grp" role="group" aria-label="View">
@@ -414,6 +416,11 @@ export class Ui {
               pH scale instead of red-to-green.</em></span>
           </label>
           <label class="setrow">
+            <input type="checkbox" id="settel" checked>
+            <span><b>Performance readout</b><em>fps, tick cost, dot and chunk counts in the status
+              bar. Off leaves the cell probe more room.</em></span>
+          </label>
+          <label class="setrow">
             <input type="checkbox" id="setmini" checked>
             <span><b>Minimap</b><em>The overview in the corner. Click it to jump the view.</em></span>
           </label>
@@ -534,6 +541,7 @@ export class Ui {
         <!-- not a live region: it rewrites every reaction row each time you pick
              an element, and reading thirty rows aloud per click helps nobody -->
         <div id="reagent" aria-live="off" hidden></div>
+        <div id="emptyhint" hidden><b>EMPTY GRID</b>Pick an element on the left, then drag here.<br>Hover any cell to read its temperature, oxygen and pH.</div>
         <div id="intro" hidden>
           <h2>Start here</h2>
           <ul>
@@ -550,7 +558,13 @@ export class Ui {
         <div id="toasts" role="status" aria-live="polite"></div>
         <div id="notebook" hidden>
           <div class="nb-head">
-            <span>LAB NOTEBOOK</span>
+            <div class="nb-tabs" role="tablist" aria-label="Lab panel">
+              <button role="tab" id="tab-rx" aria-controls="nbrows" aria-selected="true">reactions</button>
+              <button role="tab" id="tab-legend" aria-controls="nblegend" aria-selected="false">contents</button>
+            </div>
+            <button id="nbclose" title="Close the panel" aria-label="Close the panel">×</button>
+          </div>
+          <div class="nb-tools" id="nbtools">
             <select id="nbsort" aria-label="Sort the notebook" title="Sort the notebook">
               <option value="recent" selected>latest first</option>
               <option value="count">most reactions</option>
@@ -559,16 +573,16 @@ export class Ui {
             <button id="nbindex" title="Every reaction in the table, not just the ones you have seen">index</button>
             <button id="nbclear" title="Start a fresh page — only reactions from now on"
                     aria-label="Start a fresh page">clear</button>
-            <button id="nbclose" title="Close the notebook" aria-label="Close the notebook">×</button>
           </div>
-          <div id="nbrows"><div class="nb-empty">No reactions witnessed yet — mix something.</div></div>
+          <div id="nbrows" role="tabpanel" aria-labelledby="tab-rx"><div class="nb-empty">No reactions witnessed yet — mix something.</div></div>
+          <div id="nblegend" role="tabpanel" aria-labelledby="tab-legend" hidden></div>
         </div>
       </main>
       <footer>
-        <span>fps <b id="s-fps">–</b></span>
-        <span>tick <b id="s-tick">–</b> ms</span>
-        <span>dots <b id="s-dots">0</b></span>
-        <span>chunks <b id="s-chunks">–</b></span>
+        <span class="telemetry">fps <b id="s-fps">–</b></span>
+        <span class="telemetry">tick <b id="s-tick">–</b> ms</span>
+        <span class="telemetry">dots <b id="s-dots">0</b></span>
+        <span class="telemetry">chunks <b id="s-chunks">–</b></span>
         <span>zoom <b id="s-zoom">1.0×</b></span>
         <span class="spacer"></span>
         <div id="probe" aria-live="off" translate="no">
@@ -789,15 +803,17 @@ export class Ui {
     const cvd = root.querySelector<HTMLInputElement>("#setcvd")!;
     const miniBox = root.querySelector<HTMLInputElement>("#setmini")!;
     const engineSel = root.querySelector<HTMLSelectElement>("#setengine")!;
+    const telBox = root.querySelector<HTMLInputElement>("#settel")!;
+    telBox.addEventListener("change", () => { this.setTelemetry(telBox.checked); hooks.onSetting("telemetry", telBox.checked); });
     cvd.addEventListener("change", () => { this.setCvd(cvd.checked); hooks.onSetting("cvd", cvd.checked); });
     miniBox.addEventListener("change", () => hooks.onSetting("minimap", miniBox.checked));
     engineSel.addEventListener("change", () => hooks.onSetting("engine", engineSel.value));
-    this.setBoxes = { cvd, minimap: miniBox, engine: engineSel };
+    this.setBoxes = { cvd, minimap: miniBox, engine: engineSel, telemetry: telBox };
+    this.emptyHint = root.querySelector<HTMLElement>("#emptyhint")!;
     this.toastHost = root.querySelector<HTMLElement>("#toasts")!;
     this.tuneDialog = root.querySelector<HTMLDialogElement>("#tunedialog")!;
     this.tuneRows = root.querySelector<HTMLElement>("#tunerows")!;
     this.tuneName = root.querySelector<HTMLElement>("#tunename")!;
-    root.querySelector("#tunebtn")!.addEventListener("click", () => this.openTune());
     this.kbdBtn = root.querySelector<HTMLButtonElement>("#kbdbtn")!;
     this.kbdBtn.addEventListener("click", () => hooks.onKeyPaintToggle());
     root.querySelector("#tunereset")!.addEventListener("click", () => hooks.onTuneReset(false));
@@ -824,6 +840,29 @@ export class Ui {
       }
     });
     root.querySelector("#nbclose")!.addEventListener("click", () => { this.notebook.hidden = true; });
+    this.legendHost = root.querySelector<HTMLElement>("#nblegend")!;
+    const tabRx = root.querySelector<HTMLButtonElement>("#tab-rx")!;
+    const tabLg = root.querySelector<HTMLButtonElement>("#tab-legend")!;
+    const nbTools = root.querySelector<HTMLElement>("#nbtools")!;
+    const showTab = (legend: boolean): void => {
+      this.legendHost.hidden = !legend;
+      this.nbRowsHost.hidden = legend;
+      nbTools.hidden = legend; // sort/index/clear only mean anything for reactions
+      tabRx.setAttribute("aria-selected", String(!legend));
+      tabLg.setAttribute("aria-selected", String(legend));
+      tabRx.tabIndex = legend ? -1 : 0;
+      tabLg.tabIndex = legend ? 0 : -1;
+    };
+    tabRx.addEventListener("click", () => showTab(false));
+    tabLg.addEventListener("click", () => showTab(true));
+    for (const [tab, other, legend] of [[tabRx, tabLg, false], [tabLg, tabRx, true]] as const) {
+      tab.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        showTab(!legend);
+        other.focus();
+      });
+    }
     root.querySelector("#nbclear")!.addEventListener("click", () => this.clearNotebook());
     this.rxDialog = root.querySelector<HTMLDialogElement>("#rxdialog")!;
     this.rxList = root.querySelector<HTMLElement>("#rxlist")!;
@@ -924,6 +963,12 @@ export class Ui {
       this.wellR.textContent = name;
       document.documentElement.style.setProperty("--accent-r", color);
     }
+    if (side === "L") {
+      document.documentElement.dataset.tool =
+        id === TOOL_STIR ? "stir"
+          : id === TOOL_PLAYER || id === TOOL_FIGHTER || id === E.BALL || id === E.BOX || id === E.WHEEL || id === E.BUBBLE ? "place"
+            : id === E.EMPTY ? "erase" : "paint";
+    }
     this.remember(id);
     this.markSelection();
     if (side === "L") this.renderRecipes(id);
@@ -972,7 +1017,21 @@ export class Ui {
     const here = list.indexOf(document.activeElement as HTMLButtonElement);
     if (here < 0) return;
     e.preventDefault();
-    const step = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "Home" || e.key === "End" ? 0 : -1;
+    // the palette is a grid, so up/down move a ROW and left/right move one cell.
+    // Rails have their own column count (the drawer is one-up on small screens),
+    // so measure it from where the buttons actually sit rather than assume.
+    const rowOf = (b: HTMLElement): number => b.offsetTop;
+    const cols = (() => {
+      const top = rowOf(list[here]);
+      const host = list[here].parentElement;
+      let n = 0;
+      for (const b of list) if (b.parentElement === host && rowOf(b as HTMLElement) === top) n++;
+      return Math.max(1, n);
+    })();
+    const step = e.key === "ArrowRight" ? 1
+      : e.key === "ArrowLeft" ? -1
+      : e.key === "ArrowDown" ? cols
+      : e.key === "ArrowUp" ? -cols : 0;
     const next = e.key === "Home" ? 0
       : e.key === "End" ? list.length - 1
       : Math.max(0, Math.min(list.length - 1, here + step));
@@ -1138,7 +1197,8 @@ export class Ui {
       if (sources.length > 6) rows.push(`<div class="rx flags">+ ${sources.length - 6} more — see the reaction index</div>`);
     }
     if (rows.length === 0) { card.hidden = true; return; }
-    card.innerHTML = `<div class="rhead">${sw(id)}${ELEMENTS[id].name}</div>` + rows.join("");
+    card.innerHTML = `<div class="rhead">${sw(id)}${ELEMENTS[id].name}<button type="button" id="cardtune" title="Tune this element's physics (T)">tune</button></div>` + rows.join("");
+    card.querySelector("#cardtune")!.addEventListener("click", () => this.openTune());
     card.hidden = false;
   }
 
@@ -1249,6 +1309,86 @@ export class Ui {
   private nbRowsHost!: HTMLElement;
   private nbBtn!: HTMLButtonElement;
   private nbFresh = 0;
+
+  // ---- scene legend ------------------------------------------------------
+  // Load someone else's scene and all you get is shapes: the minimap shows form
+  // rather than identity, and the notebook only lists reactions you happen to
+  // have witnessed. With 114 elements the first question about any scene is
+  // what it is made of, and nothing answered it.
+  private legendHost!: HTMLElement;
+  private legendRows = new Map<number, { row: HTMLElement; count: HTMLElement; bar: HTMLElement }>();
+  /** the element the canvas is currently picking out, or -1 */
+  private highlighted = -1;
+
+  setLegend(counts: Uint32Array, total: number): void {
+    if (total === 0) {
+      this.legendRows.clear();
+      this.legendHost.replaceChildren(this.galNote("Nothing on the grid yet."));
+      return;
+    }
+    const present: number[] = [];
+    for (let id = 1; id < counts.length; id++) if (counts[id] > 0) present.push(id);
+    present.sort((a, b) => counts[b] - counts[a]);
+    // rebuild only when the cast changes; otherwise just move the numbers, so
+    // the list does not flicker while a scene runs
+    const sig = present.join(",");
+    if (sig !== this.legendSig) {
+      this.legendSig = sig;
+      this.legendRows.clear();
+      this.legendHost.replaceChildren(...present.map((id) => {
+        const el = ELEMENTS[id];
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "lg-row";
+        row.title = `${el?.name ?? id} — click to hold it, click again to pick it out on the canvas`;
+        row.innerHTML =
+          `<i class="rsw" style="background:${el?.color ?? "#888"}"></i>` +
+          `<span class="lg-name"></span><span class="lg-bar"><i></i></span><span class="lg-count"></span>`;
+        row.querySelector<HTMLElement>(".lg-bar i")!.style.background = el?.color ?? "#888";
+        row.setAttribute("aria-pressed", "false");
+        row.querySelector<HTMLElement>(".lg-name")!.textContent = el?.name ?? `#${id}`;
+        row.addEventListener("click", () => {
+          if (this.state.toolL === id) {
+            // second click on the element you are already holding: show me where
+            this.highlighted = this.highlighted === id ? -1 : id;
+            this.hooks.onHighlight(this.highlighted);
+          } else {
+            this.bind("L", id);
+          }
+          this.markLegend();
+        });
+        this.legendRows.set(id, {
+          row,
+          count: row.querySelector<HTMLElement>(".lg-count")!,
+          bar: row.querySelector<HTMLElement>(".lg-bar i")!,
+        });
+        return row;
+      }));
+      this.markLegend();
+    }
+    const top = counts[present[0]] || 1;
+    for (const id of present) {
+      const e = this.legendRows.get(id);
+      if (!e) continue;
+      e.count.textContent = counts[id].toLocaleString();
+      e.bar.style.width = `${Math.max(2, (counts[id] / top) * 100)}%`;
+    }
+  }
+
+  private legendSig = "";
+
+  private markLegend(): void {
+    for (const [id, e] of this.legendRows) {
+      e.row.classList.toggle("held", id === this.state.toolL);
+      e.row.classList.toggle("lit", id === this.highlighted);
+      e.row.setAttribute("aria-pressed", String(id === this.state.toolL));
+    }
+  }
+
+  /** true while the contents tab is the visible one */
+  legendVisible(): boolean {
+    return !this.notebook.hidden && !this.legendHost.hidden;
+  }
 
   // ---- reaction index ----------------------------------------------------
   // The notebook is a record of what you have witnessed. That is the wrong tool
@@ -1476,14 +1616,26 @@ export class Ui {
 
   // ---- settings ----------------------------------------------------------
   private setDialog!: HTMLDialogElement;
-  private setBoxes!: { cvd: HTMLInputElement; minimap: HTMLInputElement; engine: HTMLSelectElement };
+  private setBoxes!: { cvd: HTMLInputElement; minimap: HTMLInputElement; engine: HTMLSelectElement; telemetry: HTMLInputElement };
+  private emptyHint!: HTMLElement;
 
   /** put the stored settings into the dialog at boot */
-  setSettings(s: { cvd: boolean; minimap: boolean; engine: string }): void {
+  setSettings(s: { cvd: boolean; minimap: boolean; engine: string; telemetry: boolean }): void {
+    this.setBoxes.telemetry.checked = s.telemetry;
+    this.setTelemetry(s.telemetry);
     this.setBoxes.cvd.checked = s.cvd;
     this.setBoxes.minimap.checked = s.minimap;
     this.setBoxes.engine.value = s.engine;
     this.setCvd(s.cvd);
+  }
+
+  private setTelemetry(on: boolean): void {
+    document.querySelector("footer")!.classList.toggle("lean", !on);
+  }
+
+  /** the blank grid a first-time visitor lands on should say what to do with it */
+  setEmpty(empty: boolean): void {
+    this.emptyHint.hidden = !empty;
   }
 
   /** Colour-blind assist on the palette: 106 swatches carry the whole meaning

@@ -1025,6 +1025,44 @@
 > only holds on a window big enough — it now asserts the margins match, which is
 > what centring means at any viewport.
 >
+> UI PASS 8/12 — looked at the live interface with fresh eyes and measured what
+> was wrong rather than guessing. Two of the five faults were mine.
+> (1) THE LAB PANEL HEADER OVERFLOWED ITS OWN WIDTH BY 68px. Adding a sort
+> select plus index/clear buttons to a 250px panel gave it 282px of children.
+> Split into a title row and a tool row; panel widened to 268. Now 0 overflow.
+> (2) THE PALETTE WAS 4.7 SCREENS OF SCROLLING — 114 buttons, one 116px column,
+> 3,890px of scroll in an 828px viewport. Rail 148 -> 208px, two-up grid: 2.4
+> screens, and only 2 of 113 names truncate (both keep their tooltip). The
+> roving arrow keys now measure the column count from where the buttons actually
+> sit, so up/down move a ROW and left/right one cell — and the mobile drawer,
+> which stays one-up, still gets it right.
+> (3) SCENE LEGEND (new "contents" tab on the lab panel). Loading someone's
+> gallery scene gave you shapes: the minimap shows form, not identity, and the
+> notebook only lists reactions you happened to witness. The legend is a census
+> of what is on the grid — swatch, name, share bar, count, sorted by mass. Click
+> a row to hold that element; click the one you are already holding to PICK IT
+> OUT on the canvas (new uHighlight uniform: the chosen element lifts, everything
+> else drops to 30%). Rebuilds only when the cast changes, so it does not
+> flicker while a scene runs, and it only counts while the tab is open.
+> (4) THE POINTER NEVER SAID WHICH TOOL IT HELD — crosshair for Powder, Erase,
+> Stir and Player alike. Now paint=crosshair, erase=cell, placement=copy, and
+> stir gets a small SVG swirl (with a crosshair fallback).
+> (5) SPEED FLOORED AT 0.5x, which is useless for watching the very reaction
+> interface the notebook, the rx-glow view and the stir tool all point at. Added
+> 0.25x and 0.1x.
+> ALSO: `tune` moved off the transport and onto the held-element card where it
+> belongs (16 controls -> 15, and the card is already the element's own surface);
+> the fps/tick/dots/chunks telemetry can be switched off in Settings, leaving the
+> cell probe the room; and an empty grid now carries an invitation instead of
+> being a void — it disappears the instant anything is painted.
+> GUIDELINES PASS on the new surfaces caught four things: legend rows had no
+> aria-pressed, the tablist had no arrow-key navigation and two tab stops, the
+> share bars used --accent-l (the HELD element colour — the same trap that made
+> focus rings vanish on Charcoal, so they wear each element's own colour now and
+> read better for it), and the highlight pulse ignored prefers-reduced-motion
+> (new uPulse uniform: the lift stays, the throb goes).
+> The self test grew 34 -> 44 checks covering all of it; node suite still 28.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
