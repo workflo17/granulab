@@ -65,6 +65,8 @@ export interface GalleryScene {
 export const TOOL_PLAYER = -2;
 /** pseudo-tool: click the canvas to add an AI fighter */
 export const TOOL_FIGHTER = -3;
+/** pseudo-tool: drag to stir whatever movable matter is under the brush */
+export const TOOL_STIR = -4;
 
 export type PenMode = "free" | "line" | "rect";
 /** brush nib: what one dab of the pen covers */
@@ -507,6 +509,7 @@ export class Ui {
                 <div><dt>left</dt><dd>paint the left-hand element</dd></div>
                 <div><dt>right</dt><dd>paint the right-hand one</dd></div>
                 <div><dt><kbd>Alt</kbd>+click</dt><dd>pick up what is already there</dd></div>
+                <div><dt>Stir tool</dt><dd>drag to mix a beaker's contents</dd></div>
                 <div><dt>space drag</dt><dd>pan, on any mouse or trackpad</dd></div>
                 <div><dt>middle drag</dt><dd>pan the view</dd></div>
                 <div><dt>wheel</dt><dd>zoom</dd></div>
@@ -580,8 +583,11 @@ export class Ui {
 
     const addButton = (host: HTMLElement, id: number): void => {
       const el = ELEMENTS[id];
-      const label = id === TOOL_PLAYER ? "Player" : id === TOOL_FIGHTER ? "Fighter" : id === E.EMPTY ? "Erase" : el.name;
-      const sw = id === TOOL_PLAYER ? "#ffe94a" : id === TOOL_FIGHTER ? "#c05ac0" : id === E.EMPTY ? "transparent" : el.color;
+      const label = id === TOOL_PLAYER ? "Player" : id === TOOL_FIGHTER ? "Fighter"
+        : id === TOOL_STIR ? "Stir" : id === E.EMPTY ? "Erase" : el.name;
+      const sw = id === TOOL_PLAYER ? "#ffe94a" : id === TOOL_FIGHTER ? "#c05ac0"
+        : id === TOOL_STIR ? "conic-gradient(from 0deg,#7ab8c8,#e0a8c8,#7ab8c8)"
+        : id === E.EMPTY ? "transparent" : el.color;
       const btn = document.createElement("button");
       btn.className = "el";
       btn.innerHTML = `<span class="sw" style="background:${sw};${id === E.EMPTY ? "border:1px solid var(--hairline)" : ""}"></span>${label}`;
@@ -619,6 +625,7 @@ export class Ui {
     const customHost = makeRail("CUSTOM");
     const tools = makeRail("TOOLS");
     addButton(tools, E.EMPTY);
+    addButton(tools, TOOL_STIR);
     addButton(tools, TOOL_PLAYER);
     addButton(tools, TOOL_FIGHTER);
     this.addButtonFn = addButton;
@@ -906,8 +913,10 @@ export class Ui {
   bind(side: "L" | "R", id: number): void {
     if (side === "L") this.state.toolL = id;
     else this.state.toolR = id;
-    const name = id === TOOL_PLAYER ? "Player" : id === TOOL_FIGHTER ? "Fighter" : id === E.EMPTY ? "Erase" : ELEMENTS[id].name;
-    const color = id === TOOL_PLAYER ? "#ffe94a" : id === TOOL_FIGHTER ? "#c05ac0" : id === E.EMPTY ? "#3a4049" : ELEMENTS[id].color;
+    const name = id === TOOL_PLAYER ? "Player" : id === TOOL_FIGHTER ? "Fighter"
+      : id === TOOL_STIR ? "Stir" : id === E.EMPTY ? "Erase" : ELEMENTS[id].name;
+    const color = id === TOOL_PLAYER ? "#ffe94a" : id === TOOL_FIGHTER ? "#c05ac0"
+      : id === TOOL_STIR ? "#9ec8d0" : id === E.EMPTY ? "#3a4049" : ELEMENTS[id].color;
     if (side === "L") {
       this.wellL.textContent = name;
       document.documentElement.style.setProperty("--accent-l", color);
@@ -1073,6 +1082,7 @@ export class Ui {
   private renderRecipes(id: number): void {
     const card = this.reagentCard;
     if (id <= E.WALL || id >= ELEMENTS.length) { card.hidden = true; return; }
+
     const sw = (eid: number): string =>
       eid === E.EMPTY
         ? `<i class="rsw" style="border:1px solid var(--hairline)"></i>`
@@ -1485,7 +1495,7 @@ export class Ui {
     document.documentElement.classList.toggle("cvd", on);
     for (const [id, list] of this.buttons) {
       const name = id === TOOL_PLAYER ? "Player" : id === TOOL_FIGHTER ? "Fighter"
-        : id === E.EMPTY ? "Erase" : ELEMENTS[id]?.name ?? "?";
+        : id === TOOL_STIR ? "Stir" : id === E.EMPTY ? "Erase" : ELEMENTS[id]?.name ?? "?";
       for (const btn of list) {
         const sw = btn.querySelector<HTMLElement>(".sw");
         if (sw) sw.dataset.tag = on ? name.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase() : "";

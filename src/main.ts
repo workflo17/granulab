@@ -5,9 +5,9 @@ import wasmUrl from "../asm/build/engine.wasm?url";
 import { Player, Fighter } from "./engine/player";
 import { ObjectSystem } from "./engine/objects";
 import { Renderer } from "./render/renderer";
-import { Ui, readJson, TOOL_PLAYER, TOOL_FIGHTER, type GalleryScene } from "./ui/ui";
+import { Ui, readJson, TOOL_PLAYER, TOOL_FIGHTER, TOOL_STIR, type GalleryScene } from "./ui/ui";
 import {
-  E, ELEMENTS, PALETTE, registerElement, type CustomSpec,
+  E, B, N_IDS, BEHAVIOR, ELEMENTS, PALETTE, registerElement, type CustomSpec,
   DENSITY, DISPERSE, FLAMMABLE, BURNLIFE, LIFE0, EXPLODE_R, TEMP0, HEAT_PUMP,
   HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, HEAT_COND, SLICK, BOUNCE,
 } from "./engine/elements";
@@ -900,6 +900,67 @@ function stamp(cx: number, cy: number, r: number, id: number): void {
   }
 }
 
+// ---- stirring -------------------------------------------------------------
+// Two liquids poured into a beaker stratify by density and only ever react
+// across the thin interface between them; gases separated by a single row of
+// air never touch at all. Real chemistry has a glass rod for exactly this, and
+// the sim had no way to agitate anything.
+//
+// A stir is a PERMUTATION of the movable matter under the brush: pick a cell,
+// pick a neighbour a couple of cells away, and if both are things that can flow
+// (or empty space), exchange them. Nothing is created or destroyed — the dot
+// count is identical before and after — and the container itself is untouched,
+// because walls, glass, metal and every device are B.NONE and never qualify.
+const MIXABLE = new Uint8Array(N_IDS);
+for (let id = 0; id < N_IDS; id++) {
+  const b = BEHAVIOR[id];
+  // fire and sparks carry timers and conductor bits in `life`, which a raw
+  // write would clear — leave the energetic species out of it
+  MIXABLE[id] = b === B.POWDER || b === B.LIQUID || b === B.GAS ? 1 : 0;
+}
+MIXABLE[E.EMPTY] = 1; // swapping with a bubble of air is what makes it churn
+
+function stir(cx: number, cy: number, r: number): void {
+  const r2 = r * r;
+  const area = Math.max(1, Math.round(Math.PI * r2));
+  const swaps = Math.max(2, Math.round(area * 0.4));
+  const sp = world.species;
+  const sh = world.shade;
+  for (let n = 0; n < swaps; n++) {
+    // a cell somewhere in the disc, and a partner a short hop away: local
+    // exchanges read as stirring, whereas long-range ones read as teleporting
+    const ax = cx + world.rng.int(r * 2 + 1) - r;
+    const ay = cy + world.rng.int(r * 2 + 1) - r;
+    const dx = ax - cx;
+    const dy = ay - cy;
+    if (dx * dx + dy * dy > r2) continue;
+    const bx = ax + world.rng.int(5) - 2;
+    const by = ay + world.rng.int(5) - 2;
+    if (ax < 0 || ay < 0 || ax >= GRID_W || ay >= GRID_H) continue;
+    if (bx < 0 || by < 0 || bx >= GRID_W || by >= GRID_H) continue;
+    const ia = ay * GRID_W + ax;
+    const ib = by * GRID_W + bx;
+    if (ia === ib) continue;
+    const a = sp[ia];
+    const b = sp[ib];
+    if (a === b) continue;
+    if (!MIXABLE[a] || !MIXABLE[b]) continue;
+    const as = sh[ia];
+    const bs = sh[ib];
+    world.rawSet(ax, ay, b, bs);
+    world.rawSet(bx, by, a, as);
+  }
+}
+
+function stirLine(x0: number, y0: number, x1: number, y1: number, r: number): void {
+  const dist = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+  const steps = Math.max(1, Math.ceil(dist / Math.max(1, r / 2)));
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    stir(Math.round(x0 + (x1 - x0) * t), Math.round(y0 + (y1 - y0) * t), r);
+  }
+}
+
 function stampLine(x0: number, y0: number, x1: number, y1: number, r: number, id: number): void {
   const dist = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
   const steps = Math.max(1, Math.ceil(dist / Math.max(1, r / 2)));
@@ -1001,6 +1062,11 @@ canvas.addEventListener("pointerdown", (e) => {
   }
   painting = tool;
   pushUndo();
+  if (tool === TOOL_STIR) {
+    stir(c.x, c.y, ui.state.pen);
+    lastCell = c;
+    return;
+  }
   if (tool === E.EMPTY) objects.removeAt(c.x, c.y);
   if (ui.state.penMode === "free") {
     stamp(c.x, c.y, ui.state.pen, painting);
@@ -1031,6 +1097,12 @@ canvas.addEventListener("pointermove", (e) => {
     return;
   }
   if (panning) return;
+  if (painting === TOOL_STIR && lastCell) {
+    stirLine(lastCell.x, lastCell.y, c.x, c.y, ui.state.pen);
+    lastCell = c;
+    hoverCell = c;
+    return;
+  }
   if (painting >= 0 && lastCell && ui.state.penMode === "free") {
     const ddx = c.x - lastCell.x;
     const ddy = c.y - lastCell.y;
@@ -1118,6 +1190,7 @@ function probe(c: { x: number; y: number } | null): void {
 const OBJ_R: Record<number, number> = { [E.BALL]: 7, [E.BOX]: 8, [E.WHEEL]: 9, [E.BUBBLE]: 4 };
 
 function nibInk(tool: number): string {
+  if (tool === TOOL_STIR) return "#9ec8d0";
   if (tool === TOOL_PLAYER) return "#ffe94a";
   if (tool === TOOL_FIGHTER) return "#c05ac0";
   if (tool === E.EMPTY) return "#e7e9ee"; // erase has no colour of its own
@@ -1166,9 +1239,11 @@ function drawBrushPreview(): void {
   const y = py(hy);
   const ink = nibInk(tool);
   const objR = OBJ_R[tool];
-  const shape = objR !== undefined ? "round" : ui.state.penShape;
+  // a stir has no nib shape: it agitates the whole disc
+  const shape = objR !== undefined || tool === TOOL_STIR ? "round" : ui.state.penShape;
   const r = objR ?? (tool === TOOL_PLAYER || tool === TOOL_FIGHTER ? 2 : ui.state.pen);
-  const mode = objR !== undefined || tool === TOOL_PLAYER || tool === TOOL_FIGHTER ? "free" : ui.state.penMode;
+  const mode = objR !== undefined || tool === TOOL_PLAYER || tool === TOOL_FIGHTER || tool === TOOL_STIR
+    ? "free" : ui.state.penMode;
   const dragging = painting >= 0 && lastCell !== null && mode !== "free";
 
   let x0 = x, y0 = y, x1 = x, y1 = y;
@@ -1297,6 +1372,7 @@ function keyPaintDab(side: "L" | "R"): void {
     return;
   }
   pushUndo();
+  if (tool === TOOL_STIR) { stir(keyCursor.x, keyCursor.y, ui.state.pen); armUndo(); return; }
   if (tool === E.BALL || tool === E.BOX || tool === E.WHEEL || tool === E.BUBBLE) {
     const had = objects.list.length;
     objects.spawnId(tool, keyCursor.x, keyCursor.y);
@@ -2286,7 +2362,138 @@ else if (location.hash.startsWith("#cryo")) cryoScene();
 else if (location.hash.startsWith("#boiler")) boilerScene();
 else if (location.hash.startsWith("#cannon")) cannonScene();
 
+// ---- in-page self test ----------------------------------------------------
+// The other half of the suite. tools/apptest.ts covers everything that runs
+// without a DOM; these are the cases that need the real page — the wiring where
+// this project's regressions have actually lived. Every one of them is a bug
+// that shipped: dialogs pinned to the corner by a CSS reset, a demo that could
+// not be reloaded, a notebook "clear" that rebuilt itself, a palette filter that
+// forgot the arrow keys. Run it with granulab.selftest().
+function selftest(): { passed: number; failed: number; failures: string[] } {
+  const failures: string[] = [];
+  let passed = 0;
+  const check = (name: string, cond: boolean, detail = ""): void => {
+    if (cond) passed++;
+    else failures.push(name + (detail ? ` — ${detail}` : ""));
+  };
+  const wasPaused = ui.state.paused;
+  ui.setPaused(true);
+  resize();
+  const q = <T extends Element>(sel: string): T => document.querySelector<T>(sel)!;
+
+  // FIRST, before the suite touches anything: filtering and binding both rebuild
+  // the roving tabindex, so measuring this later only ever proves that the test
+  // repaired it. Check the state the app was actually left in.
+  const tabbable = [...document.querySelectorAll<HTMLElement>("#rails .el")].filter((b) => b.tabIndex === 0);
+  check("the palette is a single tab stop, not 110", tabbable.length === 1, `${tabbable.length} stops`);
+
+  // dialogs must sit where a modal belongs; `* { margin: 0 }` once pinned every
+  // one of them to the top-left corner and nobody noticed for a milestone
+  for (const id of ["eldialog", "gallerydialog", "slotdialog", "helpdialog", "codedialog", "setdialog", "tunedialog", "rxdialog", "customdialog"]) {
+    const d = document.getElementById(id) as HTMLDialogElement | null;
+    if (!d) { check(`${id} exists`, false); continue; }
+    d.showModal();
+    const r = d.getBoundingClientRect();
+    // centred MEANS the margins match, whatever the viewport is; an absolute
+    // "left > 20" only passes on a window big enough, which is not the property
+    const wantLeft = (window.innerWidth - r.width) / 2;
+    check(`${id} is centred, not pinned to a corner`,
+      Math.abs(r.left - wantLeft) < 4, `left ${Math.round(r.left)}, expected ${Math.round(wantLeft)}`);
+    check(`${id} is labelled for assistive tech`, !!d.getAttribute("aria-labelledby"));
+    d.close();
+  }
+
+  // a native select fires no change event for the option it already holds, so
+  // the picker has to snap back or a scene can never be restarted
+  const demosel = q<HTMLSelectElement>("#demosel");
+  world.clear();
+  demosel.value = "chem";
+  demosel.dispatchEvent(new Event("change", { bubbles: true }));
+  check("loading a demo fills the grid", world.dots > 1000, `${world.dots} dots`);
+  check("the demo picker snaps back so the same scene can reload", demosel.value === "");
+
+  // palette filter: names, rails and properties
+  const filter = q<HTMLInputElement>("#elfilter");
+  const type = (v: string): void => { filter.value = v; filter.dispatchEvent(new Event("input", { bubbles: true })); };
+  const shown = (): string[] =>
+    [...document.querySelectorAll('#rails .palette:not([data-rail="recent"]) .el:not([hidden])')]
+      .map((b) => (b.textContent ?? "").trim());
+  type("sand");
+  check("the filter finds an element by name", shown().includes("Sand"));
+  type("metals");
+  check("the filter finds a whole rail", shown().length > 3 && shown().includes("Copper"));
+  type("conducts");
+  const conductors = shown();
+  check("the filter answers a property question", conductors.length > 0 && conductors.every((n) => ["Metal", "Copper", "Gold", "Tungsten"].includes(n)), conductors.join(","));
+  type("zzzz");
+  check("no matches says so", !q<HTMLElement>("#norail").hidden);
+  type("");
+
+  // keyboard painting: the canvas has to be usable without a pointer at all
+  world.clear();
+  ui.bind("L", E.POWDER);
+  const key = (code: string, opts: KeyboardEventInit = {}): void => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { code, key: opts.key ?? code, bubbles: true, cancelable: true, ...opts }));
+  };
+  key("KeyK", { key: "k" });
+  check("K turns keyboard painting on", keyPaint);
+  const cursor0 = { ...keyCursor };
+  key("ArrowRight");
+  check("arrows move the cursor by a nib", keyCursor.x - cursor0.x === Math.max(2, ui.state.pen));
+  key("Enter");
+  check("Enter lays down a dab", world.dots > 0, `${world.dots} dots`);
+  check("and it lands under the cursor", world.species[keyCursor.y * GRID_W + keyCursor.x] === E.POWDER);
+  key("Escape", { key: "Escape" });
+  check("Escape leaves the mode", !keyPaint);
+
+  // stirring is a permutation: it may rearrange a beaker but never invent or
+  // destroy anything, and it must leave the container itself alone
+  world.clear();
+  objects.clear();
+  const glass = ELEMENTS.find((d) => d.name === "Glass")!.id;
+  for (let y = 300; y <= 560; y++) for (const x of [500, 700]) world.paint(x, y, glass);
+  for (let y = 400; y <= 540; y++) for (let x = 501; x < 700; x++) world.paint(x, y, E.WATER);
+  for (let y = 340; y <= 399; y++) for (let x = 501; x < 700; x++) world.paint(x, y, ELEMENTS.find((d) => d.name === "Oil")!.id);
+  const dotsBefore = world.dots;
+  let glassBefore = 0;
+  for (let i = 0; i < world.species.length; i++) if (world.species[i] === glass) glassBefore++;
+  for (let n = 0; n < 8; n++) for (let x = 520; x <= 680; x += 24) stir(x, 450, 26);
+  let glassAfter = 0;
+  for (let i = 0; i < world.species.length; i++) if (world.species[i] === glass) glassAfter++;
+  check("stirring conserves every dot", world.dots === dotsBefore, `${world.dots} vs ${dotsBefore}`);
+  check("stirring leaves the container standing", glassAfter === glassBefore, `${glassAfter} vs ${glassBefore}`);
+
+  // the datasheet has to answer "how do I make this", not just "what does it do"
+  const bleach = ELEMENTS.find((d) => d.name === "Bleach");
+  if (bleach) {
+    ui.bind("L", bleach.id);
+    const card = q<HTMLElement>("#reagent");
+    check("the datasheet says where an element comes from",
+      !card.hidden && (card.textContent ?? "").includes("made from"));
+  }
+
+  // storage that cannot be parsed must not be able to stop the app booting
+  check("a corrupt storage value is survivable", (() => {
+    try {
+      localStorage.setItem("granulab-selftest-probe", "{not json");
+      const v = readJson("granulab-selftest-probe", { ok: true });
+      localStorage.removeItem("granulab-selftest-probe");
+      return (v as { ok?: boolean }).ok === true;
+    } catch { return false; }
+  })());
+
+  world.clear();
+  objects.clear();
+  ui.bind("L", E.POWDER);
+  ui.setPaused(wasPaused);
+  const result = { passed, failed: failures.length, failures };
+  console.log(`[granulab-selftest] ${passed} passed, ${failures.length} failed`);
+  for (const f of failures) console.log(`  - ${f}`);
+  return result;
+}
+
 window.granulab = {
+  selftest,
   engine: engineActive,
   demo: demoScene,
   chem: chemScene,
@@ -2321,6 +2528,7 @@ window.granulab = {
   renderer,
   ui,
   paint: (name: string, x: number, y: number, r = 4) => stamp(x, y, r, byName(name)),
+  stir,
   rect: (name: string, x0: number, y0: number, x1: number, y1: number) => {
     const id = byName(name);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);

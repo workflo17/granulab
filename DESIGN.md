@@ -973,6 +973,58 @@
 > landed — paint() fills EMPTY only, and saveAll only carries customs the grid
 > actually uses. The cap looked broken when the test scene was the problem.
 >
+> MIXING 8/12 (owner ask: "mix chemicals in a glass beaker or any other kind of
+> container"). THE GAP: two liquids poured into a beaker stratify by density and
+> only ever react across the thin interface between them, and gases a single row
+> apart never touch at all — the sim had a hundred reactions and no way to
+> agitate anything. STIR TOOL (TOOLS rail, works with the pen, the keyboard dab
+> and any nib size): a PERMUTATION of the movable matter under the brush — pick
+> a cell, pick a partner a couple of cells away, exchange them if both can flow
+> or are empty. Nothing is created or destroyed and the container is untouched,
+> because walls, glass, metal and every device are B.NONE and never qualify;
+> fire and sparks are excluded too, since their timers live in `life` which a
+> raw write clears. Entirely HOST-SIDE via rawSet (which already does the dots /
+> gas-census / fire-count / wake bookkeeping on both engines), so NO engine
+> change and no parity run needed for it.
+> MEASURED: water under oil, 183 -> 929 vertical interleavings after ten passes,
+> dots identical at 44,373 and the glass intact. And the point of the thing —
+> acid layered on lye in a beaker, same 600 ticks: unstirred consumes 1,066 acid
+> and makes 235 salt; STIRRED consumes 8,109 and makes 972. 7.6x the reaction,
+> which is what a glass rod is for.
+>
+> APP-LAYER TEST SUITE 8/12 — the engine had seven parity gates, a bench oracle
+> and a latency gate; the layer people actually touch had NOTHING, and it showed:
+> the Lab Notebook sat dead on the default engine for three days, every dialog
+> was pinned to the top-left corner since M4, a demo you were already in could
+> not be restarted, and a 16-byte payload froze the tab. All four found by hand.
+> TWO HALVES, because standing up a browser is a dependency this project has so
+> far done without:
+> (1) `npm run test:app` -> tools/apptest.ts, headless node, 28 checks: save
+> round-trips byte-identical, every hostile-input refusal, liquids level and keep
+> levelling, sealed vessels lose nothing, and the reaction table's integrity
+> (one row per unordered pair, no zero-chance rows, no rows that change nothing,
+> every product a real element, every row named, and seven known products
+> traceable back to something that makes them).
+> (2) `granulab.selftest()` in the page, 34 checks: all nine dialogs centred AND
+> labelled, the demo picker snapping back, the filter by name / rail / property,
+> the palette as ONE tab stop, keyboard painting end to end, stirring conserving
+> every dot and leaving the glass standing, the datasheet's "made from", and a
+> corrupt storage value staying survivable.
+> BOTH HALVES WERE PROVEN TO FAIL, which is the only thing that makes a suite
+> worth having: reintroducing the two fixed engine defects turned the node suite
+> red (and measured the freeze at a real 21,360ms, harder than the 14s I had
+> projected), and re-adding `dialog { margin: 0 }` at runtime turned 9 in-page
+> checks red.
+> ONE VACUOUS TEST CAUGHT AND FIXED while writing it: the roving-tabindex check
+> ran AFTER the suite had used the palette filter, and applyFilter() rebuilds the
+> tabindexes — so it was only ever proving the test had repaired the thing it was
+> testing. Moved to the very first check, and it now reports "113 stops" when
+> broken. The same trap applies to any check placed after the suite pokes its
+> own subject.
+> ALSO FIXED IN THE SUITE ITSELF: "centred" was asserted as `left > 20`, which
+> only holds on a window big enough — it now asserts the margins match, which is
+> what centring means at any viewport.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly

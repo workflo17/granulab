@@ -8,7 +8,8 @@
     "build": "npm run asm:build && vite build",
     "preview": "vite preview",
     "asm:build": "asc --config asconfig.json --target release",
-    "parity": "npm run asm:build && npx esbuild tools/parity.ts --bundle --format=esm --platform=node --outfile=tools/parity.mjs && node tools/parity.mjs"
+    "parity": "npm run asm:build && npx esbuild tools/parity.ts --bundle --format=esm --platform=node --outfile=tools/parity.mjs && node tools/parity.mjs",
+    "test:app": "npx esbuild tools/apptest.ts --bundle --format=esm --platform=node --outfile=tools/apptest.mjs && node tools/apptest.mjs"
   },
   "devDependencies": {
     "assemblyscript": "^0.28.20",

@@ -7,3 +7,4 @@ tools/bench.mjs
 tools/parity.mjs
 asm/build/
 .env*
+tools/apptest.mjs
