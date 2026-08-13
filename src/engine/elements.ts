@@ -117,6 +117,10 @@ export const E = {
   RUBBER: 103, // grippy and bouncy; burns dirty
   GRAPHITE: 104, // dry lubricant powder — a floor of it is a skid pan
   VULCANITE: 105, // rubber cured with sulfur: hard, and it throws a ball back
+  // ---- M6 control shelf: the parts a contraption needs to become a machine ----
+  CLOCK: 106, // free-running pulse source; its period is its lifespan property
+  INVERTER: 107, // outputs a pulse UNLESS it is being pulsed — NOT, and with
+  // a wire junction already acting as OR, NOR and therefore all of logic
 } as const;
 
 // Behavior primitives (dispatch codes for the hot loop)
@@ -146,6 +150,8 @@ export const B = {
   FILTER: 22, // passes gases (light up, heavy down), blocks everything else
   LITMUS: 23, // falls like powder, samples neighbor pH into its shade byte
   FLOATER: 24, // rigid but buoyant: settles in air, rises through denser liquid
+  CLOCK: 25, // periodic spark source
+  INVERTER: 26, // spark source suppressed by its own inputs
 } as const;
 
 export interface ElementDef {
@@ -317,6 +323,15 @@ export const ELEMENTS: ElementDef[] = [
   def({ id: E.RUBBER, name: "Rubber", color: "#2e2c30", density: 255, flammable: 30, burnLife: 110, ignitesAt: 400 }),
   def({ id: E.GRAPHITE, name: "Graphite", color: "#3c4046", behavior: B.POWDER, density: 62, ignitesAt: 620, flammable: 20, burnLife: 40, group: "REAGENTS" }),
   def({ id: E.VULCANITE, name: "Vulcanite", color: "#3a3038", density: 255, flammable: 8, burnLife: 90, ignitesAt: 520 }),
+  // ---- M6 control shelf ----
+  // A pulse source with a dial. The period IS the lifespan property, so the
+  // tune panel's existing slider is the knob — no new UI for a new idea.
+  def({ id: E.CLOCK, name: "Clock", color: "#e0c04a", behavior: B.CLOCK, density: 255, device: true, life0: 60 }),
+  // The only gate this engine needs. Wires already merge (that is OR), so one
+  // inverting element completes the set: NOT, NOR, and everything above them.
+  // Its life byte is a pen-stroke angle like the fan's and the cannon's — that
+  // names the OUTPUT face, and every other face is an input.
+  def({ id: E.INVERTER, name: "Inverter", color: "#b06ad8", behavior: B.INVERTER, density: 255, device: true }),
 ];
 
 // Flat parallel arrays for the hot loop (no object property lookups per cell).
@@ -327,6 +342,11 @@ export const DISPERSE = new Uint8Array(N_IDS);
 export const FLAMMABLE = new Uint8Array(N_IDS);
 export const BURNLIFE = new Uint8Array(N_IDS);
 export const LIFE0 = new Uint8Array(N_IDS);
+/** devices that must run every tick whether or not anything near them moved.
+ *  A cell in a sleeping chunk is never scanned, so it cannot wake itself —
+ *  measured, a lone clock ran for 217 ticks and then froze mid-countdown with
+ *  zero active chunks. The world pins the chunks these sit in. */
+export const ALWAYS_ON = new Uint8Array(N_IDS);
 export const EXPLODE_R = new Uint8Array(N_IDS);
 export const HOT = new Uint8Array(N_IDS);
 export const MELTS = new Uint8Array(N_IDS);
@@ -372,6 +392,7 @@ function applyDef(el: ElementDef): void {
   FLAMMABLE[el.id] = el.flammable;
   BURNLIFE[el.id] = el.burnLife;
   LIFE0[el.id] = el.life0;
+  ALWAYS_ON[el.id] = el.behavior === B.CLOCK || el.behavior === B.INVERTER ? 1 : 0;
   EXPLODE_R[el.id] = el.explodeR;
   HOT[el.id] = el.hot ? 1 : 0;
   MELTS[el.id] = el.melts;

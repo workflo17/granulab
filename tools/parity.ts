@@ -351,6 +351,51 @@ function buildPressure(paint: PaintFn): void {
   rect(paint, "Fire", 1140, 670, 1225, 671);
 }
 
+
+/** M6 control zoo: the two elements that turn a contraption into a machine.
+ *  Nothing else in the oracle set has an autonomous device in it, and these
+ *  two are the only cells in the engine that run on a pinned chunk rather than
+ *  because something near them moved — which is exactly the kind of thing that
+ *  drifts between two engines without anyone noticing. Covered here: a clock
+ *  on a long wire, a clock driving a valve (signal -> actuator), an inverter
+ *  held low by a clock (NOT), an inverter with two inputs (NOR), a free-running
+ *  inverter as a constant source, and a chain of two gates. */
+function buildControl(paint: PaintFn): void {
+  rect(paint, "Wall", 30, 690, 1250, 700);
+  // 1) clock on a long wire: the pulse train and its refractory
+  rect(paint, "Clock", 60, 200, 60, 200);
+  rect(paint, "Copper", 61, 200, 400, 200);
+  // 2) clock -> wire -> valve: one pulse opens the gate, sand meters through
+  rect(paint, "Wall", 100, 300, 106, 399);
+  rect(paint, "Wall", 140, 300, 146, 399);
+  rect(paint, "Valve", 107, 400, 139, 400);
+  rect(paint, "Copper", 140, 400, 180, 400);
+  rect(paint, "Clock", 181, 400, 181, 400);
+  rect(paint, "Sand", 107, 320, 139, 399);
+  // 3) NOT: a clock line into an inverter's side face, output down the wire
+  rect(paint, "Clock", 300, 500, 300, 500);
+  rect(paint, "Copper", 301, 500, 379, 500);
+  paint(380, 500, byName("Inverter"), 0); // angle 0 = output right
+  rect(paint, "Copper", 381, 500, 500, 500);
+  // 4) NOR: two clocks onto two different faces of one gate
+  rect(paint, "Clock", 600, 600, 600, 600);
+  rect(paint, "Copper", 601, 600, 679, 600);
+  rect(paint, "Clock", 680, 520, 680, 520);
+  rect(paint, "Copper", 680, 521, 680, 599);
+  paint(680, 600, byName("Inverter"), 0);
+  rect(paint, "Copper", 681, 600, 760, 600);
+  // 5) a free-running inverter (constant source) feeding a second gate
+  paint(850, 300, byName("Inverter"), 0);
+  rect(paint, "Copper", 851, 300, 940, 300);
+  paint(941, 300, byName("Inverter"), 192); // output down
+  rect(paint, "Copper", 941, 301, 941, 420);
+  // 6) an inverter aimed into a wall, and one aimed off the grid edge: both
+  //    are dead ends the two engines must agree about
+  paint(1100, 250, byName("Inverter"), 128);
+  rect(paint, "Wall", 1090, 240, 1099, 260);
+  paint(1279, 350, byName("Inverter"), 0);
+}
+
 /** M5h+M5i shelf zoo: paints EVERY element id 90-101 in an exercising
  *  arrangement — the shelves landed after the stage gates and had no oracle
  *  coverage. Iodine sublimation/deposition cycle, LN2 flash-freezing a pool
@@ -1061,8 +1106,9 @@ if (process.argv.includes("--bench-only")) {
   const ok5 = ok4 && (await roundTrip());
   const ok6 = ok5 && (await parityRun("M5i pressure", buildPressure));
   const ok7 = ok6 && (await parityRun("M5h+M5i shelf zoo", buildShelf));
-  const ok8 = ok7 && (await latencyGate());
-  if (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8) {
+  const ok8 = ok7 && (await parityRun("M6 control zoo", buildControl));
+  const ok9 = ok8 && (await latencyGate());
+  if (ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9) {
     await churnBench();
     await sceneBench("thermal", buildThermal);
     await sceneBench("firezoo", buildFireZoo);

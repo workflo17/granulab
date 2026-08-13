@@ -78,6 +78,8 @@ const E_OXYGEN: i32 = 51;
 const E_RUST: i32 = 52;
 const E_CANNON: i32 = 63;
 const E_DETECTOR: i32 = 64;
+const E_CLOCK: i32 = 106;
+const E_INVERTER: i32 = 107;
 const E_LITMUS: i32 = 69;
 const E_COPPER: i32 = 74;
 const E_GOLD: i32 = 75;
@@ -91,6 +93,8 @@ const E_LIMESTONE: i32 = 57;
 const E_LIME: i32 = 58;
 
 // static direction tables (World.OCT_DX/OCT_DY, DX4/DY4/OPP4, PREF4 flattened)
+const GATE_COOLDOWN: i32 = 20; // World.GATE_COOLDOWN
+const GATE_HOLD: i32 = 40; // World.GATE_HOLD
 const OCT_DX = memory.data<i32>([1, 1, 0, -1, -1, -1, 0, 1]);
 const OCT_DY = memory.data<i32>([0, 1, 1, 1, 0, -1, -1, -1]);
 const DX4 = memory.data<i32>([1, -1, 0, 0]);
@@ -137,6 +141,8 @@ const B_VALVE: i32 = 21;
 const B_FILTER: i32 = 22;
 const B_LITMUS: i32 = 23;
 const B_FLOATER: i32 = 24; // rigid but buoyant: settles in air, rises through denser liquid
+const B_CLOCK: i32 = 25; // periodic spark source
+const B_INVERTER: i32 = 26; // spark source suppressed by its own inputs
 
 // ---- Rng (src/engine/rng.ts, mulberry32) -----------------------------------
 // State is a pure u32 with wrapping add — matches TS, whose next() masks with
@@ -229,6 +235,10 @@ let fireDots: i32 = 0; // burning cells; the field sleeps when none
 let TWg: i32 = 0;
 let THg: i32 = 0;
 let tempP: usize = 0; // Float32Array
+// per-chunk count of always-on devices (clock/inverter). A cell in a sleeping
+// chunk is never scanned and so can never wake itself; these chunks are pinned.
+let devChunksP: usize = 0;
+let devDots: i32 = 0;
 let thermalCurP: usize = 0;
 let thermalNextP: usize = 0;
 
@@ -409,6 +419,7 @@ export function init(w: i32, h: i32, seed: u32): void {
   THg = h >> TSHIFT;
   tempP = allocZ((TWg * THg) << 2);
   for (let i = 0, tn = TWg * THg; i < tn; i++) f32Set(tempP, i, AMBIENT);
+  devChunksP = allocZ((chunksX * chunksY) << 2);
   thermalCurP = allocZ(chunksX * chunksY);
   thermalNextP = allocZ(chunksX * chunksY);
   // registry tables — the loader copies elements.ts data in after init()
@@ -547,6 +558,7 @@ export function rawSet(x: i32, y: i32, id: i32, shadeV: i32): void {
       pgasSet(pi, pgasAt(pi) + gd);
     }
   }
+  devCensus(x, y, id, old);
   if (id === E_FIRE) fireDots++;
   if (old === E_FIRE) fireDots--;
   speciesSet(i, id);
@@ -608,6 +620,8 @@ export function postLoad(): void {
   }
   pressTicks = 0;
   fireDots = 0;
+  memory.fill(devChunksP, 0, <usize>((chunksX * chunksY) << 2));
+  devDots = 0;
   memory.fill(activeCurP, 1, <usize>(chunksX * chunksY));
   memory.fill(activeNextP, 1, <usize>(chunksX * chunksY));
   fansLen = 0;
@@ -617,6 +631,8 @@ export function postLoad(): void {
   memory.fill(thermalCurP, 0, <usize>(chunksX * chunksY));
   memory.fill(thermalNextP, 0, <usize>(chunksX * chunksY));
   gasDots = 0;
+  memory.fill(devChunksP, 0, <usize>((chunksX * chunksY) << 2));
+  devDots = 0;
   for (let i = 0; i < n; i++) {
     const id = species(i);
     if (id !== E_EMPTY) shadeSet(i, rngByte());
@@ -626,6 +642,11 @@ export function postLoad(): void {
       gasDots++;
       const pi = ((i / W) >> WSHIFT) * WXg + ((i % W) >> WSHIFT);
       pgasSet(pi, pgasAt(pi) + 1);
+    }
+    if (alwaysOn(id) !== 0) {
+      devDots++;
+      const ci = ((i / W) >> CHUNK_SHIFT) * chunksX + ((i % W) >> CHUNK_SHIFT);
+      devSet(ci, devAt(ci) + 1);
     }
     if (id === E_FAN && fansLen < 8192) {
       store<i32>(fansP + (<usize>fansLen << 2), i);
@@ -748,6 +769,7 @@ export function paint(x: i32, y: i32, id: i32, aux: i32): void {
       pgasSet(pi, pgasAt(pi) + gd);
     }
   }
+  devCensus(x, y, id, old);
   if (id === E_FIRE) fireDots++;
   if (old === E_FIRE) fireDots--;
   speciesSet(i, id);
@@ -778,6 +800,21 @@ export function paint(x: i32, y: i32, id: i32, aux: i32): void {
   }
 }
 
+@inline function alwaysOn(id: i32): i32 {
+  const b = BEHAVIOR(id);
+  return b === B_CLOCK || b === B_INVERTER ? 1 : 0;
+}
+@inline function devAt(ci: i32): i32 { return load<i32>(devChunksP + (<usize>ci << 2)); }
+@inline function devSet(ci: i32, v: i32): void { store<i32>(devChunksP + (<usize>ci << 2), v); }
+@inline function devCensus(x: i32, y: i32, id: i32, old: i32): void {
+  const dd = alwaysOn(id) - alwaysOn(old);
+  if (dd !== 0) {
+    devDots += dd;
+    const ci = (y >> CHUNK_SHIFT) * chunksX + (x >> CHUNK_SHIFT);
+    devSet(ci, devAt(ci) + dd);
+  }
+}
+
 function set(i: i32, x: i32, y: i32, id: i32, lifeVal: i32): void {
   const old = species(i);
   if (old !== E_EMPTY && old !== E_WALL) dots--;
@@ -790,6 +827,7 @@ function set(i: i32, x: i32, y: i32, id: i32, lifeVal: i32): void {
       pgasSet(pi, pgasAt(pi) + gd);
     }
   }
+  devCensus(x, y, id, old);
   if (id === E_FIRE) fireDots++;
   if (old === E_FIRE) fireDots--;
   speciesSet(i, id);
@@ -1268,6 +1306,13 @@ export function step(): void {
   activeCurP = activeNextP;
   activeNextP = t;
   memory.fill(activeNextP, 0, <usize>(chunksX * chunksY));
+  // pin the chunks holding autonomous devices: they have to be scanned to run,
+  // and running is the only way they could ask to be scanned
+  if (devDots > 0) {
+    for (let c = 0, cn = chunksX * chunksY; c < cn; c++) {
+      if (devAt(c) > 0) store<u8>(activeCurP + <usize>c, 1);
+    }
+  }
 
   stepWind();
   stepPressure();
@@ -1418,6 +1463,8 @@ function updateCell(i: i32, x: i32, y: i32, id: i32): void {
     case B_FILTER: doFilter(i, x, y); break;
     case B_LITMUS: doLitmus(i, x, y); break;
     case B_FLOATER: doFloater(i, x, y, id); break;
+    case B_CLOCK: doClock(i, x, y); break;
+    case B_INVERTER: doInverter(i, x, y); break;
   }
 }
 
@@ -2022,6 +2069,59 @@ function doEmitter(i: i32, x: i32, y: i32): void {
     }
   }
   wake(x, y); // torches never sleep
+}
+
+/** mirror of World.pulseInto */
+function pulseInto(j: i32, nx: i32, ny: i32): void {
+  const o = species(j);
+  if (o === E_EMPTY) {
+    set(j, nx, ny, E_SPARK, LIFE0(E_SPARK));
+    shadeSet(j, 0);
+    wake(nx, ny);
+  } else if (CONDUCTS(o) > 0 && life(j) === 0) {
+    set(j, nx, ny, E_SPARK, LIFE0(E_SPARK));
+    shadeSet(j, (shade(j) & 0xf8) | 1 | (CONDUCT_IDX(o) << 1));
+    wake(nx, ny);
+  }
+}
+
+/** mirror of World.doClock */
+function doClock(i: i32, x: i32, y: i32): void {
+  wake(x, y);
+  const l = life(i);
+  if (l > 0) { lifeSet(i, l - 1); return; }
+  lifeSet(i, LIFE0(E_CLOCK));
+  for (let k = 0; k < 4; k++) {
+    const nx = x + tbl(DX4, k);
+    const ny = y + tbl(DY4, k);
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    pulseInto(ny * W + nx, nx, ny);
+  }
+}
+
+/** mirror of World.doInverter */
+function doInverter(i: i32, x: i32, y: i32): void {
+  wake(x, y);
+  const cd = shade(i);
+  if (cd > 0) { shadeSet(i, cd - 1); return; }
+  const d = ((life(i) + 16) >> 5) & 7;
+  const dx = tbl(OCT_DX, d);
+  const dy = tbl(OCT_DY, d);
+  for (let k = 0; k < 4; k++) {
+    const nx = x + tbl(DX4, k);
+    const ny = y + tbl(DY4, k);
+    if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+    if (nx === x + dx && ny === y + dy) continue;
+    if (species(ny * W + nx) === E_SPARK) {
+      shadeSet(i, GATE_HOLD); // an input pulse re-arms the cooldown
+      return;
+    }
+  }
+  const ox = x + dx;
+  const oy = y + dy;
+  if (ox < 0 || oy < 0 || ox >= W || oy >= H) return;
+  pulseInto(oy * W + ox, ox, oy);
+  shadeSet(i, GATE_COOLDOWN);
 }
 
 function doSpark(i: i32, x: i32, y: i32): void {

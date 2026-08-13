@@ -567,6 +567,7 @@ const ui = new Ui(root, {
     else if (name === "cryo") cryoScene();
     else if (name === "boiler") boilerScene();
     else if (name === "cannon") cannonScene();
+    else if (name === "machines") machinesScene();
   },
 });
 
@@ -878,7 +879,7 @@ let strokeAngle = 0; // byte angle of the current pen stroke — fans blow this 
 // walls and tanks want a square, funnels and slopes want a diamond, and
 // scattering powder wants a spray rather than a solid disc.
 function stamp(cx: number, cy: number, r: number, id: number): void {
-  const aux = id === E.FAN || id === E.CANNON ? strokeAngle : undefined;
+  const aux = id === E.FAN || id === E.CANNON || id === E.INVERTER ? strokeAngle : undefined;
   const shape = ui.state.penShape;
   const r2 = r * r;
   for (let dy = -r; dy <= r; dy++) {
@@ -1140,7 +1141,7 @@ canvas.addEventListener("pointerup", (e) => {
       stampLine(a.x, a.y, b.x, b.y, ui.state.pen, painting);
     } else {
       const id = painting;
-      const aux = id === E.FAN || id === E.CANNON ? strokeAngle : undefined;
+      const aux = id === E.FAN || id === E.CANNON || id === E.INVERTER ? strokeAngle : undefined;
       for (let y = Math.min(a.y, b.y); y <= Math.max(a.y, b.y); y++) {
         for (let x = Math.min(a.x, b.x); x <= Math.max(a.x, b.x); x++) {
           world.paint(x, y, id, aux);
@@ -2545,6 +2546,129 @@ function cannonScene(): void {
   settle();
 }
 
+// #machines: what the control shelf is FOR. Every other demo in this app is a
+// contraption — it runs because physics runs. These five run because something
+// decided they should: a clock keeps time, a gate says no, a sensor closes the
+// loop. The wiring rules that cost the most time building them are on each one.
+function machinesScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  R("Wall", 20, 688, 1260, 704); // the bench
+
+  // 1) THE SEQUENCER — three hoppers on three clocks, each clock painted with a
+  //    different starting count so they come round out of phase. The PERIOD is
+  //    the element's lifespan property (one dial for every clock in the world,
+  //    on the tune panel); the PHASE is what you paint into each one.
+  //    A valve needs the cell BELOW it clear to drop into, so the signal has to
+  //    arrive end-on: the hopper's right wall stops one row above the gate.
+  const hopper = (x0: number, phase: number) => {
+    R("Wall", x0, 470, x0 + 6, 599);
+    R("Wall", x0 + 46, 470, x0 + 52, 599);
+    R("Valve", x0 + 7, 600, x0 + 45, 600);
+    R("Copper", x0 + 46, 600, x0 + 68, 600);
+    world.paint(x0 + 69, 600, byName("Clock"), phase);
+    R("Sand", x0 + 7, 490, x0 + 45, 599);
+  };
+  hopper(50, 10); hopper(130, 30); hopper(210, 50);
+
+  // 2) THE ALTERNATOR — one clock, two gates, two streams that take turns. The
+  //    left valve is driven straight off the clock; the right one hangs off an
+  //    INVERTER, which outputs whenever it is NOT being pulsed. Beat: left.
+  //    Off-beat: right.
+  R("Wall", 330, 470, 336, 599);
+  R("Wall", 376, 470, 382, 599);
+  R("Valve", 337, 600, 375, 600);
+  R("Sand", 337, 490, 375, 599);
+  R("Copper", 376, 600, 428, 600);
+  world.paint(429, 600, byName("Clock"), 0);
+  R("Copper", 430, 600, 470, 600); // the same clock feeds the gate's input face
+  world.paint(471, 600, byName("Inverter"), 0); // output right
+  R("Copper", 472, 600, 507, 600); // all the way to the gate's end face: the
+  // first cut stopped at 500 and the seven-cell gap meant this half of the
+  // machine never once opened
+  R("Wall", 501, 470, 507, 599);
+  R("Valve", 508, 600, 546, 600);
+  R("Wall", 547, 470, 553, 599);
+  R("Sand", 508, 490, 546, 599);
+
+  // 3) THE TRIP-WIRE GUN — a sensor closes the circuit. The detector is
+  //    PRE-PROGRAMMED with what it watches (its life byte is the species), and
+  //    its spark gap is ROOFED: a detector emits into an empty neighbour, and
+  //    the first thing a powder does is slump into that gap and gag it.
+  R("Wall", 600, 560, 860, 566); // the sensing shelf
+  world.paint(660, 559, byName("Detector"), byName("Sand"));
+  R("Wall", 661, 558, 661, 558); // roof over the spark gap at (661,559)
+  R("Copper", 662, 559, 780, 559);
+  R("Wall", 662, 558, 780, 558); // lid, so the feed cannot bury the line
+  for (let y = 551; y <= 558; y++) for (let x = 782; x <= 789; x++) {
+    world.paint(x, y, byName("Cannon"), 0); // aimed downrange
+  }
+  // the feed that trips it: a clock-metered chute onto the sensor's face
+  R("Wall", 600, 470, 606, 549);
+  R("Wall", 646, 470, 652, 549);
+  R("Valve", 607, 550, 645, 550);
+  R("Sand", 607, 480, 645, 549);
+  R("Copper", 646, 550, 690, 550);
+  world.paint(691, 550, byName("Clock"), 0);
+
+  // 4) THE SELF-REGULATING BIN — the machine that decides for itself, and the
+  //    only closed loop in this app. A detector in the bin watches the fill
+  //    level; while sand touches it, its pulses hold the INVERTER low, and that
+  //    inverter is the only thing driving the supply valve. Fills to the
+  //    sensor -> supply stops. Drains through the floor slot -> supply starts.
+  //    No clock in it anywhere: a free-running inverter IS the power, and the
+  //    sensor is the entire control law.
+  R("Wall", 900, 440, 906, 559); // the supply hopper
+  R("Wall", 946, 440, 952, 559);
+  R("Valve", 907, 560, 945, 560);
+  R("Sand", 907, 460, 945, 559);
+  R("Copper", 946, 560, 1000, 560); // supply line, starting ON the valve's
+  // end cell — the hopper wall stops above this row, so the gap is real
+  world.paint(1001, 560, byName("Inverter"), 128); // output LEFT, into the line
+  // The sensor line comes back to the gate's DOWN face on x=1001. It must not
+  // run alongside the supply line on the way: two conductors that touch are
+  // one wire, and a riser one cell under that line would feed the valve
+  // directly and cut the gate out of its own circuit.
+  // The sensor line comes back to the gate's DOWN face on x=1001. It must not
+  // run alongside the supply line on the way: two conductors that touch are
+  // one wire, and a riser one cell under that line would feed the valve
+  // directly and cut the gate out of its own circuit.
+  R("Copper", 1001, 561, 1001, 654);
+  R("Copper", 941, 670, 1001, 670);
+  R("Copper", 1001, 655, 1001, 670);
+  // THE MEASURING CUP, and it is a cup rather than a bin because of what a
+  // powder does to a sensor. Against the open face of a heap, contact makes
+  // and breaks as grains slide, so the sensor stutters and the gate leaks:
+  // measured, the supply it was meant to cut still ran at 78%, then at about
+  // 60% once one input pulse held the gate for 40 ticks instead of one. Inside
+  // a cup the level only ever rises, so contact is permanent and the machine
+  // latches off. Its air gap is boxed on all four sides or the fill gags it.
+  R("Wall", 900, 600, 906, 679);
+  R("Wall", 940, 600, 946, 679);
+  R("Wall", 900, 680, 946, 686); // the cup's floor
+  R("Wall", 939, 669, 939, 669);
+  R("Wall", 939, 671, 939, 671);
+  world.paint(938, 670, byName("Detector"), byName("Sand")); // the level sensor
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 120 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 120) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
 else if (location.hash.startsWith("#range")) rangeScene();
@@ -2553,6 +2677,7 @@ else if (location.hash.startsWith("#alchemy")) alchemyScene();
 else if (location.hash.startsWith("#cryo")) cryoScene();
 else if (location.hash.startsWith("#boiler")) boilerScene();
 else if (location.hash.startsWith("#cannon")) cannonScene();
+else if (location.hash.startsWith("#machines")) machinesScene();
 
 // ---- in-page self test ----------------------------------------------------
 // The other half of the suite. tools/apptest.ts covers everything that runs
@@ -2843,6 +2968,38 @@ function selftest(): { passed: number; failed: number; failures: string[]; known
   }
 
   {
+    // the machines demo: the only scene here that runs on decisions rather than
+    // on physics alone, so each gate asks whether a CONTROL path still works
+    machinesScene();
+    const hop = (x0: number) => nIn("Sand", x0, 470, x0 + 38, 599);
+    const seq0 = [hop(57), hop(137), hop(217)];
+    const alt0 = [nIn("Sand", 337, 470, 375, 599), nIn("Sand", 508, 470, 546, 599)];
+    const supply = () => nIn("Sand", 907, 440, 945, 559);
+    const supply0 = supply();
+    for (let i = 0; i < 500; i++) simTick();
+    const fedFirst500 = supply0 - supply();
+    for (let i = 0; i < 3000; i++) simTick();
+    const supplyAt3500 = supply();
+    for (let i = 0; i < 500; i++) simTick();
+    const fedLast500 = supplyAt3500 - supply();
+    const seq1 = [hop(57), hop(137), hop(217)];
+    const alt1 = [nIn("Sand", 337, 470, 375, 599), nIn("Sand", 508, 470, 546, 599)];
+    check("machines: all three sequencer clocks meter their hoppers",
+      seq1.every((v, i) => seq0[i] - v > 50), `${seq0} -> ${seq1}`);
+    check("machines: the alternator runs both gates, the direct and the inverted",
+      alt0[0] - alt1[0] > 50 && alt0[1] - alt1[1] > 50,
+      `direct ${alt0[0] - alt1[0]}, inverted ${alt0[1] - alt1[1]}`);
+    check("machines: the trip-wire gun's sensor gets fed", nIn("Sand", 600, 540, 860, 559) > 30,
+      `${nIn("Sand", 600, 540, 860, 559)} on the sensing shelf`);
+    // the closed loop, and the whole reason the control shelf exists: the same
+    // valve, wide open while the cup is low and latched shut by its own level
+    // sensor once the cup is full
+    check("machines: the level sensor latches its own supply off",
+      fedLast500 < fedFirst500 * 0.2,
+      `${fedFirst500} fed in the first 500 ticks, ${fedLast500} in the last 500`);
+  }
+
+  {
     doomScene();
     const before = n("Gunpowder");
     let peakFx = 0;
@@ -2877,6 +3034,7 @@ window.granulab = {
   cryo: cryoScene,
   boiler: boilerScene,
   cannon: cannonScene,
+  machines: machinesScene,
   player,
   fighters,
   objects,

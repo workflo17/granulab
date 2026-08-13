@@ -292,6 +292,7 @@ export class Ui {
               <option value="cryo">demo: cryo works</option>
               <option value="boiler">demo: boiler room</option>
               <option value="cannon">demo: pressure guns</option>
+              <option value="machines">demo: machines</option>
             </select>
             <div class="menuwrap">
               <button id="scenebtn" aria-haspopup="menu" aria-expanded="false" aria-controls="scenemenu"

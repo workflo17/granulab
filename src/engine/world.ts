@@ -6,7 +6,7 @@ import {
   EXPLODE_R, HOT, REACT, HAS_REACT, REACT_COUNT, REACT_DT, PH,
   CONDUCTS, CONDUCT_IDX, CONDUCTOR_IDS,
   TEMP0, HEAT_PUMP, HOT_AT, HOT_TO, COLD_AT, COLD_TO, IGNITES_AT, THERMAL,
-  PRESSURIZES, REACT_BYPRODUCT, HEAT_COND, SELF_OXIDIZING,
+  PRESSURIZES, REACT_BYPRODUCT, HEAT_COND, SELF_OXIDIZING, ALWAYS_ON,
 } from "./elements";
 import { Rng } from "./rng";
 
@@ -68,6 +68,10 @@ export class World {
   private pgas: Int16Array;
   private pressTicks = 0;
   private gasDots = 0; // world total of PRESSURIZES cells — system skips when 0
+  // per-chunk count of always-on devices, maintained at the same write sites
+  // as the gas census. A world without one pays nothing for this.
+  private devChunks!: Int32Array;
+  private devDots = 0;
 
   // M5k AIR: breathable oxygen per coarse cell, 1 = open atmosphere. Fire eats
   // it and dies without it, so a sealed room smothers its own fire while an
@@ -109,6 +113,7 @@ export class World {
     this.chunksY = Math.ceil(h / CHUNK);
     this.activeCur = new Uint8Array(this.chunksX * this.chunksY);
     this.activeNext = new Uint8Array(this.chunksX * this.chunksY);
+    this.devChunks = new Int32Array(this.chunksX * this.chunksY);
     this.WX = w >> WSHIFT;
     this.WY = h >> WSHIFT;
     this.vx = new Float32Array(this.WX * this.WY);
@@ -175,6 +180,11 @@ export class World {
       this.gasDots += gd;
       this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
     }
+    const dd = ALWAYS_ON[id] - ALWAYS_ON[old];
+    if (dd !== 0) {
+      this.devDots += dd;
+      this.devChunks[(y >> CHUNK_SHIFT) * this.chunksX + (x >> CHUNK_SHIFT)] += dd;
+    }
     if (id === E.FIRE) this.fireDots++;
     if (old === E.FIRE) this.fireDots--;
     this.species[i] = id;
@@ -214,6 +224,11 @@ export class World {
       this.gasDots += gd;
       this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
     }
+    const dd = ALWAYS_ON[id] - ALWAYS_ON[old];
+    if (dd !== 0) {
+      this.devDots += dd;
+      this.devChunks[(y >> CHUNK_SHIFT) * this.chunksX + (x >> CHUNK_SHIFT)] += dd;
+    }
     if (id === E.FIRE) this.fireDots++;
     if (old === E.FIRE) this.fireDots--;
     this.species[i] = id;
@@ -232,6 +247,11 @@ export class World {
     if (gd !== 0) {
       this.gasDots += gd;
       this.pgas[(y >> WSHIFT) * this.WX + (x >> WSHIFT)] += gd;
+    }
+    const dd = ALWAYS_ON[id] - ALWAYS_ON[old];
+    if (dd !== 0) {
+      this.devDots += dd;
+      this.devChunks[(y >> CHUNK_SHIFT) * this.chunksX + (x >> CHUNK_SHIFT)] += dd;
     }
     if (id === E.FIRE) this.fireDots++;
     if (old === E.FIRE) this.fireDots--;
@@ -728,6 +748,12 @@ export class World {
     this.activeCur = this.activeNext;
     this.activeNext = t;
     this.activeNext.fill(0);
+    // pin the chunks holding autonomous devices: they have to be scanned to
+    // run, and running is the only way they could ask to be scanned
+    if (this.devDots > 0) {
+      const dc = this.devChunks;
+      for (let c = 0; c < dc.length; c++) if (dc[c] > 0) this.activeCur[c] = 1;
+    }
 
     this.stepWind();
     this.stepPressure();
@@ -873,6 +899,8 @@ export class World {
       case B.FILTER: this.doFilter(i, x, y); break;
       case B.LITMUS: this.doLitmus(i, x, y); break;
       case B.FLOATER: this.doFloater(i, x, y, id); break;
+      case B.CLOCK: this.doClock(i, x, y); break;
+      case B.INVERTER: this.doInverter(i, x, y); break;
     }
   }
 
@@ -1475,6 +1503,78 @@ export class World {
     this.wake(x, y);
   }
 
+  /** drive one cell from a control device: a bare spark in air, or a live
+   *  pulse straight onto a conductor. Sparking the wire directly is what makes
+   *  these usable — a detector has to leave an air gap next to its wire and
+   *  that gap is the first thing a powder buries. */
+  private pulseInto(j: number, nx: number, ny: number): void {
+    const o = this.species[j];
+    if (o === E.EMPTY) {
+      this.set(j, nx, ny, E.SPARK, LIFE0[E.SPARK]);
+      this.shade[j] = 0; // free spark: dies to empty, never welds a stub on
+      this.wake(nx, ny);
+    } else if (CONDUCTS[o] > 0 && this.life[j] === 0) {
+      this.set(j, nx, ny, E.SPARK, LIFE0[E.SPARK]);
+      // wire-born, and remembering which metal to restore (same encoding doSpark
+      // uses, or a pulsed copper line would come back as iron)
+      this.shade[j] = (this.shade[j] & 0xf8) | 1 | (CONDUCT_IDX[o] << 1);
+      this.wake(nx, ny);
+    }
+  }
+
+  /** free-running pulse source. No rng at all: a machine wants a clock it can
+   *  count on, and the clone pulser this replaces measured gaps of 10 to 108
+   *  ticks. Period is LIFE0, which the tune panel already exposes. */
+  private doClock(i: number, x: number, y: number): void {
+    this.wake(x, y);
+    if (this.life[i] > 0) { this.life[i]--; return; }
+    this.life[i] = LIFE0[E.CLOCK];
+    const { W, H } = this;
+    for (let k = 0; k < 4; k++) {
+      const nx = x + World.DX4[k];
+      const ny = y + World.DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      this.pulseInto(ny * W + nx, nx, ny);
+    }
+  }
+
+  /** NOT. Outputs on the face its pen stroke names, every tick, UNLESS a spark
+   *  touches any of its other three faces. Its own output face is excluded from
+   *  that scan or it would suppress itself and run as a ring oscillator. */
+  private doInverter(i: number, x: number, y: number): void {
+    const { W, H, species } = this;
+    this.wake(x, y);
+    // shade is the emit cooldown. Without it the gate re-fires the instant its
+    // output wire cools, and a line driven at exactly its own refractory rate
+    // JAMS: measured, a continuously-driven inverter put nothing at all 200
+    // cells downstream, while the same wire off a clock carried every pulse.
+    if (this.shade[i] > 0) { this.shade[i]--; return; }
+    const d = ((this.life[i] + 16) >> 5) & 7; // pen-stroke angle byte -> 8-dir
+    const dx = World.OCT_DX[d];
+    const dy = World.OCT_DY[d];
+    for (let k = 0; k < 4; k++) {
+      const nx = x + World.DX4[k];
+      const ny = y + World.DY4[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (nx === x + dx && ny === y + dy) continue; // that face is the output
+      if (species[ny * W + nx] === E.SPARK) {
+        // an input pulse does not merely block THIS tick, it re-arms the
+        // cooldown. Signals here are pulse trains, not levels: a sensor is high
+        // about half the ticks it is triggered, and a gate that only checked
+        // the current tick fired straight through the gaps — measured, the
+        // supply line it was supposed to cut still carried 69 pulses in 300
+        // ticks. Re-arming turns an intermittent train into a held-low level.
+        this.shade[i] = World.GATE_HOLD;
+        return;
+      }
+    }
+    const ox = x + dx;
+    const oy = y + dy;
+    if (ox < 0 || oy < 0 || ox >= W || oy >= H) return;
+    this.pulseInto(oy * W + ox, ox, oy);
+    this.shade[i] = World.GATE_COOLDOWN;
+  }
+
   private doClone(i: number, x: number, y: number): void {
     const { W, H, species } = this;
     if (this.life[i] === 0) {
@@ -1821,6 +1921,14 @@ export class World {
     if (this.species[i - this.W] !== E.EMPTY) this.explode(x, y, 6); // nose blocked
   }
 
+  /** ticks an inverter waits between pulses — comfortably longer than the
+   *  slowest conductor's refractory, so its train never trips over itself */
+  private static readonly GATE_COOLDOWN = 20;
+  /** how long ONE input pulse keeps the gate quiet. It has to outlast the gaps
+   *  in the driving train or the gate fires straight through them: a detector
+   *  emits on about 16% of ticks, so gaps of 20 are common and gaps of 40 are
+   *  not. At 20 the supply this was meant to cut still ran at 78%. */
+  private static readonly GATE_HOLD = 40;
   private static readonly DX4 = [1, -1, 0, 0];
   private static readonly DY4 = [0, 0, 1, -1];
   private static readonly OPP4 = [1, 0, 3, 2];
@@ -1966,6 +2074,8 @@ export class World {
     this.thermalCur.fill(0);
     this.thermalNext.fill(0);
     this.gasDots = 0;
+    this.devChunks.fill(0);
+    this.devDots = 0;
     for (let i = 0; i < this.species.length; i++) {
       const id = this.species[i];
       if (id !== E.EMPTY) this.shade[i] = this.rng.byte();
@@ -1974,6 +2084,10 @@ export class World {
       if (PRESSURIZES[id] !== 0) {
         this.gasDots++;
         this.pgas[(((i / this.W) | 0) >> WSHIFT) * this.WX + ((i % this.W) >> WSHIFT)]++;
+      }
+      if (ALWAYS_ON[id] !== 0) {
+        this.devDots++;
+        this.devChunks[((((i / this.W) | 0) >> CHUNK_SHIFT) * this.chunksX) + ((i % this.W) >> CHUNK_SHIFT)]++;
       }
       if (id === E.FAN && this.fans.length < 8192) this.fans.push(i);
       if (HEAT_PUMP[id] > 0) {
@@ -2153,6 +2267,8 @@ export class World {
     this.pgas.fill(0);
     this.pressTicks = 0;
     this.gasDots = 0;
+    this.devChunks.fill(0);
+    this.devDots = 0;
     this.air.fill(1);
     this.fireDots = 0;
     this.temp.fill(AMBIENT);

@@ -1259,6 +1259,83 @@
 > the firedamp pocket both firing, the boiler geysering, the capped barrel
 > bursting. Node suite unchanged at 28. Run time 24s -> 37s.
 >
+> M6 CONTROL SHELF 8/13 (owner: "what kind of machines can we build — if few,
+> build the systems to work simple machines"). THE AUDIT FIRST, by building the
+> candidates rather than reading the code: what existed was a signal bus and
+> reflexes. A spark runs 600 cells of wire at 0.98 cells/tick and arrives every
+> time; a DETECTOR turns "something is touching me" into pulses; a VALVE opens a
+> 24-tick gate on a pulse and a CANNON fires on one. So sensor->actuator worked,
+> and that is the whole of it. THREE THINGS WERE MISSING and each was measured
+> absent, not assumed: no CLOCK (the only oscillator was a clone pulser, whose
+> gaps measured 10 to 108 ticks), no LOGIC (two wires that meet simply merge —
+> nothing in the registry combined or inverted a signal), and no way to hold a
+> line low. You could build a gun that fires when tripped. You could not build
+> anything that kept time, said "not", or decided.
+> SHIPPED: two elements (ids 106-107, customs from 108) and one engine fix.
+> - CLOCK: a free-running pulse source, no rng anywhere in it. Period is the
+>   element's LIFESPAN property, so the tune panel's existing slider is the dial;
+>   the aux byte you paint it with is its PHASE, which is what makes a sequencer
+>   possible. Measured 19 pulses in 1200 ticks at period 60, dead on.
+> - INVERTER: outputs on the face its pen stroke names (like a fan or a cannon)
+>   unless a spark touches any other face. Wire junctions already OR, so one
+>   inverting element completes the set — NOR, and everything above it.
+> - Both drive a conductor DIRECTLY as well as sparking into air, which the
+>   detector still does not: a detector needs a bare cell next to its wire, and
+>   the first thing a powder does is slump into that cell and gag it.
+> THE ENGINE FIX, and it is the real finding here: AN AUTONOMOUS CELL COULD NOT
+> KEEP ITSELF RUNNING. A cell in a sleeping chunk is never scanned, and being
+> scanned is the only way it could ask to stay awake, so wake() from inside a
+> device is a no-op the moment its neighbourhood goes quiet. Measured: a lone
+> clock ran 217 ticks and then froze mid-countdown with zero active chunks, and
+> the same clock next to settling sand froze at t≈30. Fixed with a per-chunk
+> census of always-on devices maintained at the same three species-write sites
+> the gas census uses, and a pin at the top of step(). A world with no clock in
+> it pays nothing, which is why every pre-existing bench hash is byte-identical.
+> WORTH KNOWING: this is the same family as the unexplained fire die-out from
+> the doomsday hunt (fire cells whose life bytes did not decrement for 14 ticks).
+> That is a LEAD, not a fix — fire is not pinned, and whether it should be is a
+> perf question nobody has costed.
+> WIRING LAWS, every one of them earned by a machine that did nothing:
+> (1) THE SIGNAL HAS TO TOUCH THE DEVICE'S FACE. Three machines in this pass
+> failed on a gap of 6-7 cells between a wire's end and the valve it was for,
+> because the hopper wall that looked like it closed the row stops a row above
+> it. Diagonal is not adjacent.
+> (2) TWO CONDUCTORS THAT TOUCH ARE ONE WIRE. A sensor riser routed one cell
+> under its own supply line feeds the valve directly and cuts the gate out of
+> the circuit it is supposed to control.
+> (3) A DETECTOR'S AIR GAP MUST BE BOXED on every side a powder can reach.
+> (4) SIGNALS HERE ARE PULSE TRAINS, NOT LEVELS. A detector is high on about
+> half the ticks it is triggered, and a gate that only checked the current tick
+> fired straight through the gaps: the supply it was meant to cut still ran at
+> 78%. One input pulse now re-arms a 40-tick hold (emission has its own 20-tick
+> cooldown), which is what turns an intermittent train into a held-low level.
+> The 40 has to outlast the gaps in the driving train — at 20 it leaked.
+> (5) A CONTINUOUSLY-DRIVEN LINE JAMS. A gate re-firing the instant its wire
+> cooled put NOTHING 200 cells downstream, because every pulse ran into cells
+> still cooling from the one before; the same wire off a clock carried all of
+> them. Hence the emit cooldown.
+> (6) A SENSOR MUST SIT WHERE THE MATERIAL ACTUALLY GOES. A powder makes a cone,
+> not a level: two placements on the far side of a bin were never reached at all
+> (2,556 cells and still climbing), and one on the open face of the heap
+> stuttered as grains slid past it. Against the inside of a CUP, where the level
+> only rises, contact is permanent and the machine latches.
+> #MACHINES DEMO (demo picker "machines"): a sequencer of three phase-offset
+> clocks metering three hoppers, an alternator where one valve runs off the beat
+> and its twin off an inverter between the beats, a trip-wire gun whose
+> pre-programmed detector fires a cannon, and a SELF-LATCHING SUPPLY: a level
+> sensor in a measuring cup, wired back through a gate to the valve that fills
+> it. Measured: 249 cells fed per 250 ticks until the cup reaches the sensor at
+> t≈3000, then 110, then 0 and 0. The loop closes.
+> GATES: in-page suite 76 -> 80. Parity is now EIGHT scenes: a new M6 control
+> zoo (clock on a long wire, clock->valve, NOT, NOR, a free-running gate feeding
+> a second one, and two gates aimed into a wall and off the grid edge) at 10/10
+> checkpoints bit-exact, and the seven that came before byte-identical to the
+> hashes this file already recorded — which is the proof the change is additive.
+> Node suite unchanged at 28. Latency gate max 7.7ms against a 60ms limit.
+> A CLOCK PAINTED TODAY skips one tick in every 256, when the per-cell frame
+> stamp wraps onto its own value. Harmless at any period worth using, and
+> written down so nobody re-measures it as a bug.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
