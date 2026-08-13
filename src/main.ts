@@ -568,6 +568,7 @@ const ui = new Ui(root, {
     else if (name === "boiler") boilerScene();
     else if (name === "cannon") cannonScene();
     else if (name === "machines") machinesScene();
+    else if (name === "sculpture") sculptureScene();
   },
 });
 
@@ -2684,6 +2685,137 @@ function machinesScene(): void {
   settle();
 }
 
+// #sculpture: a gallery, not a laboratory. Five pieces chosen for what they
+// LOOK like — a bright emission against black beats a clever reaction nobody
+// can see — and staged with plinths, symmetry and stepped heights so the row
+// reads as sculpture. Everything here runs continuously; nothing is a one-shot.
+function sculptureScene(): void {
+  world.clear();
+  player.remove();
+  objects.clear();
+  fighters.length = 0;
+  const R = (name: string, x0: number, y0: number, x1: number, y1: number) => {
+    const id = byName(name);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
+  };
+  R("Wall", 20, 688, 1260, 704); // the gallery floor
+
+  // 1) THE pH ORGAN — eight pipes of stepped height, each holding a different
+  //    aqueous chemistry, each seeded with LITMUS. The indicator takes the
+  //    colour of whatever pH it is standing in and wears it in every view mode,
+  //    so the piece is a spectrum you read left to right: acid at 1, through
+  //    water at 7, to lye at 13. The pipes are WALL because acid dissolves
+  //    glass. Sprinkle the litmus BEFORE the liquid — paint fills empty only.
+  const pipe = (x0: number, h: number, liquid: string) => {
+    R("Wall", x0, 688 - h, x0 + 4, 687);
+    R("Wall", x0 + 22, 688 - h, x0 + 26, 687);
+    for (let y = 700 - h; y <= 680; y += 9) R("Litmus", x0 + 8, y, x0 + 13, y + 1);
+    R(liquid, x0 + 5, 692 - h, x0 + 21, 687);
+  };
+  pipe(40, 150, "Acid");
+  pipe(72, 190, "Chlorine");
+  pipe(104, 230, "Glycerin");
+  pipe(136, 270, "Water");
+  pipe(168, 250, "Seawater");
+  pipe(200, 210, "Soda");
+  pipe(232, 170, "Soapy");
+  pipe(264, 130, "Lye");
+
+  // 2) THE MAGMA CHANDELIER — a one-wide clone vent at the top drips melt onto
+  //    four tiers that catch, glow, and overspill to the next, and the last
+  //    tier drops it into water for the steam. The vent needs its primer pool
+  //    against one face and open air against the other: a two-wide pillar
+  //    splits into a primed-but-blocked column and an open-but-unprimed one.
+  R("Wall", 424, 180, 444, 188); // the shelf the primer pool rests on
+  R("Clone", 445, 150, 445, 179);
+  R("Magma", 425, 150, 444, 179);
+  // Each tier is a BASIN — floor and two lips — so it fills, glows, and
+  // overspills onto the wider one below. Two things had to be got right: the
+  // lips are drawn left-to-right (a reversed x range paints nothing at all, and
+  // the first cut of this piece was four bare shelves the melt ran straight
+  // off), and every basin carries a HEATER, because a thin flow on cold walls
+  // freezes as it falls — the same build without them delivered 1,075 cells of
+  // STONE to the pool and never glowed once.
+  const tier = (cy: number, half: number) => {
+    R("Wall", 446 - half, cy, 446 + half, cy + 6);
+    R("Wall", 440 - half, cy - 12, 446 - half, cy + 6);
+    R("Wall", 440 + half, cy - 12, 446 + half, cy + 6);
+    R("Heater", 446 - half + 6, cy - 3, 446 + half - 6, cy - 1);
+  };
+  // basins get only slightly wider going down: a vent this size fills a small
+  // one and overspills it, and the first cut's wide lower tiers just sat there
+  // as bare bars while the melt ran out on the two above them
+  tier(280, 22); tier(370, 34); tier(460, 46); tier(550, 58);
+  R("Wall", 340, 640, 346, 687); // the pool needs sides, or the quench water
+  R("Wall", 546, 640, 552, 687); // creeps out across the gallery floor
+  R("Water", 347, 660, 545, 687); // the quench pool it all ends in
+
+  // 3) THE OXYGEN FOUNTAIN — three open columns of peroxide over a rust
+  //    catalyst, capped with soap. The catalyst survives the row, so the
+  //    eruption keeps going, and the tops are OPEN because the plume is the
+  //    whole point (and a lid would only pressurise the tube).
+  //    Each column is FED by a clone, because a charge on its own is a firework
+  //    and not a sculpture: unfed, these ran hard for 600 ticks and were spent
+  //    trails over empty catalyst by t2400.
+  const jet = (x0: number, w: number, h: number) => {
+    R("Wall", x0, 688 - h, x0 + 5, 687);
+    R("Wall", x0 + w - 5, 688 - h, x0 + w, 687);
+    R("Rust", x0 + 6, 664, x0 + w - 6, 687);
+    // the feed goes in BEFORE the charge is poured: painted after, every cell
+    // of it lands inside peroxide and no-ops, and the column runs dry again
+    const cy = 706 - h;
+    R("Wall", x0 + 6, cy - 2, x0 + 9, cy - 1); // rain hat
+    R("Wall", x0 + 7, cy + 6, x0 + 7, cy + 6); // ledge — a liquid primer falls
+    R("Peroxide", x0 + 7, cy, x0 + 7, cy + 4); // primer face
+    R("Clone", x0 + 8, cy, x0 + 8, cy + 4); // a MEASURED feed: oxygen
+    // never settle-sleeps, so a fat feed just buys a permanent 20,000-cell
+    // ceiling of gas and an 18ms tick
+    R("Peroxide", x0 + 6, 700 - h, x0 + w - 6, 663);
+    R("Soapy", x0 + 6, 692 - h, x0 + w - 6, 699 - h);
+  };
+  jet(600, 46, 150); jet(660, 60, 250); jet(736, 46, 150);
+
+  // 4) THE VIOLET LANTERN — a heater bed sublimates iodine, the vapour climbs,
+  //    the cooler ceiling deposits it back as crystals, and they fall in again.
+  //    A closed loop with nothing feeding it. WALL throughout: the vapour it
+  //    traps pressurises the case, and glass ruptures where wall holds.
+  R("Wall", 856, 300, 864, 687);
+  R("Wall", 936, 300, 944, 687);
+  R("Wall", 856, 292, 944, 300);
+  R("Heater", 865, 680, 935, 687); // a deeper bed: a thin one left the case
+  R("Iodine", 868, 636, 932, 679); // dark, with the vapour hugging the floor
+  R("Cooler", 865, 301, 935, 305);
+  R("Wall", 884, 460, 916, 464); // the shelf the returning crystals land on
+
+  // 5) THE RAIN COLUMN — a closed water cycle standing in a case: a warm floor
+  //    lifts steam, the steam feeds the cloud at the top, the cloud rains it
+  //    back down, and the pool never runs out. This slot held a frost bowl
+  //    first and it could not be made to last: liquid nitrogen exists only in
+  //    BULK (a drip boils the tick it meets warm air), so the bowl can be
+  //    poured once and never fed. Sized against a 40-cell heater the cryogen
+  //    simply won — 17,553 cells of ice and no motion at all — and against a
+  //    120-cell one the plate boiled the bowl dry. A cycle beats a dose.
+  R("Wall", 1040, 200, 1048, 687);
+  R("Wall", 1232, 200, 1240, 687);
+  R("Wall", 1040, 192, 1240, 200); // sealed, and WALL: a steam case pressurises
+  R("Heater", 1120, 684, 1160, 687);
+  R("Water", 1049, 580, 1231, 683);
+  R("Cloud", 1100, 230, 1180, 240);
+
+  if (location.hash.includes("shot=")) {
+    for (let i = 0; i < 770; i++) simTick();
+    return;
+  }
+  let settled = 0;
+  const settle = () => {
+    const t0 = performance.now();
+    while (settled < 120 && performance.now() - t0 < 24) { simTick(); settled++; }
+    if (settled < 120) requestAnimationFrame(settle);
+  };
+  settle();
+}
+
+
 if (location.hash.startsWith("#demo")) demoScene();
 else if (location.hash.startsWith("#chem")) chemScene();
 else if (location.hash.startsWith("#range")) rangeScene();
@@ -2693,6 +2825,7 @@ else if (location.hash.startsWith("#cryo")) cryoScene();
 else if (location.hash.startsWith("#boiler")) boilerScene();
 else if (location.hash.startsWith("#cannon")) cannonScene();
 else if (location.hash.startsWith("#machines")) machinesScene();
+else if (location.hash.startsWith("#sculpture")) sculptureScene();
 
 // ---- in-page self test ----------------------------------------------------
 // The other half of the suite. tools/apptest.ts covers everything that runs
@@ -3004,6 +3137,19 @@ function selftest(): { passed: number; failed: number; failures: string[]; known
   }
 
   {
+    // the sculpture garden: gated on what each piece LOOKS like, because that
+    // is what it is for. A piece that has gone dark is a piece that is broken.
+    runDemo("sculpture", 1000, sculptureScene);
+    check("sculpture: the pH organ keeps its indicator", n("Litmus") > 1500, `${n("Litmus")}`);
+    check("sculpture: the chandelier runs molten", n("Magma") > 400, `${n("Magma")} magma`);
+    check("sculpture: the oxygen fountain is still erupting", n("Oxygen") > 5000, `${n("Oxygen")}`);
+    check("sculpture: the lantern holds its violet vapour", n("Iodine gas") > 200, `${n("Iodine gas")}`);
+    check("sculpture: the rain column keeps its cloud", n("Cloud") > 300, `${n("Cloud")}`);
+    // every case here is wall for a reason; a shard means one of them let go
+    check("sculpture: nothing in the gallery has burst", n("Shards") === 0, `${n("Shards")} shards`);
+  }
+
+  {
     doomScene();
     const before = n("Gunpowder");
     let peakFx = 0;
@@ -3039,6 +3185,7 @@ window.granulab = {
   boiler: boilerScene,
   cannon: cannonScene,
   machines: machinesScene,
+  sculpture: sculptureScene,
   player,
   fighters,
   objects,

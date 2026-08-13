@@ -1390,6 +1390,48 @@
 > measurements chasing a gap that a stale wrapper kept repainting. Redefine, do
 > not wrap.
 >
+> #SCULPTURE 8/13 (owner: "make science sculptures with amazing reactions,
+> prioritise visual appeal"). A gallery rather than a laboratory: five pieces
+> chosen for what they LOOK like, staged with plinths, stepped heights and
+> symmetry, and judged entirely from filmstrips at t600/t1200/t2400/t3000.
+> THE PIECES: a pH ORGAN of eight stepped pipes, each a different aqueous
+> chemistry seeded with LITMUS so the indicator wears its pH in the normal view
+> — a spectrum you read left to right from acid at 1 to lye at 13, and the one
+> piece here that is pure colour with no motion at all; a MAGMA CHANDELIER, a
+> one-wide clone vent dripping melt through four heated basins that fill, glow
+> and overspill onto the next; an OXYGEN FOUNTAIN of three open peroxide
+> columns over a rust catalyst, whose plumes build a white canopy across the
+> top of the frame; a VIOLET LANTERN cycling iodine between a heater bed and a
+> cooler ceiling; and a RAIN COLUMN — a sealed case where a warm floor lifts
+> steam, the steam feeds a cloud and the cloud rains it back.
+> WHAT STAGING FOR LOOKS ACTUALLY TAUGHT:
+> (1) A SCULPTURE MUST NOT AGE OUT. Everything here was beautiful at t600 and
+> half of it was dead by t2400: the fountain's charge was spent and its columns
+> were empty trails, and the frost bowl had set into 17,553 cells of motionless
+> ice. A piece needs a feed or a cycle, not a dose.
+> (2) THE FEED IS A BUDGET, NOT A TAP. Oxygen never settle-sleeps, so a fat
+> peroxide feed buys a permanent 20,000-cell ceiling of gas and an 18ms tick.
+> Three clone cells per column starved the plume; five holds it dense at 7.0ms.
+> (3) A REVERSED RECT PAINTS NOTHING. The chandelier's catch lips were written
+> right-to-left and simply did not exist, so the first build was four bare
+> shelves with the melt running straight off them.
+> (4) A THIN FLOW FREEZES BETWEEN TIERS — the same law the volcano needed.
+> Without a heater in each basin the cascade delivered 1,075 cells of STONE to
+> the pool and never glowed once.
+> (5) BASINS MUST BE SIZED TO THE VENT. Wide lower tiers never filled at all
+> while the two above them ran over; barely-widening ones fill all the way down.
+> (6) THE FEED GOES IN BEFORE THE CHARGE. Painting each column's dripper after
+> its peroxide put every cell of it inside liquid, where it no-ops — the fix for
+> a fountain that had stopped was ordering, not chemistry.
+> (7) A POOL NEEDS SIDES: the chandelier's quench water crept out across the
+> gallery floor and had to be walled in.
+> RULED OUT: the frost bowl. Liquid nitrogen exists only in bulk, so it can be
+> poured once and never fed; against a 40-cell heater the cryogen won outright
+> and against a 120-cell one the plate boiled the bowl dry. Replaced with the
+> rain column, which cycles instead of dosing.
+> GATES: six more checks, one per piece plus "nothing in the gallery has burst"
+> — a shard means one of the wall cases let go. Suite 80 -> 86.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
