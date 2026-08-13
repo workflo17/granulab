@@ -1624,10 +1624,13 @@ function demoScene(): void {
   R("Wall", 1240, 620, 1252, 688);
 
   // a beaker of acid over lye, left stratified on purpose: the stir tool is the
-  // point, and the two only meet where you make them meet
-  R("Glass", 430, 300, 442, 470);
-  R("Glass", 520, 300, 532, 470);
-  R("Glass", 430, 458, 532, 470);
+  // point, and the two only meet where you make them meet. WALL, not glass:
+  // acid corrodes glass, and the glass version measured here dissolved 2,819 of
+  // its own 5,430 cells in 600 ticks and took the acid down with it — an
+  // exhibit that eats itself before anyone gets to stir it.
+  R("Wall", 430, 300, 442, 470);
+  R("Wall", 520, 300, 532, 470);
+  R("Wall", 430, 458, 532, 470);
   R("Lye", 443, 400, 519, 457);
   R("Acid", 443, 330, 519, 399);
 
@@ -1654,7 +1657,11 @@ function demoScene(): void {
   };
   settle();
 }
-// #chem: the chemistry lab bench — every reaction loop running live, unattended
+// #chem: the chemistry lab bench. Six vignettes along one bench, each running a
+// single loop continuously with room above it to be watched — the old bench put
+// seven stations into the bottom ninety rows, which is a lot of chemistry
+// happening where nobody can see it. The gunpowder mill (a colour change) and
+// the soap geyser (no reaction at all) were cut to make room for the rest.
 function chemScene(): void {
   world.clear();
   player.remove();
@@ -1664,72 +1671,123 @@ function chemScene(): void {
     const id = byName(name);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
   };
-  R("Wall", 30, 690, 1250, 700); // the bench
+  R("Wall", 20, 688, 1260, 704); // the bench everything stands on
 
-  // 1) electrolysis cells: a clone pulser sparks a submerged wire — pulses are
-  //    transient so the reaction beats the boil (sustained sparks just make steam)
-  const cell = (x0: number, x1: number, liquid: string) => {
-    R("Wall", x0, 600, x0 + 2, 690);
-    R("Wall", x1 - 2, 600, x1, 690);
-    R("Metal", x0 + 4, 618, x0 + 4, 686); // dry riser
-    R("Metal", x0 + 4, 686, x1 - 5, 686); // submerged run
-    R(liquid, x0 + 5, 648, x1 - 3, 685);
-    world.paint(x0 + 6, 618, byName("Clone"));
-    world.paint(x0 + 7, 618, byName("Spark")); // primer: clone memorizes spark
+  // 1) THE GAS CELLS — two sealed vessels sharing a lid, each making a gas you
+  //    can watch collect. LEFT: an iron block standing in acid, streaming
+  //    hydrogen into the hood above it (the metal survives the row and only the
+  //    acid is spent — 4,437 cells of iron still had 3,160 after 600 ticks).
+  //    RIGHT: the chlor-alkali cell, a sparked gold electrode in brine, laying
+  //    down chlorine as a yellow-green layer on the surface.
+  //    THE TANK IS WALL, NOT GLASS, on two counts. Gas accumulating in a sealed
+  //    vessel raises the overpressure until the skin ruptures, and glass
+  //    ruptures into shards where wall holds — the glass build shed 199 shards
+  //    in 400 ticks and then drained through its own breach. And acid corrodes
+  //    glass outright: only wall is exempt.
+  //    ELECTROLYSIS MAKES THE HYDROGEN HALF IMPOSSIBLE, which is why the left
+  //    cell is a chemical generator instead: a spark IGNITES what it touches
+  //    (hydrogen's flammability is 255), so a sparked cell burns its own
+  //    product — measured, it climbed to 1,332 cells and then flashed to steam
+  //    at t300 and never recovered. Gold, meanwhile, because iron would rust
+  //    away at a seawater waterline.
+  R("Wall", 34, 444, 232, 452);
+  R("Wall", 34, 452, 40, 687);
+  R("Wall", 226, 452, 232, 687);
+  R("Wall", 130, 452, 136, 687); // the divider
+  R("Metal", 60, 600, 110, 686); // the block the acid works on
+  R("Acid", 41, 560, 129, 686); // poured AROUND it: paint fills empty only
+  R("Gold", 140, 470, 142, 624); // dry riser down to the submerged bus
+  R("Gold", 140, 620, 222, 624);
+  world.paint(144, 470, byName("Clone"));
+  world.paint(145, 470, byName("Spark")); // primer: the clone memorises it
+  R("Seawater", 137, 560, 225, 686);
+
+  // 2) THE FIZZ FOUNTAIN — acid drips a hundred cells onto a bicarbonate bed,
+  //    the CO2 pours off the shelf into the well below, and a lye bed at the
+  //    bottom scrubs it back to soda: the whole carbonate cycle in one frame,
+  //    and contained, so the flood cannot roll into the neighbours.
+  R("Wall", 250, 330, 258, 687);
+  R("Wall", 432, 330, 440, 687);
+  R("Wall", 258, 600, 390, 606); // the shelf; the drop is the gap at 391-431
+  R("Wall", 384, 576, 390, 600); // AND ITS LIP. A powder bed with an open edge
+  // does not stay on a shelf: without this the soda slumped straight over the
+  // drop, buried the scrubber and left one undifferentiated bin of white. The
+  // lip holds the solid and still lets the gas above it spill over.
+  R("Soda", 259, 540, 383, 599);
+  // THE BURETTE, and it is a gravity feed rather than the clone dripper this
+  // started as, because ACID CORRODES CLONES: the alternating acid/clone row
+  // dissolved its own emitters, 58 clones down to 8 by t300, and the station
+  // quietly stopped. A wall tank draining through a slot in its own floor has
+  // nothing to eat — wall is the one thing acid is exempt from — and it pours
+  // a bright green stream a hundred cells down onto the bed, which is the part
+  // of this reaction that reads at a glance (the CO2 it makes is dark grey).
+  R("Wall", 296, 386, 302, 470);
+  R("Wall", 348, 386, 354, 470);
+  R("Wall", 302, 464, 322, 470);
+  R("Wall", 325, 464, 348, 470); // the drain is the 2-cell slot at 323-324
+  R("Acid", 303, 392, 347, 463);
+  R("Lye", 259, 660, 431, 687); // the scrubber bed the flood lands on
+
+  // 3) THE LIME KILN — a shaft with a magma bath at the bottom. Limestone rains
+  //    two hundred cells into the melt, sinks (density 80 against magma's 40),
+  //    calcines at depth, and comes back up as lime (36) floating on top.
+  R("Wall", 458, 380, 466, 687);
+  R("Wall", 640, 380, 648, 687);
+  R("Magma", 467, 630, 639, 687);
+  // two hoppers, because one 1-wide clone is a trickle and this wants a curtain
+  const hopper = (cx: number) => {
+    R("Wall", cx - 2, 448, cx + 1, 449); // rain hat keeps the primer seated
+    R("Wall", cx - 2, 450, cx - 2, 455);
+    R("Wall", cx - 1, 455, cx - 1, 455); // ledge — a powder primer falls without one
+    R("Limestone", cx - 1, 450, cx - 1, 454); // primer face
+    R("Clone", cx, 450, cx, 454); // open to the right: that is where it drips
   };
-  cell(40, 118, "Water"); // bubbles hydrogen
-  cell(128, 206, "Seawater"); // pools chlorine
+  hopper(516);
+  hopper(584);
 
-  // 2) gunpowder mill: saltpeter raining onto a charcoal shelf
-  R("Wall", 230, 640, 350, 642);
-  R("Charcoal", 240, 628, 340, 638);
-  R("Saltpeter", 262, 590, 318, 618);
+  // 4) THE THERMITE FORGE — the hearth stands on stub legs over a quench tank,
+  //    so once the charge goes off the melt runs off both ends of the slab and
+  //    falls a hundred cells into the water: stone, steam and light.
+  R("Wall", 666, 560, 674, 687);
+  R("Wall", 848, 560, 856, 687);
+  R("Wall", 700, 470, 822, 478); // the hearth slab
+  R("Wall", 700, 478, 706, 520); // stub legs, so the pour clears the tank rim
+  R("Wall", 816, 478, 822, 520);
+  R("Torch", 707, 458, 713, 469); // embedded at bed level: flames rise, contact lights
+  R("Charcoal", 714, 458, 815, 469); // the ember bed a torch alone cannot replace
+  R("Thermite", 720, 420, 802, 457);
+  R("Water", 675, 600, 847, 686);
 
-  // 3) thermite forge: torch -> ember bed -> thermite -> magma melts the beam
-  //    and quenches in the pool below (stone + steam)
-  R("Wall", 380, 655, 382, 690);
-  R("Wall", 538, 655, 540, 690);
-  R("Water", 383, 668, 537, 688);
-  R("Metal", 390, 640, 530, 646);
-  R("Charcoal", 400, 630, 520, 638);
-  R("Thermite", 435, 610, 485, 628);
-  R("Torch", 392, 630, 398, 638);
+  // 5) THE GREENHOUSE — a tall glass house with a CO2 atmosphere at the floor
+  //    and vines climbing up through it; the oxygen they fix accumulates under
+  //    the roof and works its way down as a pale ceiling you can watch grow.
+  //    The shell is wall for the same reason as the cell next door: vines
+  //    growing inside a sealed house displace its atmosphere, the overpressure
+  //    reached 1.48, and the glass version was shedding shards from t100.
+  R("Wall", 874, 322, 1064, 330);
+  R("Wall", 874, 330, 882, 687);
+  R("Wall", 1056, 330, 1064, 687);
+  R("Vine", 906, 640, 909, 687);
+  R("Vine", 946, 652, 949, 687);
+  R("Vine", 986, 636, 989, 687);
+  R("Vine", 1026, 648, 1029, 687);
+  R("CO2", 883, 640, 1055, 686); // a gas never settle-sleeps, so keep the dose sane
 
-  // 4) lime kiln: limestone sinks into the magma bath, calcines at depth, and
-  //    the lighter lime floats back up as a white crust on the melt
-  R("Wall", 560, 600, 562, 690);
-  R("Wall", 678, 600, 680, 690);
-  R("Magma", 563, 650, 677, 688);
-  R("Limestone", 580, 612, 660, 645);
-
-  // 5) fizz basin: clone-dripped acid on soda; CO2 overflows the low lip and
-  //    smothers the torches downstream
-  R("Wall", 700, 640, 702, 690);
-  R("Wall", 826, 656, 828, 690);
-  R("Soda", 703, 674, 825, 688);
-  for (let x = 730, k = 0; x <= 800; x++, k++) {
-    world.paint(x, 610, byName(k % 3 === 0 ? "Acid" : "Clone"));
+  // 6) THE TITRATION BEAKER — acid layered on lye and left that way on purpose.
+  //    They only meet across the interface, which is what the stir tool is for:
+  //    the same beaker stirred consumes about eight times the acid. The litmus
+  //    grains have to be painted BEFORE the reagents (paint fills empty only),
+  //    and they wear the pH of whatever they are sitting in, in every view mode.
+  //    The beaker is WALL and not glass because ACID CORRODES GLASS: measured
+  //    side by side over 600 ticks, a glass beaker loses 3,519 of its 5,400
+  //    cells while the identical wall one loses none. Only wall is exempt.
+  R("Wall", 1090, 460, 1098, 687);
+  R("Wall", 1236, 460, 1244, 687);
+  for (let y = 520; y <= 676; y += 14) {
+    for (let x = 1104; x <= 1230; x += 13) R("Litmus", x, y, x + 1, y + 1);
   }
-  R("Torch", 850, 682, 856, 688);
-  R("Torch", 880, 682, 886, 688);
-
-  // 6) greenhouse: vines photosynthesize the CO2 atmosphere into oxygen
-  R("Glass", 900, 600, 902, 690);
-  R("Glass", 1000, 600, 1002, 690);
-  R("Glass", 900, 598, 1002, 600);
-  R("Vine", 930, 640, 932, 688);
-  R("Vine", 950, 650, 952, 688);
-  R("Vine", 970, 636, 972, 688);
-  R("CO2", 903, 656, 999, 688);
-
-  // 7) soap geyser: a fan at the pool floor blows straight up — bubbles launch
-  //    into open sky instead of smearing into a side wall
-  R("Wall", 1020, 650, 1022, 690);
-  R("Wall", 1128, 650, 1130, 690);
-  for (let y = 678; y <= 686; y++) {
-    for (let x = 1070; x <= 1076; x++) world.paint(x, y, byName("Fan"), 192); // angle 192 = up
-  }
-  R("Soapy", 1023, 664, 1127, 688); // fills around the fan
+  R("Lye", 1099, 590, 1235, 687);
+  R("Acid", 1099, 480, 1235, 589);
 
   if (location.hash.includes("shot=")) {
     for (let i = 0; i < 770; i++) simTick();
@@ -1744,7 +1802,11 @@ function chemScene(): void {
   settle();
 }
 
-// #range: the weapons range — M5b ballistics running as five live exhibits
+// #range: the weapons range. Six exhibits, and the thing they all needed was
+// ROOM — ballistics is the one subsystem whose whole point is the flight, and
+// every gun here used to fire across a strip a hundred rows deep. The sentry
+// now shells from a tower with 300 cells of open range in front of it, the
+// mortar throws its cap into empty sky, and the battery has somewhere to go.
 function rangeScene(): void {
   world.clear();
   player.remove();
@@ -1754,80 +1816,131 @@ function rangeScene(): void {
     const id = byName(name);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
   };
-  R("Wall", 30, 690, 1250, 700); // the range floor
+  const carve = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, E.EMPTY);
+  };
+  R("Wall", 20, 688, 1260, 704); // the range floor
 
-  // 1) SENTRY GUN: elevated hopper-fed cannon, clone-triggered, shelling the
-  //    castle downrange — shots arc off the perch and rain onto the towers
-  R("Wall", 66, 477, 134, 479); // perch
-  R("Wall", 66, 434, 68, 477); // hopper left wall
-  R("Wall", 84, 434, 86, 466); // hopper right wall (keeps sand off the barrel)
-  R("Sand", 69, 438, 83, 476);
-  for (let y = 468; y <= 476; y++) for (let x = 88; x <= 96; x++) world.paint(x, y, byName("Cannon"), 0); // aimed right
-  world.paint(92, 467, byName("Clone"));
-  world.paint(93, 467, byName("Spark")); // primer
-  // the castle: stone towers, glass caps, a powder keep
-  R("Stone", 280, 636, 292, 688);
-  R("Glass", 280, 626, 292, 634);
-  R("Powder", 298, 656, 338, 688);
-  R("Stone", 344, 636, 356, 688);
-  R("Glass", 344, 626, 356, 634);
+  // 1) THE SENTRY GUN — a hopper-fed cannon on a tower, clone-triggered,
+  //    raining sand onto a castle downrange. THE CASTLE IS 150 CELLS AWAY, not
+  //    the 190+ it used to stand at, because a thrown grain cannot go further
+  //    than about 186: muzzle velocity is 5.6 c/t and drag takes 3% a tick, so
+  //    the horizontal reach converges on 5.6/0.03 whatever the tower height —
+  //    measured 184 from a deck at y=477 and 184 again from y=400. The old
+  //    castle sat outside that and was never once hit.
+  //    The hopper's inner wall stops short so the sand walks along the deck
+  //    into the breech (suction reaches 4 cells) instead of burying the trigger.
+  R("Wall", 66, 400, 134, 402); // the deck
+  R("Wall", 66, 402, 72, 687); // legs, so the tower reads as a tower
+  R("Wall", 128, 402, 134, 687);
+  R("Wall", 66, 357, 68, 400); // hopper outer wall
+  R("Wall", 84, 357, 86, 389); // hopper inner wall: stops short of the deck
+  R("Sand", 69, 361, 83, 399); // the magazine
+  for (let y = 391; y <= 399; y++) for (let x = 88; x <= 96; x++) world.paint(x, y, byName("Cannon"), 0);
+  R("Wall", 84, 372, 112, 378); // a canopy over the breech, because the mortar
+  // downrange rains its cap across the whole floor and a trigger with debris on
+  // top of it stops emitting: without this the gun fired anywhere between 5 and
+  // 133 rounds a run, and the suite caught it as a flaky gate
+  world.paint(92, 390, byName("Clone"), byName("Spark")); // pre-programmed: a
+  // clone painted with a species in its aux byte IS that emitter from tick one,
+  // with no primer cell to fall, flood, corrode or expire before it is read
+  // the castle, standing in the impact zone. WALL towers, not stone: stone is a
+  // POWDER (density 90), and the stone-built castle slumped into two cones
+  // inside a hundred ticks, stranding its glass caps in mid-air above the
+  // rubble where nothing could ever hit them.
+  // The near tower is capped with LOOSE POWDER rather than glass, because that
+  // is the damage this range can actually show: a ballistic grain hands 7/8 of
+  // its momentum into packed powder, so every hit splashes the cap, while glass
+  // takes a sand strike without a mark (shards come from overpressure, not from
+  // impact — the first build here shelled a glass cap 700 ticks for nothing).
+  R("Wall", 176, 560, 202, 687);
+  R("Powder", 176, 516, 202, 558); // the cap that answers back
+  R("Wall", 206, 620, 250, 687); // the curtain wall between them
+  R("Powder", 208, 590, 248, 618);
+  R("Wall", 254, 560, 280, 687);
+  R("Glass", 254, 524, 280, 558); // the far tower keeps its glass roof
 
-  // 2) MORTAR: the fuse runs in a sheltered tunnel under the pit — torch
-  //    contact lights it, it burns left beneath the wall to the charge.
-  //    One big timed shot; relight with the fire pen.
-  R("Wall", 520, 660, 524, 690);
-  R("Wall", 576, 660, 580, 684); // right wall stops short: fuse tunnel below
-  R("Fuse", 526, 687, 595, 687); // the whole run, floor-sheltered
-  R("Bomb", 526, 676, 574, 688); // charge sits on the fuse
-  R("Wall", 581, 685, 595, 685); // roof over the fuse alley — cap spill can't cut it
-  R("Torch", 596, 684, 600, 688); // touches the fuse end -> contact ignition
-  R("Stone", 516, 640, 584, 674); // the cap
+  // 2) THE MORTAR — one big timed shot. The fuse runs in a tunnel under the
+  //    pit floor (an open run gets cut by cap spill), the torch lights it by
+  //    contact, and the stone cap goes up through 500 cells of nothing.
+  R("Wall", 330, 640, 340, 687);
+  R("Wall", 392, 640, 402, 680); // right wall stops short: the fuse tunnel
+  R("Fuse", 392, 686, 402, 686); // ELEVEN CELLS, not the 74 this started with.
+  // A fuse burn dies out stochastically and a long lead is a coin flip: the
+  // 74-cell version failed in the suite with all 1,150 cells of charge intact,
+  // having fired perfectly in the run before it. Short lead, torch behind it —
+  // the same fix that took the doomsday magazine from 0 in 10 to 10 in 10.
+  R("Bomb", 342, 664, 391, 687); // the charge sits against the fuse end
+  R("Torch", 403, 682, 409, 687);
+  R("Stone", 326, 600, 406, 662); // the cap it throws
 
-  // 3) NITRO THUNDER: clones drip nitro onto a grate over a magma bath —
-  //    500°+ at the anvil, every drop detonates and flings the gravel banks
-  R("Wall", 680, 654, 682, 690);
-  R("Wall", 798, 654, 800, 690);
-  R("Magma", 684, 683, 796, 688);
-  R("Wall", 684, 680, 796, 682); // grate: the detonation anvil
-  R("Stone", 684, 664, 724, 678); // gravel banks
-  R("Stone", 756, 664, 796, 678);
-  // sealed priming cell: nitro locked against the clone face
-  R("Wall", 746, 349, 747, 349);
-  R("Wall", 747, 350, 747, 351);
-  R("Wall", 746, 351, 746, 351);
-  world.paint(746, 350, byName("Nitro"));
-  world.paint(745, 350, byName("Clone"));
-  world.paint(744, 350, byName("Clone"));
+  // 3) THE NITRO ANVIL — clones drip nitro onto a grate over a magma bath. At
+  //    500° every drop goes off the moment it lands, so this is a detonation
+  //    every few seconds, for ever, with the gravel banks it throws in view.
+  //    The priming cell is SEALED against the clone face: loose nitro
+  //    disperses away before the clone can memorise it.
+  R("Wall", 470, 620, 480, 687);
+  R("Wall", 610, 620, 620, 687);
+  R("Magma", 481, 680, 609, 687);
+  R("Wall", 481, 676, 609, 679); // the anvil
+  R("Stone", 481, 640, 530, 675); // gravel banks, thrown on every shot
+  R("Stone", 560, 640, 609, 675);
+  R("Wall", 544, 419, 545, 419);
+  R("Wall", 545, 420, 545, 421);
+  R("Wall", 544, 421, 544, 421);
+  world.paint(544, 420, byName("Nitro"));
+  world.paint(543, 420, byName("Clone"));
+  world.paint(542, 420, byName("Clone"));
 
-  // 4) THERMITE VAULT BREACH: torch embedded at bed level lights the embers;
-  //    the melt burns through the lid and quenches in the tank (steam burst)
-  R("Metal", 850, 640, 1000, 646); // lid
-  R("Metal", 850, 646, 856, 690);
-  R("Metal", 994, 646, 1000, 690);
-  R("Water", 858, 660, 992, 688);
-  R("Torch", 875, 630, 879, 638); // beside the bed, touching it
-  R("Charcoal", 880, 630, 970, 638);
-  R("Thermite", 900, 610, 950, 628);
+  // 4) THE VAULT BREACH — thermite on an ember bed burns down through a metal
+  //    lid and quenches in the tank underneath. The torch is EMBEDDED beside
+  //    the bed at bed level: flames rise, so an igniter above it lights nothing.
+  R("Metal", 660, 560, 840, 568); // the lid
+  R("Metal", 660, 568, 670, 687);
+  R("Metal", 830, 568, 840, 687);
+  R("Water", 671, 600, 829, 687);
+  R("Torch", 692, 548, 698, 558);
+  R("Charcoal", 699, 548, 808, 558);
+  R("Thermite", 710, 508, 796, 547);
 
-  // 6) SODIUM DEPTH CHARGES: a clone dripper feeds alkali metal into a deep
-  //    tank — each lump floats, boils off hydrogen, and the heat sets it off:
-  //    recurring flash-bangs in the water column
-  R("Wall", 1150, 560, 1152, 690);
-  R("Wall", 1238, 560, 1240, 690);
-  R("Water", 1153, 590, 1237, 688);
-  R("Clone", 1190, 566, 1190, 570);
-  R("Sodium", 1189, 566, 1189, 570); // primer face
-  R("Wall", 1188, 564, 1191, 565);
-  R("Wall", 1188, 566, 1188, 571);
+  // 5) THE DEPTH-CHARGE TANK — a clone drips sodium into deep water. Each lump
+  //    floats (density 28 against water's 30), tears the water apart into lye
+  //    and hydrogen at +70°, and routinely crosses hydrogen's 480° autoignition
+  //    — so the tank keeps detonating its own gas. WALL, not glass: the gas it
+  //    makes bursts a glass tank, and a burst tank drains.
+  R("Wall", 880, 460, 890, 687);
+  R("Wall", 1000, 460, 1010, 687);
+  R("Water", 891, 520, 999, 687);
+  R("Wall", 936, 464, 941, 465); // rain hat
+  R("Wall", 936, 466, 936, 473);
+  R("Wall", 937, 473, 937, 473); // ledge — a powder primer falls without one
+  R("Sodium", 937, 466, 937, 472); // primer face
+  R("Clone", 938, 466, 938, 472);
 
-  // 5) FIREWORKS BATTERY: a 1-wide column lit from the TOP so every rocket
-  //    launches with a clear nose (blocks and tubes both self-destruct — a
-  //    nose-blocked rocket detonates); the clone refills from the base
-  R("Clone", 1100, 688, 1100, 689);
-  R("Fireworks", 1100, 664, 1100, 687);
-  R("Torch", 1101, 662, 1104, 666);
+  // 6) THE BALL MORTAR — the hand-built cannon the engine notes are proudest
+  //    of: a wall barrel, a powder charge, and a rigid ball as the shot, which
+  //    goes up around 200 cells and comes back down through the whole frame.
+  //    THE BORE IS 18 WIDE because the ball is r=7 and anything under about 16
+  //    WEDGES it — the shot then judders in place and never leaves. Packed
+  //    powder slugs jam the same way, which is why the projectile is an object.
+  //    (This replaced a fireworks battery, which measured anywhere between 4
+  //    and 46 launches across identical builds — too stochastic to gate, and
+  //    the sandbox already ships one.)
+  R("Wall", 1140, 420, 1149, 687);
+  R("Wall", 1168, 420, 1177, 687);
+  R("Gunpowder", 1150, 656, 1167, 687);
+  objects.spawn("ball", 1158, 640);
+  // and NO FUSE AT ALL: a torch pocket carved into the slab, lighting the
+  // charge through the breech floor. Two fuse trains were tried here first — a
+  // 50-cell lead and then a 19-cell one backed by a torch — and both died out
+  // partway, which is the stochastic burn failure this project has already been
+  // bitten by twice. A torch only keeps re-lighting a neighbour while that
+  // neighbour is still fuse; once it has burnt through there is nothing left to
+  // relight. Contact ignition on the charge itself cannot fail.
+  carve(1152, 688, 1164, 694);
+  R("Torch", 1152, 688, 1164, 694);
 
-  player.place(220, 680);
+  player.place(1040, 680);
 
   if (location.hash.includes("shot=")) {
     for (let i = 0; i < 770; i++) simTick();
@@ -1889,93 +2002,94 @@ function doomScene(): void {
   R("Wall", 343, 681, 343, 689);
   world.paint(342, 681, byName("Fire")); // trapped: can only burn downward
 
-  // VOLCANO: wall-core slopes (lava-proof bed) dressed in stone, crater bowl
-  // with clone-magma emitters; the right lip is lower so the flow aims at town
-  for (let s = 0; s < 130; s++) {
-    R("Wall", 170 - s, 264 + s * 3.28 | 0, 173 - s, (266 + s * 3.28) | 0); // left flank
-    R("Wall", 197 + s * 1.3 | 0, 264 + s * 3.28 | 0, (200 + s * 1.3) | 0, (266 + s * 3.28) | 0); // right flank
+  // THE MOUNTAIN — a SOLID cone, not the pair of diagonal sticks this was.
+  // The old volcano was two 4-cell-wide lines with a bowl between them: at any
+  // distance it read as a wireframe triangle, and its "scree" was two small
+  // heaps at the foot. Wall is free to stand still — an immovable solid never
+  // updates — so the cone is filled, and only what happens ON it costs anything.
+  const face = (y: number) => 180 + Math.round((y - 200) * 0.3); // the right slope
+  for (let y = 200; y <= 690; y++) {
+    const w = Math.round((y - 200) * 0.3);
+    R("Wall", 180 - w, y, 180 + w, y);
   }
-  R("Wall", 168, 250, 171, 264); // left lip (taller)
-  R("Wall", 196, 258, 199, 264); // right lip (lower -> overflow right)
-  // a heated channel inside the mountain keeps the flow molten all the way
-  // down (cold slopes freeze a thin lava stream before it gets anywhere)
-  for (let s = 6; s <= 124; s += 8) {
-    const hx = ((197 + s * 1.3) | 0) - 6;
-    const hy = ((264 + s * 3.28) | 0) + 1;
-    R("Heater", hx, hy, hx + 2, hy + 2);
-  }
+  R("Stone", 40, 640, 120, 660); // scree the flow can remobilise
+  // the crater: a bowl carved back out of the summit, with a low notch on the
+  // right so the melt overflows towards the town instead of pooling
+  carve(150, 200, 214, 252);
+  R("Wall", 150, 252, 214, 258); // the bowl floor the primer pool rests on
+  carve(206, 214, 232, 252); // the outlet notch
+  // THE VENT — one cell wide, pool against its left face, open air on its
+  // right. A 2-wide pillar splits into a primed-but-blocked column and an
+  // open-but-unprimed one, and a clone buried in its own pool is smothered.
+  R("Clone", 185, 236, 185, 251);
+  R("Magma", 177, 236, 184, 251); // primes the whole pillar height
+  // A LAVA CHANNEL cut into the right flank, because a thin flow on a cold
+  // slope freezes before it gets anywhere. Heaters every 60 rows keep it molten
+  // the whole way down, and the groove keeps it in one bright line.
+  for (let y = 253; y <= 686; y++) carve(face(y) - 20, y, face(y) - 4, y);
+  for (let y = 290; y <= 660; y += 30) R("Heater", face(y) - 18, y, face(y) - 14, y + 3);
   carve(348, 696, 388, 697); // warm approach under the ground slab
   R("Heater", 348, 696, 388, 697);
-  R("Wall", 171, 276, 196, 278); // crater floor
-  // the vent: a ONE-wide clone pillar — primer pool against its left face,
-  // open air on its right, so every clone both primes AND has room to emit
-  // (2-wide pillars split into a primed-but-blocked column and an open-but-
-  // unprimed one; pool-buried clones are smothered entirely)
-  R("Clone", 180, 266, 180, 275);
-  R("Magma", 172, 266, 179, 275); // pool primes the full pillar height
-  R("Stone", 120, 400, 168, 420); // loose scree the flow will remobilize
-  R("Stone", 205, 380, 260, 400);
+  // DRY ICE on a ledge in the flank: the flow sublimates it into a CO2 flood
+  // that rolls downslope into the burning town, a smother wave arriving at an
+  // inferno. Carved into the cone rather than perched on a shelf in the air.
+  carve(120, 470, 210, 520);
+  R("Wall", 120, 520, 210, 526);
+  R("Dry ice", 124, 480, 206, 519);
 
-  // THE TOWN: five wooden houses (3-thick shells, door gaps), oil in #2,
-  // the powder magazine under #3, wax stock in #4, tar lanes between all
-  const house = (x0: number) => {
-    R("Wood", x0, 640, x0 + 2, 689);
-    R("Wood", x0 + 47, 640, x0 + 49, 668); // right wall stops high = door gap
-    R("Wood", x0, 636, x0 + 49, 639); // roof
+  // THE TOWN: three buildings instead of five, with walls you can see. The
+  // magazine sits under the middle one, and its pit, fuse and igniter are
+  // untouched from the build that finally fired 10 times out of 10.
+  const house = (x0: number, w: number) => {
+    R("Wood", x0, 600, x0 + 9, 689);
+    R("Wood", x0 + w - 9, 600, x0 + w, 660); // right wall stops high = door gap
+    R("Wood", x0, 590, x0 + w, 600); // roof
   };
-  house(390); house(470); house(550); house(630); house(710);
-  R("Oil", 475, 680, 515, 688); // house 2: oil on the floor
-  R("Wall", 546, 660, 548, 690); // magazine pit under house 3
+  house(400, 92); house(536, 108); house(690, 78);
+  R("Oil", 415, 660, 480, 689); // house 1: oil on the floor
+  R("Wall", 546, 660, 548, 690); // magazine pit under house 2
   R("Wall", 602, 660, 604, 690);
   R("Wall", 549, 660, 573, 662); // pit roof, gap at 574-576 for the fuse
   R("Wall", 577, 660, 601, 662);
   R("Gunpowder", 549, 664, 601, 688); // ~1,300 cells: the big one
-  R("Wax", 635, 664, 675, 688); // house 4: wax stock (melts, floods, burns)
-  R("Tar", 442, 686, 468, 689);
-  R("Tar", 522, 686, 548, 689);
-  R("Tar", 605, 686, 628, 689);
-  R("Tar", 682, 686, 708, 689);
-  R("Gold", 526, 660, 540, 689); // the monument that outlives the siege
+  R("Wax", 700, 640, 760, 689); // house 3: wax stock (melts, floods, burns)
+  R("Tar", 492, 686, 528, 689);
+  R("Tar", 640, 686, 684, 689);
+  R("Gold", 526, 640, 540, 689); // the monument that outlives the siege
 
-  // NITRO VAT on legs between houses 4 and 5 — heat from the burning town
-  // sets it off (radiant ignition), chaining the second mega-boom
-  R("Wall", 682, 640, 684, 690);
-  R("Wall", 706, 640, 708, 690);
-  R("Wall", 684, 658, 693, 660); // tub floor, with a fuse gap at 694-695
-  R("Wall", 696, 658, 706, 660);
-  R("Fuse", 694, 642, 694, 660); // wick through the gap, into the charge
-  R("Nitro", 685, 642, 705, 657);
+  // NITRO VAT on legs beside the town — radiant heat from the burning houses
+  // sets it off, which chains the second mega-boom
+  R("Wall", 782, 620, 792, 690);
+  R("Wall", 838, 620, 848, 690);
+  R("Wall", 792, 656, 809, 662); // tub floor, with the fuse gap at 810-812
+  R("Wall", 813, 656, 838, 662);
+  R("Fuse", 811, 640, 811, 662); // wick through the gap, into the charge
+  R("Nitro", 793, 620, 837, 655);
 
   // THE LAKE: quenches whatever reaches it
-  R("Wall", 810, 655, 812, 690);
-  R("Wall", 948, 655, 950, 690);
-  R("Water", 813, 660, 947, 688);
+  R("Wall", 880, 620, 890, 690);
+  R("Wall", 1010, 620, 1020, 690);
+  R("Water", 891, 640, 1009, 689);
 
-  // THE FORTRESS: stone keep, cannon battery on top raining stones LEFT
-  R("Stone", 1090, 380, 1130, 688);
-  R("Wall", 1085, 370, 1135, 378); // battlement cap the stones rest on
-  R("Wall", 1050, 358, 1135, 360); // gun deck
-  R("Wall", 1054, 300, 1056, 338); // hopper left wall (clears the barrel)
-  R("Wall", 1079, 300, 1081, 356); // hopper right wall
-  for (let y = 340; y <= 348; y++) for (let x = 1058; x <= 1066; x++) {
-    world.paint(x, y, byName("Cannon"), 128); // aimed LEFT
+  // THE FORTRESS: a solid keep with a battery on the roof, shelling LEFT into
+  // the smoke. Stone is a powder and slumps, so the keep is wall.
+  R("Wall", 1080, 420, 1180, 689);
+  R("Wall", 1060, 400, 1200, 420); // the gun deck, overhanging both ways
+  R("Wall", 1064, 350, 1070, 400); // hopper outer wall
+  R("Wall", 1088, 350, 1094, 390); // hopper inner wall, stopping short
+  R("Stone", 1071, 356, 1087, 399); // the shot supply
+  for (let y = 391; y <= 399; y++) for (let x = 1096; x <= 1104; x++) {
+    world.paint(x, y, byName("Cannon"), 128); // aimed LEFT, over the town
   }
-  R("Stone", 1067, 310, 1078, 356); // breech feed + supply column
-  world.paint(1061, 339, byName("Clone")); // trigger on the barrel top
-  world.paint(1062, 339, byName("Spark")); // primer
-
-  // DRY-ICE GLACIER on the volcano's right flank: the lava flow sublimates it
-  // into a CO2 flood that rolls downslope into the burning town — a visible
-  // smother wave fighting the inferno it arrives at
-  R("Dry ice", 260, 440, 330, 470);
-  R("Wall", 254, 472, 336, 474); // bench the glacier sits on
+  world.paint(1100, 390, byName("Clone"), byName("Spark")); // pre-programmed
 
   // sky, life, witness
-  R("Cloud", 840, 62, 990, 74);
-  for (const [bx, by] of [[600, 200], [700, 260], [820, 180], [500, 300]]) {
+  R("Cloud", 880, 130, 950, 140); // small: a 150-wide cloud rains a blue
+  // curtain down the middle of the frame and upstages the mountain
+  for (const [bx, by] of [[600, 300], [700, 360], [820, 280], [500, 400]]) {
     world.paint(bx, by, byName("Bird"), 1);
   }
-  R("Ant", 860, 684, 900, 688);
+  R("Ant", 900, 684, 960, 688);
   player.place(880, 680);
 
   if (location.hash.includes("shot=")) {
@@ -1991,7 +2105,11 @@ function doomScene(): void {
   settle();
 }
 
-// #alchemy: the M5g showcase — nine self-running chemistry stations
+// #alchemy: the reactive shelf, staged as six vignettes instead of nine
+// stations. Cut in the restaging: the rocket-candy mill (milling is a colour
+// change and reads as nothing), the phosphorus vault (a two-cell flash), and
+// the acid-rain terrace, which the cryo works already does better with a fan
+// and a cloud. What is left got the room the reactions needed.
 function alchemyScene(): void {
   world.clear();
   player.remove();
@@ -2001,103 +2119,84 @@ function alchemyScene(): void {
     const id = byName(name);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
   };
-  R("Wall", 30, 690, 1250, 700); // the bench
+  R("Wall", 20, 688, 1260, 704); // the bench
 
-  // 1) SODIUM DROP: 1-wide clone pillar (primer on its left face, open right)
-  // drips alkali metal into the pool — floats, skitters, pops its own hydrogen
-  R("Wall", 40, 600, 42, 690);
-  R("Wall", 168, 600, 170, 690);
-  R("Water", 43, 640, 167, 688);
-  R("Clone", 100, 560, 100, 566);
-  R("Sodium", 99, 560, 99, 566); // primer column against the left face
-  R("Wall", 98, 558, 101, 559); // rain hat keeps the primer seated
-  R("Wall", 98, 560, 98, 567);
+  // 1) THE SODIUM POOL — a clone drips alkali metal into deep water from well
+  //    above the surface, so you watch each lump fall, float (density 28
+  //    against water's 30 — real alkali-metal storage), and tear the water into
+  //    lye and hydrogen at +70°, which routinely crosses hydrogen's 480°
+  //    autoignition. The pool detonates its own gas, over and over.
+  //    WALL, not glass: the hydrogen would burst a glass tank.
+  R("Wall", 40, 430, 50, 687);
+  R("Wall", 220, 430, 230, 687);
+  R("Water", 51, 510, 219, 687);
+  R("Wall", 130, 434, 135, 435); // rain hat keeps the primer seated
+  R("Wall", 130, 436, 130, 443);
+  R("Wall", 131, 443, 131, 443); // ledge — a powder primer falls without one
+  R("Sodium", 131, 436, 131, 442); // primer face
+  R("Clone", 132, 436, 132, 442); // open to the right: that is where it drips
 
-  // 2) ELEPHANT TOOTHPASTE: glass cylinder, rust catalyst bed, peroxide
-  // charge, soap cap — O2 erupts through the pink
-  R("Glass", 200, 540, 202, 690);
-  R("Glass", 288, 540, 290, 690);
-  R("Rust", 203, 680, 287, 688);
-  R("Peroxide", 203, 630, 287, 679);
-  R("Soapy", 203, 610, 287, 629);
+  // 2) ELEPHANT TOOTHPASTE — rust catalyst bed, peroxide charge, soap cap, and
+  //    an OPEN TOP: the whole point is the eruption, and a lid would both hide
+  //    it and pressurise the tube. The catalyst survives the row, so it keeps
+  //    working the peroxide down for as long as there is peroxide.
+  R("Wall", 250, 380, 260, 687);
+  R("Wall", 420, 380, 430, 687);
+  R("Rust", 261, 664, 419, 687);
+  R("Peroxide", 261, 592, 419, 663); // every cell of this becomes a gas that
+  R("Soapy", 261, 552, 419, 591); // never settle-sleeps, so keep the dose sane
 
-  // 3) CARBIDE LAMP: clone drips carbide into water; acetylene rises the
-  // chimney into an embedded torch = permanent flame jet
-  R("Wall", 320, 600, 322, 690);
-  R("Wall", 438, 600, 440, 690);
-  R("Water", 323, 650, 437, 688);
-  R("Clone", 380, 610, 380, 614);
-  R("Carbide", 379, 610, 379, 614); // primer face
-  R("Wall", 378, 608, 381, 609);
-  R("Wall", 378, 610, 378, 615);
-  R("Wall", 360, 598, 376, 600); // chimney throat, gap at 377-384
-  R("Wall", 385, 598, 400, 600);
-  R("Torch", 382, 590, 386, 596); // the lamp flame, above the gas gap
+  // 3) THE CARBIDE LAMP — a clone drips carbide into water, the acetylene it
+  //    makes rises through a throat in the roof, and the torch above the throat
+  //    keeps it lit: a permanent flame jet, running on a miner's lamp reaction.
+  //    (The lime it also makes sinks and banks up on the tank floor.)
+  R("Wall", 450, 430, 460, 687);
+  R("Wall", 610, 430, 620, 687);
+  R("Water", 461, 560, 609, 687);
+  R("Wall", 460, 430, 520, 436); // the roof, with its throat at 521-549
+  R("Wall", 550, 430, 610, 436);
+  R("Wall", 528, 444, 533, 445); // rain hat
+  R("Wall", 528, 446, 528, 453);
+  R("Wall", 529, 453, 529, 453); // ledge
+  R("Carbide", 529, 446, 529, 452); // primer face
+  R("Clone", 530, 446, 530, 452);
+  R("Torch", 526, 408, 544, 424); // the lamp flame, above the gas gap
 
-  // 4) ROCKET CANDY MILL: sugar/saltpeter layers milling to gunpowder;
-  // heater shelf caramel-chars the overspill into charcoal (more fuel)
-  R("Wall", 460, 660, 570, 662);
-  for (let i = 0; i < 5; i++) R(i % 2 ? "Sugar" : "Saltpeter", 470, 630 + i * 6, 560, 635 + i * 6);
-  // no stove here: any heat plate ignites the product as it mills (found the
-  // hard way — 940 grains of rocket candy went up before t900)
+  // 4) THE BREWERY — sugar and yeast in interleaved beds so every grain has a
+  //    partner to react with; the alcohol pools in the bottom of the vat and
+  //    the CO2 goes up and out. Nothing that burns is anywhere near it, which
+  //    matters: alcohol ignites at 300°.
+  R("Wall", 640, 440, 650, 687);
+  R("Wall", 820, 440, 830, 687);
+  for (let i = 0; i < 8; i++) R(i % 2 ? "Sugar" : "Yeast", 651, 520 + i * 20, 819, 539 + i * 20);
 
-  // 5) BREWERY + GREENHOUSE: yeast/sugar vat ferments; CO2 rises through the
-  // neck into a glass conservatory where vines fix it back to oxygen
-  R("Wall", 590, 620, 592, 690);
-  R("Wall", 708, 620, 710, 690);
-  for (let i = 0; i < 6; i++) R(i % 2 ? "Sugar" : "Yeast", 593, 652 + i * 6, 707, 657 + i * 6);
-  R("Glass", 590, 560, 592, 620);
-  R("Glass", 708, 560, 710, 620);
-  R("Glass", 590, 558, 710, 560);
-  R("Vine", 620, 600, 622, 618);
-  R("Vine", 660, 606, 662, 618);
-  R("Wall", 593, 618, 640, 620); // vat lid with a CO2 gap at 641-659
-  R("Wall", 660, 618, 707, 620);
+  // 5) THE NEVER-MIX CABINET — acid into bleach is the household accident:
+  //    chlorine comes off the tray, rolls down the cabinet, and a lye bed on
+  //    the floor turns it back into bleach. The acid is a GRAVITY FEED, not a
+  //    clone dripper, because acid corrodes clones and eats its own emitter.
+  R("Wall", 850, 420, 860, 687);
+  R("Wall", 1020, 420, 1030, 687);
+  R("Wall", 861, 560, 990, 566); // the tray, with an open lip at the right
+  R("Bleach", 861, 520, 984, 559);
+  R("Wall", 900, 440, 906, 500); // the burette
+  R("Wall", 940, 440, 946, 500);
+  R("Wall", 906, 494, 918, 500);
+  R("Wall", 921, 494, 940, 500); // its drain is the slot at 919-920
+  R("Acid", 907, 446, 939, 493);
+  R("Lye", 861, 660, 1019, 687); // the bed that recovers it
 
-  // 6) NEVER-MIX CABINET: clone drips acid into the bleach tray; chlorine
-  // runs down the chute into a lye bed and turns back into bleach
-  R("Wall", 730, 600, 732, 690);
-  R("Wall", 858, 600, 860, 690);
-  R("Wall", 733, 640, 810, 642); // upper tray, open lip at the right
-  R("Bleach", 733, 620, 805, 638);
-  R("Clone", 760, 604, 760, 608);
-  R("Acid", 759, 604, 759, 608); // primer face
-  R("Wall", 758, 602, 761, 603);
-  R("Wall", 758, 604, 758, 609);
-  R("Lye", 733, 680, 857, 688); // scrubber bed on the cabinet floor
-
-  // 7) MAGNESIUM PYRE over a water pool: embers boil it, steam strips the
-  // metal into magnesia + hydrogen — never hose a magnesium fire
-  R("Wall", 880, 620, 882, 690);
-  R("Wall", 998, 620, 1000, 690);
-  R("Water", 883, 660, 997, 688);
-  R("Wall", 900, 652, 980, 654); // grate just over the waterline
-  R("Magnesium", 906, 636, 974, 650); // big pile: skirt cells reach the splash zone
-  R("Magnesium", 890, 656, 902, 668); // and a spur slumping into the pool itself
-  R("Torch", 908, 644, 912, 650); // embedded at bed level — contact ignition
-
-  // 8) PHOSPHORUS VAULT: white P safe under water beside the pyre's warmth;
-  // the dry shelf sample flashes on its own
-  R("Glass", 1010, 630, 1012, 690);
-  R("Glass", 1078, 630, 1080, 690);
-  R("Phosphorus", 1013, 680, 1077, 688);
-  R("Water", 1013, 640, 1077, 679);
-  R("Wall", 1010, 620, 1080, 622); // dry shelf above the tank
-  R("Phosphorus", 1030, 612, 1060, 618);
-  R("Heater", 1064, 612, 1067, 618); // a warm pipe: pyrophoric P flashes, tank P sleeps
-
-  // 9) ACID RAIN: embedded torch keeps the sulfur bed smoldering; the fan
-  // column lofts SO2 into the cloud, which rains acid on the vine terrace
-  R("Wall", 1100, 660, 1240, 662);
-  R("Sulfur", 1130, 640, 1210, 658);
-  R("Torch", 1122, 650, 1128, 658);
-  for (let y = 630; y <= 638; y++) {
-    for (let x = 1216, e = 0; x <= 1222; x++, e++) world.paint(x, y, byName("Fan"), 192); // blow up
-  }
-  R("Cloud", 1140, 540, 1230, 552);
-  R("Vine", 1150, 680, 1152, 688);
-  R("Vine", 1180, 674, 1182, 688);
-  R("Vine", 1210, 678, 1212, 688);
+  // 6) THE MAGNESIUM PYRE — a white-hot ember bed on a grate just over water.
+  //    The steam it raises strips the metal into magnesia and hydrogen, which
+  //    is why you never hose a magnesium fire, and the spur slumping into the
+  //    pool puts the reaction where it can be seen. The torch is EMBEDDED at
+  //    bed level: flames rise, so an igniter above the bed lights nothing.
+  R("Wall", 1050, 480, 1060, 687);
+  R("Wall", 1240, 480, 1250, 687);
+  R("Water", 1061, 620, 1239, 687);
+  R("Wall", 1080, 610, 1220, 616); // the grate
+  R("Torch", 1082, 596, 1090, 609);
+  R("Magnesium", 1091, 566, 1210, 609);
+  R("Magnesium", 1063, 618, 1078, 646); // the spur in the splash zone
 
   if (location.hash.includes("shot=")) {
     for (let i = 0; i < 770; i++) simTick();
@@ -2112,7 +2211,9 @@ function alchemyScene(): void {
   settle();
 }
 
-// #cryo: the M5h works — cryogenics, sublimation, and the renewable-powder plant
+// #cryo: the cryogenic works — six vignettes. The gallium bridge sabotage came
+// out in the restaging: it is a one-shot, and a demo that has already run its
+// one shot before you look at it is a photograph, not an exhibit.
 function cryoScene(): void {
   world.clear();
   player.remove();
@@ -2122,91 +2223,89 @@ function cryoScene(): void {
     const id = byName(name);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
   };
-  R("Wall", 30, 690, 1250, 700); // the works floor
+  R("Wall", 20, 688, 1260, 704); // the works floor
 
-  // 1) SALTPETER WORKS: a clone at the tank floor bubbles ammonia up through
-  // the acid column; saltpeter snows out and drifts to the floor — the
-  // renewable half of the gunpowder loop, running unattended
-  R("Glass", 40, 540, 42, 690);
-  R("Glass", 198, 540, 200, 690);
-  R("Glass", 40, 538, 200, 540);
-  // batch reactor: a deep ammonia atmosphere pressed flush onto the acid —
-  // saltpeter snows out for thousands of ticks. (Clone injectors don't work
-  // here: liquid floods the clone's only open face and smothers it.)
-  R("Acid", 43, 620, 197, 660);
-  R("Ammonia", 43, 541, 197, 619);
+  // 1) THE SALTPETER WORKS — a deep ammonia atmosphere pressed flush onto an
+  //    acid pool. Saltpeter snows out of the boundary and drifts down through
+  //    the acid for thousands of ticks: the renewable half of the gunpowder
+  //    loop, running unattended. A clone injector cannot do this job — liquid
+  //    floods the clone's only open face and smothers it — and the vessel is
+  //    WALL because acid corrodes glass outright.
+  R("Wall", 40, 420, 50, 687);
+  R("Wall", 200, 420, 210, 687);
+  R("Wall", 40, 412, 210, 420);
+  R("Acid", 51, 560, 199, 687);
+  R("Ammonia", 51, 421, 199, 559);
 
-  // 2) POWDER POPS: a clone drip feeds gunpowder onto an embedded torch in a
-  // stone pit — recurring pops with the full blast drama pass
-  R("Stone", 230, 660, 350, 688);
-  R("Wall", 236, 640, 238, 660); // pit walls carved into the pile
-  R("Wall", 342, 640, 344, 660);
-  R("Torch", 284, 654, 292, 658);
-  R("Clone", 288, 610, 288, 612);
-  R("Gunpowder", 287, 610, 287, 612); // primer face
-  R("Wall", 286, 608, 289, 609);
-  R("Wall", 286, 610, 286, 613);
-  R("Wall", 287, 613, 287, 613); // ledge: powder primers fall without one
+  // 2) THE POWDER PIT — a clone drips gunpowder onto an embedded torch in a
+  //    stone pit. Every drop pops, for ever, and there are 400 empty rows above
+  //    it now so the plume each pop throws is actually in frame.
+  R("Stone", 250, 640, 420, 687);
+  R("Wall", 262, 600, 272, 645); // pit walls carved into the pile
+  R("Wall", 398, 600, 408, 645);
+  R("Torch", 320, 628, 340, 640);
+  R("Wall", 328, 494, 333, 495); // rain hat
+  R("Wall", 328, 496, 328, 503);
+  R("Wall", 329, 503, 329, 503); // ledge — a powder primer falls without one
+  R("Gunpowder", 329, 496, 329, 502); // primer face
+  R("Clone", 330, 496, 330, 502);
 
-  // 3) CRYO LAKE: LN2 dripper freezes the surface while a heater melts from
-  // the floor — a breathing ice sheet, fighting itself forever
-  R("Wall", 380, 560, 382, 690);
-  R("Wall", 558, 560, 560, 690);
-  R("Heater", 455, 686, 485, 688); // small center patch — a full-width heater
-  R("Water", 383, 600, 557, 685);  // pre-warms the pool and the cryogen never wins
-  // LN2 only survives in BULK (thin streams and droplets boil the tick they
-  // meet warm air — clone drippers can't work). One massive cryogen dump at
-  // t0 freezes the sheet; the heater floor melts it back from below and the
-  // lake breathes between ice and water from then on
-  R("Liq. N2", 440, 560, 500, 590);
+  // 3) THE CRYO LAKE — one massive cryogen dump freezes the surface, a heater
+  //    patch melts it back from the floor, and the sheet breathes between ice
+  //    and water from then on. LIQUID NITROGEN ONLY EXISTS IN BULK: a stream or
+  //    a drip boils the tick it meets warm air, so this is poured, never fed.
+  //    The heater is a small centre patch on purpose — a full-width one
+  //    pre-warms the whole pool and the cryogen never gets a foothold.
+  R("Wall", 440, 480, 450, 687);
+  R("Wall", 660, 480, 670, 687);
+  R("Heater", 530, 684, 580, 687);
+  R("Water", 451, 540, 659, 683);
+  R("Liq. N2", 500, 480, 610, 538);
 
-  // 4) IODINE LAMP: heater bed sublimates the crystals; violet vapor climbs
-  // the glass chimney, deposits on the cooler-lined shelf, and the crystals
-  // avalanche back down — a purple lava lamp
-  R("Glass", 590, 480, 592, 690);
-  R("Glass", 698, 480, 700, 690);
-  R("Glass", 590, 478, 700, 480);
-  R("Heater", 593, 686, 697, 688);
-  R("Iodine", 600, 660, 690, 684);
-  R("Cooler", 593, 481, 697, 483);
-  R("Glass", 620, 540, 670, 542); // mid shelf the returning crystals pile on
+  // 4) THE IODINE LAMP — a heater bed sublimates the crystals, the violet
+  //    vapour climbs the chimney, the cooler-lined roof deposits it back as
+  //    solid, and the crystals avalanche down onto the shelf and fall in again.
+  //    A closed loop that needs nothing but the two plates.
+  //    The chimney is WALL end to end: the vapour it traps pressurised a glass
+  //    one and took 45 cells out of it in the first hundred ticks, and a
+  //    chimney with a hole in it is a lamp that runs out of iodine. Nothing is
+  //    lost by it — the frame is not what you are looking at.
+  R("Wall", 690, 412, 850, 420);
+  R("Wall", 690, 420, 700, 687);
+  R("Wall", 840, 420, 850, 687);
+  R("Heater", 701, 684, 839, 687);
+  R("Iodine", 710, 640, 830, 683);
+  R("Cooler", 701, 421, 839, 424);
+  R("Wall", 740, 540, 800, 544); // the shelf the returning crystals pile on
 
-  // 5) GALLIUM SABOTAGE: a warm pipe melts the gallium block; the molten
-  // metal wicks into the aluminum bridge, embrittles it to dust, and the
-  // stone load comes down
-  R("Stone", 730, 600, 750, 688); // left pier
-  R("Stone", 860, 600, 880, 688); // right pier
-  R("Aluminum", 750, 596, 860, 604); // the bridge span
-  R("Stone", 780, 560, 830, 594); // the load
-  R("Gallium", 760, 586, 776, 594); // block resting on the span
-  R("Heater", 758, 594, 778, 595); // warm plate directly under the block
-
-  // 6) SMELTER + SMOG: torch bed roasts cinnabar; mercury rains through the
-  // grate and pools; the SO2 climbs past a vine trellis (acid smog) toward
-  // the cloud, which rains acid back down
-  R("Wall", 910, 600, 912, 690);
-  R("Wall", 1058, 600, 1060, 690);
-  R("Wall", 916, 660, 1054, 662); // grate the mercury drips through
-  R("Torch", 920, 654, 930, 658);
-  R("Cinnabar", 920, 630, 1000, 652);
-  // roofed sulfur burner: collapsing ore can't bury it; the flue fan lofts
-  // the dense SO2 up past the vine trellis toward the cloud
-  R("Wall", 1004, 648, 1036, 650); // burner roof
-  R("Sulfur", 1008, 654, 1026, 658);
-  R("Torch", 1028, 654, 1034, 658); // flush against the sulfur bed
-  for (let y = 636; y <= 644; y++) {
-    for (let x = 1042, e = 0; x <= 1048; x++, e++) world.paint(x, y, byName("Fan"), 192); // blow up
+  // 5) THE SMELTER — a torch bed roasts cinnabar and mercury rains through the
+  //    grate into a pool below (density 200: it sinks through anything). Beside
+  //    it a ROOFED sulfur burner makes SO2 — roofed because collapsing ore
+  //    would otherwise bury the torch — and the flue fan lofts that dense gas
+  //    up past the vines into the cloud, which rains acid back onto them.
+  R("Wall", 870, 560, 880, 687);
+  R("Wall", 1060, 560, 1070, 687);
+  R("Wall", 886, 636, 1054, 640); // the grate the mercury drips through
+  R("Torch", 890, 626, 906, 635);
+  R("Cinnabar", 907, 590, 1000, 635);
+  R("Wall", 1004, 620, 1040, 624); // burner roof
+  R("Sulfur", 1008, 628, 1028, 635);
+  R("Torch", 1030, 628, 1038, 635); // flush against the sulfur bed
+  for (let y = 596; y <= 610; y++) {
+    for (let x = 1044; x <= 1052; x++) world.paint(x, y, byName("Fan"), 192); // blow up
   }
-  R("Vine", 1050, 610, 1052, 688);
-  R("Cloud", 940, 480, 1040, 492);
+  R("Vine", 1056, 520, 1059, 687);
+  R("Cloud", 900, 430, 1040, 444);
 
-  // 7) DRY ICE vs PYRE: the burning stack's own heat sublimates the ledge of
-  // dry ice above it; the CO2 flood smothers the fire, the torch relights it
-  R("Wall", 1090, 690, 1240, 692);
-  R("Wood", 1130, 640, 1200, 688);
-  R("Torch", 1132, 682, 1136, 688); // embedded: relights after every smother
-  R("Wall", 1120, 600, 1210, 602); // the ledge
-  R("Dry ice", 1126, 580, 1204, 598);
+  // 6) DRY ICE vs THE PYRE — the burning stack's own heat sublimates the ledge
+  //    of dry ice above it, the CO2 flood drops onto the fire and smothers it,
+  //    and the embedded torch lights it again. Neither side can win, which is
+  //    the only way a fire exhibit runs for longer than its fuel.
+  R("Wall", 1090, 688, 1250, 692);
+  R("Wood", 1120, 620, 1220, 687);
+  R("Torch", 1122, 676, 1130, 687); // embedded: relights after every smother
+  R("Wall", 1100, 540, 1240, 546); // the ledge
+  R("Dry ice", 1110, 500, 1230, 538);
 
   if (location.hash.includes("shot=")) {
     for (let i = 0; i < 770; i++) simTick();
@@ -2221,7 +2320,11 @@ function cryoScene(): void {
   settle();
 }
 
-// #boiler: the M5i pressure works — everything here fails by overpressure
+// #boiler: the pressure works — five vessels, every one of them failing. This
+// is the one scene where glass is the RIGHT material everywhere: rupture is the
+// exhibit, and glass is what ruptures (into thrown shards) where wall holds.
+// Restaged for height, because a vessel bursting is a vertical event and these
+// used to burst into a ceiling eighty rows above them.
 function boilerScene(): void {
   world.clear();
   player.remove();
@@ -2231,67 +2334,90 @@ function boilerScene(): void {
     const id = byName(name);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, id);
   };
-  R("Wall", 30, 690, 1250, 700); // the plant floor
-
-  // 1) THE BOILER: clone-fed water over a fierce heater in a glass shell —
-  // it bursts, vents as a steam geyser through the breach, re-seals... never
-  R("Glass", 60, 540, 62, 690);
-  R("Glass", 198, 540, 200, 690);
-  R("Glass", 60, 538, 200, 540);
-  R("Heater", 63, 684, 197, 688);
-  R("Water", 63, 620, 197, 683);
-  R("Clone", 130, 560, 130, 562);
-  R("Water", 129, 560, 129, 562); // primer
-  R("Wall", 128, 558, 131, 559);
-  R("Wall", 128, 560, 128, 563);
-  R("Wall", 129, 563, 129, 563); // ledge
-
-  // 2) TANK FARM: three sealed propane tanks; a torch slow-cooks the first —
-  // thermal expansion pops it, the vapor cloud finds the flame, and the
-  // fireball chains down the row
-  const tank = (x0: number) => {
-    R("Glass", x0, 600, x0 + 2, 690);
-    R("Glass", x0 + 58, 600, x0 + 60, 690);
-    R("Glass", x0, 598, x0 + 60, 600);
-    R("Propane", x0 + 3, 640, x0 + 57, 688);
+  const carve = (x0: number, y0: number, x1: number, y1: number) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, E.EMPTY);
   };
-  tank(240); tank(320); tank(400);
-  // the slow cooker: carve the plant floor under tank 1 and embed a heater —
-  // thermal expansion pops the shell, the escaping vapor finds the hot plate
-  for (let y = 690; y <= 694; y++) for (let x = 250; x <= 290; x++) world.paint(x, y, E.EMPTY);
-  R("Heater", 250, 690, 290, 694);
-  R("Torch", 305, 684, 311, 688); // pilot light between tanks 1 and 2:
-  // the breach vapor drifts over it, and the fireball takes the row
+  R("Wall", 20, 688, 1260, 704); // the plant floor
 
-  // 3) FIREDAMP MINE: a wall gallery with a methane pocket under its roof and
-  // glass skylights; the miner's torch flame crawls in and finds the gas
-  R("Wall", 520, 560, 760, 566); // roof
-  R("Glass", 560, 560, 590, 566); // skylight 1
-  R("Glass", 680, 560, 710, 566); // skylight 2
-  R("Wall", 520, 566, 526, 690);
-  R("Wall", 754, 566, 760, 690);
-  R("Methane", 530, 568, 750, 600);
-  R("Torch", 730, 682, 736, 688);
-  R("Wood", 700, 660, 750, 688); // pit props: fuel path toward the pocket
-  R("Ant", 560, 684, 620, 688); // the doomed shift
+  // 1) THE BOILER — a clone-fed glass shell over a fierce heater. It bursts,
+  //    vents its steam through the breach as a geyser, gets refilled by the
+  //    clone, and does the whole thing again. The only self-repairing failure
+  //    on the floor, and the reason the water feed is here at all.
+  R("Glass", 60, 400, 70, 687);
+  R("Glass", 230, 400, 240, 687);
+  R("Glass", 60, 392, 240, 400);
+  R("Heater", 110, 680, 190, 687); // half the floor: a full-width plate boils
+  R("Water", 71, 560, 229, 679); // the shell dry faster than any feed refills it
+  const feed = (cx: number) => {
+    R("Wall", cx - 2, 404, cx + 1, 405); // rain hat
+    R("Wall", cx - 2, 406, cx - 2, 413);
+    R("Wall", cx - 1, 413, cx - 1, 413); // ledge — a liquid primer falls without one
+    R("Water", cx - 1, 406, cx - 1, 412); // primer face
+    R("Clone", cx, 406, cx, 412);
+  };
+  feed(110);
+  feed(180);
 
-  // 4) FERMENTATION CELLAR: carboys of different sizes pop on their own clocks
+  // 2) THE TANK FARM — three sealed propane tanks in a row. A heater embedded
+  //    under the first slow-cooks it until thermal expansion pops the shell,
+  //    the escaping vapour finds the pilot light between the tanks, and the
+  //    fireball takes the row. The heater is carved INTO the floor slab: paint
+  //    fills empty only, so it has to be cut in, not laid on.
+  const tank = (x0: number, pilot: boolean) => {
+    R("Glass", x0, 560, x0 + 10, 687);
+    R("Glass", x0 + 90, 560, x0 + 100, 687);
+    R("Glass", x0, 552, x0 + 100, 560);
+    // the pilot goes IN, before the fill (paint fills empty only). Two outside
+    // placements were measured first and neither ever lit: a floor-level flame
+    // six cells from the tank, and one sitting on the lid. The tank does burst
+    // — 963 cells of glass gone by t400 against 5.0 of overpressure — but a
+    // heavy gas pools where it is and the breach never points at the flame.
+    if (pilot) R("Torch", x0 + 40, 584, x0 + 60, 596);
+    R("Propane", x0 + 11, 580, x0 + 89, 687);
+  };
+  tank(280, true); tank(400, false); tank(520, false);
+  carve(282, 688, 378, 694); // the cooker spans the whole tank floor: a narrow
+  R("Heater", 282, 688, 378, 694); // patch under a big tank never gets there
+
+  // 3) THE FIREDAMP MINE — a gallery with a methane pocket under its roof, pit
+  //    props leading in, and a miner's torch at the far end. The flame crawls
+  //    up the timber into the gas. The ants are the shift.
+  R("Wall", 650, 520, 900, 528); // roof
+  R("Glass", 700, 520, 740, 528); // skylights, so the blast has something to do
+  R("Glass", 820, 520, 860, 528);
+  R("Wall", 650, 528, 662, 687);
+  R("Wall", 888, 528, 900, 687);
+  // The lamp hangs UNDER THE ROOF, in the pocket itself, and a clone at the far
+  // end keeps feeding gas in: fill, flash, fill again. The first build put the
+  // torch on the floor at the end of a line of pit props and trusted the fire
+  // to climb — it never did. Wood chars, and char smothers its own flame, so a
+  // timber fuse burns 34 cells' worth and stops 50 rows short of the gas.
+  R("Torch", 872, 529, 886, 545);
+  R("Methane", 668, 529, 871, 570);
+  R("Wall", 663, 529, 663, 535); // the feeder, hard against the roof so the gas
+  R("Methane", 664, 529, 664, 535); // primer cannot rise away from the clone
+  R("Clone", 665, 529, 665, 535);
+  R("Wood", 840, 620, 887, 687); // pit props
+  R("Ant", 680, 676, 760, 687); // the shift
+
+  // 4) THE CELLAR — carboys of three sizes, each fermenting on its own clock,
+  //    so they let go one after another instead of all at once.
   const carboy = (x0: number, w: number, h: number) => {
-    R("Glass", x0, 690 - h, x0 + 2, 690);
-    R("Glass", x0 + w - 2, 690 - h, x0 + w, 690);
-    R("Glass", x0, 688 - h, x0 + w, 690 - h);
-    for (let i = 0; i < 4; i++) {
-      R(i % 2 ? "Sugar" : "Yeast", x0 + 3, 690 - Math.floor(h / 2) + i * 5, x0 + w - 3, 690 - Math.floor(h / 2) + i * 5 + 4);
+    R("Glass", x0, 688 - h, x0 + 8, 687);
+    R("Glass", x0 + w - 8, 688 - h, x0 + w, 687);
+    R("Glass", x0, 680 - h, x0 + w, 688 - h);
+    for (let i = 0; i < 6; i++) {
+      R(i % 2 ? "Sugar" : "Yeast", x0 + 9, 688 - h + 20 + i * 12, x0 + w - 9, 688 - h + 31 + i * 12);
     }
   };
-  carboy(820, 50, 80); carboy(890, 70, 110); carboy(980, 40, 60);
+  carboy(930, 70, 150); carboy(1010, 90, 210); carboy(1110, 60, 120);
 
-  // 5) DRY-ICE BOMB: a sealed flask of dry ice — room warmth sublimates it,
-  // CO2 pressure does the rest (no flame anywhere near it)
-  R("Glass", 1080, 620, 1082, 690);
-  R("Glass", 1138, 620, 1140, 690);
-  R("Glass", 1080, 618, 1140, 620);
-  R("Dry ice", 1083, 660, 1137, 688);
+  // 5) THE DRY-ICE FLASK — a sealed flask, no flame anywhere near it. Room
+  //    warmth alone sublimates the solid and the CO2 does the rest.
+  R("Glass", 1180, 560, 1190, 687);
+  R("Glass", 1240, 560, 1250, 687);
+  R("Glass", 1180, 552, 1250, 560);
+  R("Dry ice", 1191, 620, 1239, 687);
 
   if (location.hash.includes("shot=")) {
     for (let i = 0; i < 770; i++) simTick();
@@ -2306,9 +2432,14 @@ function boilerScene(): void {
   settle();
 }
 
-// #cannon: the pressure gunnery range — every gun here is driven by the
-// pressure field. Bores are 18 wide because a ball is r=7: a narrower bore
-// WEDGES the shot and it just judders in place.
+// #cannon: the pressure gunnery range. Five guns, all driven by the pressure
+// field, all with 400 rows of sky over the muzzle — the point of a gun is where
+// the shot goes, and these used to fire into a ceiling.
+// EVERY BORE IS 18 WIDE because the ball is r=7 and anything under about 16
+// WEDGES it: the shot then oscillates in place and never leaves the barrel.
+// Ignition is a torch pocket carved into the slab under each charge, not a fuse
+// train — fuse burns die out stochastically, and two of them died mid-run while
+// this pass was being built.
 function cannonScene(): void {
   world.clear();
   player.remove();
@@ -2321,88 +2452,85 @@ function cannonScene(): void {
   const carve = (x0: number, y0: number, x1: number, y1: number) => {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) world.paint(x, y, E.EMPTY);
   };
-  R("Wall", 20, 690, 1260, 700); // the range floor — also every gun's breech
+  R("Wall", 20, 688, 1260, 704); // the range floor — also every gun's breech
 
-  // 1) PNEUMATIC MORTAR — no explosive anywhere: a sealed steam chamber, and
-  // the ball's own body sealing the bore. Boil it and the shot leaves.
-  R("Wall", 40, 300, 54, 689);
-  R("Wall", 73, 300, 87, 689);
-  R("Heater", 55, 686, 72, 689);
-  R("Water", 55, 668, 72, 685);
-  objects.spawn("ball", 63, 650);
-
-  // 2) POWDER CANNON — the same barrel with a charge instead of a boiler
-  R("Wall", 150, 300, 164, 689);
-  R("Wall", 183, 300, 197, 689);
-  R("Gunpowder", 165, 668, 182, 689);
-  objects.spawn("ball", 173, 650);
-
-  // 3) STEAM FOUNTAIN — self-running: a clone re-drips water onto the plate,
-  // so the chamber keeps re-pressurising and keeps throwing its sand charge
-  R("Wall", 260, 300, 274, 689);
-  R("Wall", 293, 300, 307, 689);
-  R("Heater", 275, 686, 292, 689);
-  R("Water", 275, 672, 292, 685);
-  R("Sand", 275, 644, 292, 670); // the charge it throws, over and over
-  R("Clone", 281, 610, 281, 612); // re-feeds the boiler forever
-  R("Water", 280, 610, 280, 612);
-  R("Wall", 279, 608, 282, 609);
-  R("Wall", 279, 610, 279, 613);
-  R("Wall", 280, 613, 280, 613); // ledge — liquid primers fall without one
-
-  // 4) THE LESSON: identical charges, one barrel OPEN and one CAPPED. The
-  // open one fires its shot; the capped one has nowhere to vent and bursts.
-  R("Wall", 380, 420, 394, 689);
-  R("Wall", 413, 420, 427, 689);
-  R("Gunpowder", 395, 668, 412, 689);
-  objects.spawn("ball", 404, 650);
-
-  // the capped twin is deliberately STUBBY: a cap 250 cells up the bore never
-  // sees the charge's pressure, so the lid sits just above the powder
-  R("Wall", 470, 636, 484, 689);
-  R("Wall", 503, 636, 517, 689);
-  R("Gunpowder", 485, 668, 502, 689);
-  R("Glass", 485, 636, 502, 644); // the cap that has to give
-
-  // Each powder gun gets its OWN fuse under the floor, cut to a different
-  // length so the range fires in sequence (fuse burns ~0.1 cell/tick, so a
-  // shared 380-cell train would never reach the far guns). Carve the tunnel
-  // through the slab FIRST, then embed the fuse — wall paint overwrites it —
-  // and light it with fire painted ON the fuse end: an open-air flame rises
-  // away instead of burning downward.
-  const fuseRun = (gunX: number, len: number) => {
-    carve(gunX - len, 694, gunX, 694);
-    carve(gunX, 690, gunX, 693);
-    R("Fuse", gunX - len, 694, gunX, 694);
-    R("Fuse", gunX, 690, gunX, 693);
-    world.paint(gunX - len, 694, byName("Fire"));
+  // a barrel: walls 15 wide, bore 18, breech on the slab itself. Painting the
+  // charge at y+1 instead lands it inside the wall and silently no-ops.
+  const barrel = (x0: number, topY: number) => {
+    R("Wall", x0, topY, x0 + 14, 687);
+    R("Wall", x0 + 33, topY, x0 + 47, 687);
   };
-  fuseRun(173, 12); // powder cannon fires first
-  fuseRun(404, 30); // the open barrel next
-  fuseRun(494, 48); // the capped one last — it bursts instead of firing
+  const bore = (x0: number) => x0 + 23; // the centreline
 
-  // 5) JET VENT — a boiler with one small side opening: everything escapes
-  // through that hole as a working jet that sweeps the loose sand downrange
-  R("Wall", 580, 560, 594, 689);
-  R("Wall", 660, 560, 674, 689);
-  R("Wall", 580, 556, 674, 560);
-  R("Heater", 595, 686, 659, 689);
-  R("Water", 595, 640, 659, 685);
-  carve(660, 596, 674, 604); // the nozzle, punched through the right wall
-  R("Sand", 700, 676, 900, 689); // the dune the jet works on
+  // 1) THE PNEUMATIC MORTAR — no explosive anywhere: a heater, a head of water,
+  //    and the ball's own body sealing the bore. Boil it and the shot leaves.
+  barrel(60, 260);
+  R("Heater", 75, 684, 92, 687);
+  R("Water", 75, 650, 92, 683);
+  objects.spawn("ball", bore(60), 630);
 
-  // 6) FLAT SHOT — a short horizontal bore that rockets its ball the length of
-  // the range into the keep. (A packed powder slug jams in a bore instead of
-  // spraying — the M5b lesson — so the shot is a ball; and a flat shot at
-  // y≈615 sails clean over anything resting on the floor.)
-  R("Wall", 950, 600, 1020, 604);
-  R("Wall", 950, 623, 1020, 627);
-  R("Wall", 946, 600, 950, 627); // breech plate
-  R("Gunpowder", 951, 605, 975, 622);
-  objects.spawn("ball", 990, 613);
-  world.paint(955, 613, byName("Fire"));
-  R("Stone", 1210, 540, 1250, 689); // the keep it all ends against
-  R("Glass", 1210, 520, 1250, 538);
+  // 2) THE POWDER CANNON — the same barrel with a charge instead of a boiler,
+  //    lit through the breech floor.
+  barrel(200, 260);
+  R("Gunpowder", 215, 650, 232, 687);
+  objects.spawn("ball", bore(200), 630);
+  carve(216, 688, 231, 694);
+  R("Torch", 216, 688, 231, 694);
+
+  // 3) THE STEAM FOUNTAIN — the only gun here that reloads itself: a clone
+  //    re-drips water onto the hot plate, so the chamber keeps re-pressurising
+  //    and keeps throwing its sand charge, for as long as you watch it.
+  barrel(340, 260);
+  R("Heater", 355, 684, 372, 687);
+  R("Water", 355, 668, 372, 683);
+  R("Sand", 355, 630, 372, 666); // the charge it throws, over and over
+  R("Wall", 361, 588, 364, 589); // rain hat
+  R("Wall", 361, 590, 361, 597);
+  R("Wall", 362, 597, 362, 597); // ledge — a liquid primer falls without one
+  R("Water", 362, 590, 362, 596); // primer face
+  R("Clone", 363, 590, 363, 596);
+
+  // 4) THE LESSON — identical charges, one barrel OPEN and one CAPPED, side by
+  //    side and lit together. The open one fires its shot; the capped one has
+  //    nowhere to vent and bursts its own lid. The cap is deliberately STUBBY:
+  //    a lid 250 cells up a bore never sees the charge's pressure at all.
+  barrel(480, 260);
+  R("Gunpowder", 495, 650, 512, 687);
+  objects.spawn("ball", bore(480), 630);
+  carve(496, 688, 511, 694);
+  R("Torch", 496, 688, 511, 694);
+
+  R("Wall", 620, 600, 634, 687);
+  R("Wall", 653, 600, 667, 687);
+  R("Gunpowder", 635, 650, 652, 687);
+  R("Glass", 635, 600, 652, 612); // the cap that has to give
+  carve(636, 688, 651, 694);
+  R("Torch", 636, 688, 651, 694);
+
+  // 5) THE JET VENT — a sealed boiler with ONE nozzle punched through its wall.
+  //    Everything it makes leaves there, as a working jet that sweeps the dune
+  //    downrange all session. Pressure vents through openings by connectivity
+  //    to the border, so one hole makes a beam and not a leak.
+  R("Wall", 760, 480, 774, 687);
+  R("Wall", 900, 480, 914, 687);
+  R("Wall", 760, 472, 914, 480);
+  R("Heater", 810, 684, 870, 687); // a narrower plate: a full-floor heater
+  R("Water", 775, 600, 899, 683); // boils the shell dry and the jet dies with it
+  const wfeed = (cx: number) => {
+    R("Wall", cx - 2, 508, cx + 1, 509); // rain hat
+    R("Wall", cx - 2, 510, cx - 2, 517);
+    R("Wall", cx - 1, 517, cx - 1, 517); // ledge — a liquid primer falls without one
+    R("Water", cx - 1, 510, cx - 1, 516); // primer face
+    R("Clone", cx, 510, cx, 516);
+  };
+  wfeed(800);
+  wfeed(870);
+  carve(900, 652, 914, 660); // the nozzle: LOW, so the jet works along the dune
+  // instead of over it, and NARROW, because the wind that launches loose matter
+  // comes from a steep pressure gradient and a wide hole does not make one
+  R("Sand", 920, 656, 1200, 687); // the dune, right up against the nozzle: at
+  // 46 cells of standoff the jet only shifted 105 grains in 900 ticks
+  R("Wall", 1230, 600, 1250, 687); // a backstop, so the sand has somewhere to go
 
   if (location.hash.includes("shot=")) {
     for (let i = 0; i < 770; i++) simTick();
@@ -2623,28 +2751,84 @@ function selftest(): { passed: number; failed: number; failures: string[]; known
     return c;
   };
 
+  // counts inside one vignette's frame, so a gate measures the exhibit it names
+  // rather than whatever else in the scene happens to make the same product
+  const nIn = (name: string, x0: number, y0: number, x1: number, y1: number): number => {
+    const id = byName(name);
+    let c = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (world.species[y * GRID_W + x] === id) c++;
+    return c;
+  };
+
   runDemo("sandbox", 300, demoScene);
   check("the sandbox demo settles into a full scene", world.dots > 80_000, `${world.dots} dots`);
+  // the beaker is the stir exhibit, and acid dissolves a GLASS one out from
+  // under itself: 2,819 of 5,430 cells gone by t600, taking the acid with it
+  check("sandbox: the stir beaker still holds its acid", nIn("Acid", 430, 300, 532, 470) > 2000,
+    `${nIn("Acid", 430, 300, 532, 470)} acid in the beaker`);
 
   runDemo("chem", 600, chemScene);
-  check("chem lab: the electrolysis cells evolve hydrogen", n("Hydrogen") > 50, `${n("Hydrogen")}`);
-  check("chem lab: the fizz basin makes CO2", n("CO2") > 400, `${n("CO2")}`);
+  check("chem lab: the generator fills its hood with hydrogen", n("Hydrogen") > 1500, `${n("Hydrogen")}`);
+  check("chem lab: the chlor-alkali cell lays down chlorine", n("Chlorine") > 1500, `${n("Chlorine")}`);
+  check("chem lab: the fizz fountain floods its well with CO2",
+    nIn("CO2", 250, 330, 440, 687) > 200, `${nIn("CO2", 250, 330, 440, 687)} in the well`);
   check("chem lab: the greenhouse photosynthesises oxygen", n("Oxygen") > 400, `${n("Oxygen")}`);
   check("chem lab: the kiln calcines lime", n("Lime") > 20, `${n("Lime")}`);
+  check("chem lab: the thermite pour quenches into stone", n("Stone") > 300, `${n("Stone")}`);
+  check("chem lab: the titration beaker is still stratified to be stirred",
+    nIn("Acid", 1090, 460, 1244, 687) > 4000 && nIn("Lye", 1090, 460, 1244, 687) > 4000,
+    `${nIn("Acid", 1090, 460, 1244, 687)} acid over ${nIn("Lye", 1090, 460, 1244, 687)} lye`);
+  {
+    // and the point of leaving it stratified: a glass rod is worth 8x the
+    // interface. Same beaker, same tick count, stirred against the run above.
+    const quiet = n("Salt");
+    for (let pass = 0; pass < 10; pass++) for (let x = 1110; x <= 1225; x += 22) stir(x, 585, 24);
+    for (let i = 0; i < 200; i++) simTick();
+    const stirred = n("Salt");
+    check("chem lab: stirring that beaker multiplies the neutralisation",
+      stirred > quiet * 2, `${quiet} salt unstirred -> ${stirred} stirred`);
+  }
 
   runDemo("range", 700, rangeScene);
-  check("weapons range: the thermite lights", n("Magma") > 200, `${n("Magma")} magma`);
+  check("weapons range: the vault thermite lights", n("Magma") > 200, `${n("Magma")} magma`);
+  // the threshold is low on purpose: a clone trigger fires on a random face at
+  // a random tick, so this gun puts anywhere between 17 and 128 grains onto the
+  // castle across identical runs, while a dead one manages 6 or fewer
+  check("weapons range: the sentry gun reaches the castle",
+    nIn("Sand", 150, 400, 320, 687) > 10, `${nIn("Sand", 150, 400, 320, 687)} grains downrange`);
+  check("weapons range: the depth-charge tank tears water into hydrogen",
+    n("Hydrogen") > 50, `${n("Hydrogen")}`);
+  check("weapons range: the mortar throws its cap", n("Bomb") === 0 && n("Stone") > 1000,
+    `${n("Bomb")} bomb left, ${n("Stone")} stone`);
 
   runDemo("alchemy", 600, alchemyScene);
   check("alchemy: the brewery ferments alcohol", n("Alcohol") > 400, `${n("Alcohol")}`);
   check("alchemy: elephant toothpaste evolves oxygen", n("Oxygen") > 1000, `${n("Oxygen")}`);
+  check("alchemy: the never-mix cabinet releases chlorine", n("Chlorine") > 200, `${n("Chlorine")}`);
+  check("alchemy: the carbide lamp keeps a flame", n("Acetylene") > 20 && n("Fire") > 50,
+    `${n("Acetylene")} acetylene, ${n("Fire")} fire`);
+  check("alchemy: steam strips the magnesium pyre", n("Magnesia") > 40, `${n("Magnesia")}`);
 
   runDemo("cryo", 600, cryoScene);
   check("cryo works: the LN2 lake freezes ice", n("Ice") > 400, `${n("Ice")}`);
   check("cryo works: the iodine lamp sublimes", n("Iodine gas") > 50, `${n("Iodine gas")}`);
+  check("cryo works: the batch reactor snows saltpeter", n("Saltpeter") > 800, `${n("Saltpeter")}`);
+  check("cryo works: the smelter roasts mercury out of cinnabar", n("Mercury") > 40, `${n("Mercury")}`);
+  check("cryo works: the dry ice floods the pyre with CO2", n("CO2") > 400, `${n("CO2")}`);
 
-  runDemo("boiler", 500, boilerScene);
-  check("boiler room: overpressure bursts the vessels", n("Shards") > 100, `${n("Shards")} shards`);
+  {
+    boilerScene();
+    const propane0 = n("Propane");
+    const methane0 = n("Methane");
+    let peakSteam = 0;
+    for (let i = 0; i < 500; i++) { simTick(); peakSteam = Math.max(peakSteam, n("Steam")); }
+    check("boiler room: overpressure bursts the vessels", n("Shards") > 100, `${n("Shards")} shards`);
+    check("boiler room: the boiler geysers", peakSteam > 1000, `peak ${peakSteam} steam`);
+    check("boiler room: the tank farm goes up",
+      propane0 - n("Propane") > 3000, `${propane0} -> ${n("Propane")} propane`);
+    check("boiler room: the firedamp pocket fires",
+      n("Methane") < methane0 * 0.5, `${methane0} -> ${n("Methane")} methane`);
+  }
 
   {
     cannonScene();
@@ -2654,6 +2838,8 @@ function selftest(): { passed: number; failed: number; failures: string[]; known
       for (const o of objects.list) peak = Math.max(peak, Math.hypot(o.vx, o.vy));
     }
     check("pressure guns: a shot is actually launched", peak > 3, `peak ${peak.toFixed(1)} c/t`);
+    // the twins are the lesson: the open barrel fires, the capped one bursts
+    check("pressure guns: the capped barrel bursts instead", n("Shards") > 5, `${n("Shards")} shards`);
   }
 
   {

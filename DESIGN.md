@@ -1161,6 +1161,97 @@
 > STILL TO DO: the other seven demos. They all work and are gated by the suite,
 > so they were left alone rather than half-restaged in one pass.
 >
+> THE OTHER SEVEN RESTAGED 8/12 — chem, range, alchemy, cryo, boiler, cannon and
+> doom, all to the sandbox's pattern: a handful of big vignettes with headroom,
+> instead of a row of stations crowded into the bottom ninety rows. Station
+> counts came DOWN (chem 7->6, alchemy 9->6, cryo 7->6, range 6->6 but one third
+> wider each, cannon 6->5) and every survivor got the volume its reaction needed.
+> CUT, and why: the gunpowder mill and the rocket-candy mill (milling is a colour
+> change and reads as nothing), the soap geyser (no reaction at all), the
+> phosphorus vault (a two-cell flash), alchemy's acid-rain terrace (cryo does it
+> better with a fan and a cloud), cryo's gallium bridge and cannon's flat shot
+> (one-shots — a demo that has already fired before you look at it is a
+> photograph), and the range's fireworks battery (see below).
+> WHAT EACH ONE NOW DOES, measured at the tick count its gate uses:
+> - #chem: an acid/iron hydrogen generator filling a collection hood (4,378
+>   cells and still climbing at t600), a chlor-alkali cell laying down 4,224 of
+>   chlorine, a burette raining acid onto a soda shelf whose CO2 pours into a lye
+>   scrubber (747 in the well), a magma kiln floating lime back out (87), a
+>   thermite hearth pouring off its slab into a quench tank (1,201 stone), a
+>   greenhouse fixing 5,488 oxygen under its roof, and a litmus-seeded titration
+>   beaker left stratified for the stir tool. 7.9ms/tick, 103k dots.
+> - #range: sentry gun and castle, mortar, nitro anvil, vault breach, sodium
+>   depth-charge tank, ball mortar. 4.9ms.
+> - #alchemy: sodium pool, elephant toothpaste (17.8k oxygen), carbide lamp,
+>   brewery (12,082 alcohol), never-mix cabinet, magnesium pyre. 10.2ms.
+> - #cryo: saltpeter batch reactor (2,248), powder pit, cryo lake (3,675 ice),
+>   iodine lamp (1,276 vapour), smelter and smog (138 mercury), dry ice vs pyre.
+>   6.1ms.
+> - #boiler: self-refilling boiler geyser, tank farm, firedamp gallery, carboy
+>   cellar, dry-ice flask. 1,597 shards. 8.5ms.
+> - #cannon: pneumatic mortar, powder cannon, steam fountain, open-vs-capped
+>   twins, jet vent. Peak shot 11.7 c/t. 3.3ms.
+> - #doom: a SOLID mountain (the old one was two 4-cell diagonal lines and read
+>   as a wireframe triangle), with a crater vent, a heated lava channel cut into
+>   its flank, and a dry-ice cave in the slope. Magazine still 10/10 at t≈53.
+> FIXTURE LAWS EARNED HERE, each measured with one variable changed:
+> (1) ACID CORRODES GLASS. Only WALL is exempt (plus the water family, litmus,
+> the noble metals and the lime family). Same beaker built twice, 600 ticks: the
+> glass one lost 3,519 of its 5,400 cells and 1,841 acid, the wall one lost zero
+> and 366. THIS WAS ALREADY SHIPPED AND BROKEN in the sandbox — its stir beaker
+> dissolved 2,819 of its own cells and 99% of its acid within 600 ticks, so the
+> exhibit ate itself before anyone could stir it. Both beakers are wall now, and
+> the sandbox has a gate for it.
+> (2) A SEALED GAS-MAKING VESSEL MUST BE WALL. Gas accumulating in a closed
+> vessel raises the overpressure until the skin ruptures, and glass ruptures into
+> shards where wall holds: the glass electrolysis tank shed 199 shards in 400
+> ticks and then drained through its own breach; the greenhouse hit 1.48 and was
+> shedding from t100; the iodine chimney lost 45. Wall for the hood, glass only
+> where it cannot pressurise. In #boiler this is inverted on purpose — rupture IS
+> the exhibit, so everything there is glass.
+> (3) A SPARK IGNITES WHAT IT TOUCHES, so a sparked electrolysis cell burns its
+> own hydrogen: hydrogen's flammability is 255, hotContact4 fires on contact and
+> not on temperature, and the pocket climbed to 1,332 cells before flashing to
+> steam at t300 and never recovering. The hydrogen half of that exhibit is an
+> acid/iron generator now, which climbs monotonically and has no ignition source.
+> (4) A COMB ELECTRODE BOILS THE CELL. A spark branches into every conductor it
+> touches, so a comb does react along every finger — and heats the pool doing it:
+> fingers gave 7,213 steam and 153 hydrogen, the bare bus 3,898 and 1,590.
+> (5) ACID CORRODES CLONES, so an acid dripper eats its own emitters: 58 down to
+> 8 by t300 and the station goes quiet. Gravity feed instead — a wall tank
+> draining through a slot in its floor, which drained a steady 200 cells per 100
+> ticks for the whole run.
+> (6) A THROWN GRAIN CANNOT GO FURTHER THAN ~186 CELLS. Muzzle velocity 5.6 c/t,
+> drag 3% a tick, so the reach converges on 5.6/0.03 whatever the tower height —
+> measured 184 from a deck at y=477 and 184 again from y=400. The range's castle
+> stood at 280 and had NEVER been hit.
+> (7) STONE IS A POWDER. A stone-built castle slumps into cones inside a hundred
+> ticks and strands whatever was resting on it in mid-air. Structures are wall.
+> (8) GLASS DOES NOT BREAK ON IMPACT — shards come from overpressure only. A
+> sand shot shelled a glass cap for 700 ticks without a mark; loose powder is
+> what visibly answers a hit (a flyer hands 7/8 of its momentum into a pile).
+> (9) A POWDER BED ON AN OPEN SHELF SLUMPS OFF IT. The fizz bed poured over its
+> own drop and buried the scrubber until the shelf got a lip.
+> (10) FUSES, AGAIN: a 74-cell lead in the range mortar fired in one run and left
+> all 1,150 cells of charge intact in the next — the suite caught that one. A
+> torch only re-lights a neighbour while that neighbour is still fuse, so backing
+> a LONG lead with a torch does nothing. Short lead, or contact ignition.
+> (11) The fireworks battery measured between 4 and 46 launches across identical
+> builds, so it is too stochastic to gate; it stays in the sandbox and came out
+> of the range.
+> (12) Heavy gases pool where they are made, so a vessel's breach rarely points
+> at an outside pilot light: the propane tank held 5.0 of overpressure and shed
+> 963 cells of glass while a pilot six cells away never saw a molecule. The
+> pilot went inside the tank.
+> GATES: the in-page suite went 58 -> 76 checks, with a signature outcome for
+> every vignette rather than one per scene, region-scoped where a scene makes the
+> same product twice (the fizz well's CO2 is counted in the well, not in the
+> greenhouse next door). New: the sandbox beaker still holding acid, the chem
+> beaker still stratified AND stirring it multiplying the neutralisation, the
+> sentry gun reaching the castle, the mortar throwing its cap, the tank farm and
+> the firedamp pocket both firing, the boiler geysering, the capped barrel
+> bursting. Node suite unchanged at 28. Run time 24s -> 37s.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
