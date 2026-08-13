@@ -1336,6 +1336,60 @@
 > stamp wraps onto its own value. Harmless at any period worth using, and
 > written down so nobody re-measures it as a bug.
 >
+> CHAINS 8/13 (owner: "learn to create complex machines that all connect
+> together, use visual checks, watch the reactions chain, rework the demos with
+> that in mind"). The method mattered as much as the result: every stage was
+> judged from a FILMSTRIP — the shot harness driven at several tick marks in one
+> pass — rather than from one settled frame or a count. Nearly every fault below
+> was invisible in the numbers and obvious in the picture.
+> #MACHINES IS NOW A PRODUCTION LINE, not four machines standing side by side.
+> Silo -> 1:1 ramp -> trip plate -> carved conduit -> cannon -> furnace bed,
+> plus a spill bin under the line whose level sensor runs back over the top of
+> the silo, through an inverter, onto the silo's own gate. MEASURED over 1200
+> ticks: 807 grains released, 430 sensor trips, 192 signals delivered to the
+> gun, 99 ticks with a blast at the bed, 598 grains caught by the spill bin.
+> The suite gates it END TO END with one assertion — a round only detonates at
+> the furnace if the clock pulsed, the gate opened, the ramp carried, the plate
+> caught, the sensor fired, the wire crossed and the cannon took the shot.
+> #BOILER'S TANK FARM FINALLY CHAINS. It has claimed a BLEVE chain in its own
+> comments since M5i and never had one: each tank burst on its own clock and its
+> vapour never met a flame. A duct across the tank TOPS carried nothing, because
+> propane is a heavy gas that sits on the floor of its vessel; cut the crossover
+> at POOL LEVEL and the three pools are one pool. 7,035 / 8,472 / 8,492 cells
+> down to 19 / 158 / 159 inside 150 ticks, 23,779 burned, ~1,500 fire cells
+> sustained across the row. 8.2ms/tick, unchanged.
+> WIRING LAWS — a signal path is a physical object, and this is what broke:
+> (1) A VALVE OPENS ONLY WHERE THE SPARK TOUCHES IT, so the drip falls at the
+> WIRE'S END. A plate 19 cells from the gate's midpoint caught nothing at all.
+> (2) A WIRE PAINTED THROUGH EXISTING STRUCTURE IS SEVERED — paint fills empty,
+> so one wall cell in the run silently cuts it. Carve conduits first.
+> (3) DIAGONAL IS NOT CONNECTED, and a run that stops one cell short of the
+> device stops. Three stages died on gaps of 1, 6 and 7 cells.
+> (4) A DETECTOR EMITS INTO AN EMPTY CELL. Paint the wire onto its gap and it
+> goes silent — it needs a boxed air gap, wire one cell further on.
+> (5) A SENSOR MUST SIT WHERE THE MATERIAL LANDS, not where the drawing says.
+> (6) POWDERS NEED A 1:1 SLOPE. At 0.6 the sand banked up at the ramp head and
+> the line never started; a flat chute is a shelf.
+> (7) A SIGNAL RUN IS A WALL AND A DAM to everything else. One route stood on
+> the ramp and stopped the line at 134 grains; the next ran five cells under the
+> silo's discharge, so the drip landed on the wire and packed back into the gate.
+> The third went over the top of the silo, where nothing falls, and worked.
+> (8) A CANNON'S DECK CATCHES ITS OWN SHOT: 48 cells of range along a deck
+> against 89 with the deck ending at the muzzle.
+> (9) A LIQUID CANNOT BE HOPPERED — nitro drained along the gun deck and poured
+> off the end before a single round was fired. Powder for guns.
+> ALSO TRIED AND ABANDONED, recorded so nobody rebuilds it: a limestone -> lime
+> -> cement -> stone factory. The chemistry cascades correctly, but a kiln
+> BRIDGES — the lime crust caps the melt, incoming stone lands on the crust, and
+> production stops at 55 cells — and a skimmer lip either lets the magma out
+> (it overflowed down the ramp and froze there as stone) or sits too high for
+> the crust to reach. A floating product needs a mechanism this engine does not
+> have; the chain that works is gravity, contact heat and signals.
+> MY OWN HARNESS BUG, worth one line: iterating by WRAPPING a scene builder in
+> the page stacks the old broken layers under the new one, and I spent three
+> measurements chasing a gap that a stale wrapper kept repainting. Redefine, do
+> not wrap.
+>
 > M4 QUEUE (still open): engine-in-a-worker via copy-transfer (above),
 > stepAir spread-bounding via connectivity, dissolved-concentration
 > channel, remaining BG modes (blur/shade/aura/light/mesh/track — partly
