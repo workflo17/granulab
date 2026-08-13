@@ -1243,6 +1243,13 @@
 > at an outside pilot light: the propane tank held 5.0 of overpressure and shed
 > 963 cells of glass while a pilot six cells away never saw a molecule. The
 > pilot went inside the tank.
+> STALE-PAGE TRAP, NEW WRINKLE: a page opened during a `vercel promote` holds
+> the OLD bundle while the origin already serves the new one, and fetching the
+> HTML or the bundle to check does NOT catch it — the fetch sees the new build
+> and the running page is still the old one. It showed up as production running
+> 58 checks in 22s when the code had 76. Compare what the PAGE loaded,
+> `document.querySelectorAll("script[src]")`, against the freshly-fetched HTML,
+> then reload. Same family as the Vite stale-guard rule, one level further in.
 > GATES: the in-page suite went 58 -> 76 checks, with a signature outcome for
 > every vignette rather than one per scene, region-scoped where a scene makes the
 > same product twice (the fizz well's CO2 is counted in the well, not in the
